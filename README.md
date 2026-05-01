@@ -104,4 +104,66 @@ Pick one of the paths:
 │   ├── docker-compose/     # One-command stacks | 一键启动栈
 │   └── workflows/          # n8n exports etc. | 工作流导出
 ├── governance/             # Security & compliance templates | 治理/合规模板
-└── case-studies/           # Measured outcomes & lessons | 案例与复盘
+├── case-studies/           # Measured outcomes & lessons | 案例与复盘
+│
+│  # ── Spec-only scaffolding (规范+模板，先文档后实现) ────────────────
+├── providers/              # LLM 提供方抽象 | LLM provider abstraction
+│   ├── SPEC.md             # endpoint / auth / capabilities / cost / retry
+│   ├── catalogs.md         # 6 家 provider 已知模型清单（带核验日期）
+│   ├── schemas/            # provider-config JSON Schema
+│   └── templates/          # registry + ollama/openrouter/openai/anthropic/gemini/grok
+├── memory/                 # 记忆与本地知识库 | Memory & local KB / RAG
+│   ├── SPEC.md             # 三层 memory + RAG pipeline + 检索/重排契约
+│   ├── schemas/            # memory-record / kb-document / kb-chunk / retrieval-query
+│   ├── templates/          # short/mid/kb config + ingestion + retrieval + md 样例
+│   └── storage/            # SQLite DDL（含 FTS5） + LanceDB 表与索引说明
+├── session/                # AI 会话与轨迹规范 | Session & trace spec
+│   ├── SPEC.md             # 字段、状态机、redaction、retention、RBAC
+│   ├── schemas/            # session / trace-event JSON Schemas
+│   └── templates/          # meta / redaction-rules / retention-policy
+├── sandbox/                # AI 动作隔离执行规范 | Sandbox execution spec
+│   ├── SPEC.md             # action 契约、生命周期、策略契约
+│   ├── backends/           # Docker / gVisor / Firecracker / Remote VM 选型
+│   ├── policies/           # network / seccomp / resource quota
+│   └── templates/          # action-request / approval-policy
+└── harness/                # 评估与回归骨架 | Eval & regression harness
+    ├── SPEC.md             # 对象模型、evaluator 分类、指标
+    ├── schemas/            # fixture / eval-result JSON Schemas
+    └── templates/          # fixture / golden / rubric / eval-config
+```
+
+## Architecture: Providers × Memory × Session × Sandbox × Harness
+
+五者构成 OpsPilot 的"AI 代办闭环"：
+
+```
+        ┌───────────────┐                ┌───────────────────────────┐
+        │  providers/   │                │  memory/                   │
+        │  registry     │                │  short / mid / long-term   │
+        │ Ollama/OR/OAI │                │  SQLite + LanceDB + md     │
+        │ Anthropic/    │                │  RAG (kb.search /          │
+        │ Gemini/Grok   │                │       memory.search)       │
+        └──────┬────────┘                └──────────┬─────────────────┘
+               │ provider_id + model_ref            │ kb.search results
+               ▼                                    │ + memory recall
+playbooks/  ──▶  Session(create) ◀──────────────────┘
+                        │
+                        ▼
+                  proposed_action ──▶ sandbox/  ──▶ artifact
+                        │                              │
+                        ▼                              ▼
+                  Session.trace  ◀────────  recording
+                        │  (archive 时归约 → mid-term memory)
+                        ▼
+                  harness/(eval) ──▶  case-studies/
+```
+
+- **providers/**：可插拔 LLM 提供方（Ollama / OpenRouter / OpenAI / Anthropic / Gemini / Grok）；统一鉴权、能力声明、成本与降级
+- **memory/**：三层记忆——短期（trace 内摘要）/ 中期（SQLite + markdown）/ 长期（LanceDB + markdown）；RAG 检索与重排
+- **session/**：AI 任务的"上下文 + 轨迹 + 产物 + 审计"打包单元；合规落地的载体
+- **sandbox/**：AI 提出动作的"先跑给你看，再决定要不要落地"的隔离执行层；默认 deny-all
+- **harness/**：Prompt/Playbook 的"单元测试 + 回归门"；模型升级前后必跑
+
+> ⚠️ **当前状态 / Status**：五个目录均为 **spec-only**（规范+模板）阶段，不含运行实现。先把契约梳理清楚，再做参考实现。
+> ⚠️ **模型版本**：所有 `model_ref` 与 `embedding_model` 必须显式锁版本；禁用 `latest` / `auto` / `stable`。
+> ⚠️ **PII 红线**：未脱敏内容不得入向量库 / SQLite；redaction 规则参见 `session/templates/redaction-rules.template.yaml`。

@@ -1,0 +1,77 @@
+# 审批门规则模板 / Approval gate policy template
+# 任意一条 trigger 命中 → action.approval_required = true
+
+version: "1.0.0"
+
+# 触发条件 / Triggers
+triggers:
+
+  # 1. 高危关键词（payload 文本扫描） / Dangerous keywords
+  dangerous_keywords:
+    enabled: true
+    patterns:
+      - "(?i)\\brm\\s+-rf\\b"
+      - "(?i)\\bdd\\s+if=.*of=/dev/"
+      - "(?i)\\bmkfs\\."
+      - "(?i)\\bDROP\\s+(TABLE|DATABASE|SCHEMA)\\b"
+      - "(?i)\\bTRUNCATE\\b"
+      - "(?i)\\bDELETE\\s+FROM\\b(?!.*\\bWHERE\\b)"   # 无 WHERE 的 DELETE
+      - "(?i)\\bchmod\\s+(-R\\s+)?[0-7]*777\\b"
+      - "(?i):\\(\\)\\s*\\{\\s*:\\|:&\\s*\\};:"        # fork bomb
+      - "(?i)\\b(shutdown|reboot|halt|poweroff)\\b"
+      - "(?i)\\biptables\\s+-F\\b"
+      - "(?i)\\bufw\\s+(disable|reset)\\b"
+
+  # 2. 目标环境 / Target environment
+  environment:
+    enabled: true
+    require_approval_for: ["prod", "production", "live"]
+
+  # 3. 不可逆 / Irreversibility
+  irreversible:
+    enabled: true
+    rule: "action.rollback_hint.irreversible == true"
+
+  # 4. 网络出网 / Network egress
+  network_egress:
+    enabled: true
+    rule: "requested_policy.network.mode != 'deny-all'"
+
+  # 5. IAM / RBAC / 网络策略变更
+  privileged_changes:
+    enabled: true
+    patterns:
+      - "(?i)\\b(iam|rbac|policy)\\s+(create|update|delete|put|attach|detach)\\b"
+      - "(?i)\\b(useradd|userdel|groupadd|usermod|chage|passwd)\\b"
+      - "(?i)\\b(visudo|sudoers)\\b"
+      - "(?i)\\biptables\\b"
+      - "(?i)\\bfirewall-cmd\\b"
+      - "(?i)\\bsetfacl\\b"
+
+  # 6. 资源超阈 / Excessive resource request
+  resource_threshold:
+    enabled: true
+    cpu_gt: "2"
+    memory_gt: "1Gi"
+    timeout_gt: 120
+
+# 审批人配置 / Approvers
+approvers:
+  default:
+    roles: ["lead", "manager"]
+    min_approvals: 1
+  prod:
+    roles: ["lead", "manager", "sre-oncall"]
+    min_approvals: 2
+  irreversible:
+    roles: ["manager"]
+    min_approvals: 2
+
+# 行为 / Behavior
+behavior:
+  approval_timeout_minutes: 30           # 超时未审批则自动 reject
+  on_timeout: "reject"                   # reject | escalate
+  reject_reason_required: true           # 拒绝必须给理由（写入 audit.log）
+  break_glass:
+    enabled: false                       # 紧急绕过；默认关闭
+    requires_postmortem_within_hours: 24

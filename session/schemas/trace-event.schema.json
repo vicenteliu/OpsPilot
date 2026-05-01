@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opspilot.dev/schemas/trace-event.schema.json",
+  "title": "Trace Event",
+  "description": "trace.jsonl 中的一行；按 type 区分子类型",
+  "type": "object",
+  "required": ["session_id", "seq", "ts", "type"],
+  "properties": {
+    "session_id": { "type": "string", "pattern": "^sess_[0-9A-HJKMNP-TV-Z]{26}$" },
+    "seq": { "type": "integer", "minimum": 0 },
+    "ts": { "type": "string", "format": "date-time" },
+    "actor": {
+      "type": "string",
+      "description": "user:<id> | model:<vendor>:<name>:<version> | system | tool:<name>"
+    },
+    "type": {
+      "type": "string",
+      "enum": ["prompt", "response", "tool_call", "tool_result", "redaction", "user_action", "system"]
+    }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "type": { "const": "prompt" },
+        "role": { "type": "string", "enum": ["system", "user", "assistant", "tool"] },
+        "content": { "type": "string" },
+        "prompt_ref": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string" },
+            "version": { "type": "string" }
+          },
+          "required": ["id", "version"]
+        }
+      },
+      "required": ["role", "content"]
+    },
+    {
+      "properties": {
+        "type": { "const": "response" },
+        "content": { "type": "string" },
+        "finish_reason": { "type": "string", "enum": ["stop", "length", "tool_call", "content_filter", "error"] },
+        "usage": {
+          "type": "object",
+          "properties": {
+            "input_tokens": { "type": "integer", "minimum": 0 },
+            "output_tokens": { "type": "integer", "minimum": 0 },
+            "cost_usd": { "type": "number", "minimum": 0 }
+          }
+        }
+      },
+      "required": ["content", "finish_reason"]
+    },
+    {
+      "properties": {
+        "type": { "const": "tool_call" },
+        "tool": { "type": "string" },
+        "args": { "type": "object" },
+        "action_id": { "type": "string", "pattern": "^act_[0-9A-HJKMNP-TV-Z]{26}$" }
+      },
+      "required": ["tool", "args"]
+    },
+    {
+      "properties": {
+        "type": { "const": "tool_result" },
+        "tool": { "type": "string" },
+        "action_id": { "type": "string", "pattern": "^act_[0-9A-HJKMNP-TV-Z]{26}$" },
+        "exit_code": { "type": "integer" },
+        "stdout_ref": { "type": "string", "description": "artifact_id or inline string (≤8KiB)" },
+        "stderr_ref": { "type": "string" },
+        "artifact_ids": { "type": "array", "items": { "type": "string", "pattern": "^art_[a-f0-9]{16}$" } },
+        "duration_ms": { "type": "integer", "minimum": 0 },
+        "status": { "type": "string", "enum": ["ok", "failed", "timeout", "aborted"] }
+      },
+      "required": ["tool", "status"]
+    },
+    {
+      "properties": {
+        "type": { "const": "redaction" },
+        "pattern": { "type": "string", "description": "Rule id, e.g. rule.email" },
+        "count": { "type": "integer", "minimum": 1 },
+        "placeholder_format": { "type": "string", "examples": ["[REDACTED:email:########]"] }
+      },
+      "required": ["pattern", "count"]
+    },
+    {
+      "properties": {
+        "type": { "const": "user_action" },
+        "action": {
+          "type": "string",
+          "enum": ["accept", "reject", "edit", "approve", "comment", "abort", "archive"]
+        },
+        "target": { "type": "string", "description": "Refers to a prior seq, action_id, or artifact_id" },
+        "payload_diff": { "type": "string", "description": "Optional unified diff for edit actions" }
+      },
+      "required": ["action"]
+    },
+    {
+      "properties": {
+        "type": { "const": "system" },
+        "event": {
+          "type": "string",
+          "enum": ["state_change", "error", "policy_violation", "retention_marker"]
+        },
+        "details": { "type": "object" }
+      },
+      "required": ["event"]
+    }
+  ]
+}

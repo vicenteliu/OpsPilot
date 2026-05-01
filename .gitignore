@@ -205,3 +205,34 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# OpsPilot — Memory & KB 派生数据（不入 git；markdown 源是权威）
+# memory/storage 中的 SQL/MD 是 schema 文档，不在此忽略
+*.lance/
+**/lancedb/
+**/kb/*/lancedb/
+**/kb/*/meta.db
+**/kb/*/meta.db-*
+**/kb/*/snapshots/
+**/kb/*/quarantine/
+**/kb/*/embed-pending/
+**/kb/*/redacted/
+**/kb/*/audit.log
+**/kb/*/manifest.jsonl
+**/kb/*/progress.jsonl
+**/kb/*/low-score-queries.jsonl
+
+# OpsPilot — Mid-term memory 本地存储（私有；不入 git）
+.opspilot/
+**/memory/mid-term.db
+**/memory/mid-term.db-*
+**/memory/backups/
+**/memory/review-queue.jsonl
+
+# OpsPilot — Sessions 本地数据（敏感；不入 git）
+sessions/
+
+# OpsPilot — Secrets（API keys 一律走 env 或 broker）
+.env
+.env.*
+!.env.example

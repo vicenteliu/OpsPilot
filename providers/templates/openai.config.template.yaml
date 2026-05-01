@@ -1,0 +1,98 @@
+# OpenAI provider 配置模板 / OpenAI provider config template
+# 文档：https://platform.openai.com/docs（信息日期 2026-05-01；使用前核验）
+
+id: "openai-main"
+kind: "openai"
+display_name: "OpenAI"
+enabled: true
+
+base_url: "https://api.openai.com/v1"
+
+auth:
+  type: "api_key_header"
+  env: "OPENAI_API_KEY"
+  header: "Authorization"
+  prefix: "Bearer "
+
+# 可选：组织/项目隔离
+default_headers:
+  # OpenAI-Organization: "${OPENAI_ORG_ID}"     # 可选；某些组织账户需要
+  # OpenAI-Project: "${OPENAI_PROJECT_ID}"      # 推荐：项目级隔离与计费
+  {}
+
+capabilities:
+  streaming: true
+  tools: true
+  vision: true
+  audio_in: true                       # whisper / 多模态模型
+  audio_out: true                      # tts / realtime
+  json_mode: true                      # response_format=json_object 或 json_schema
+  prompt_caching: true                 # 系统级缓存（部分模型自动）
+  reasoning_mode: true                 # o1/o3 系；以具体模型为准
+  computer_use: false
+  embeddings: true
+  long_context_tokens: 128000          # 主流模型；GPT-4.1/4.5 系可能更高
+  max_output_tokens: 16384
+
+limits:
+  context_window_tokens: 128000
+  max_output_tokens: 16384
+  rpm: 500
+  tpm: 800000
+  concurrent: 16
+
+cost:
+  # ⚠️ 单价随模型与档位变化；这里给"主力模型"近似上限
+  pricing:
+    input_per_1k_usd: 0.005            # 例：gpt-4o 入参；以 catalogs.md 为准
+    output_per_1k_usd: 0.015
+    cached_input_per_1k_usd: 0.0025
+    pricing_as_of: "2026-05-01"
+    source_url: "https://openai.com/api/pricing"
+  monthly_budget_usd: 50
+  per_call_budget_usd: 0.5
+  on_budget_exceeded: "block"
+  downgrade_to: "openrouter-main"
+
+retry:
+  max_attempts: 3
+  initial_backoff_ms: 500
+  max_backoff_ms: 8000
+  jitter: "full"
+  retry_on:
+    - "http_408"
+    - "http_429"
+    - "http_500"
+    - "http_502"
+    - "http_503"
+    - "http_504"
+    - "timeout_read"
+  give_up_on: ["http_400", "http_401", "http_403", "http_404", "http_413"]
+
+timeouts:
+  connect_ms: 5000
+  read_ms: 60000
+  total_ms: 90000
+
+compliance:
+  data_residency: "us"
+  telemetry_optout: true               # API 默认不用于训练；仍建议在控制台 double-check
+  zero_data_retention: false           # 默认 30 天保留；如需 ZDR 需联系销售
+  pii_allowed: false                   # 默认禁；依 governance 决定
+  red_lines:
+    - "不发送未脱敏 PII"
+    - "不发送内部代号"
+
+labels:
+  region: "us"
+  account: "default"
+
+extensions:
+  openai:
+    # 仅当切到 Azure OpenAI 时打开（保留位）
+    deployment_mode: "openai"          # openai | azure
+    # azure_endpoint: "https://<resource>.openai.azure.com"
+    # azure_api_version: "2024-10-21"
+    # azure_deployment_name: "gpt-4o"
+    # 以下在 ChatCompletions / Responses API 中可用
+    response_format_default: "text"    # text | json_object | json_schema

@@ -1,0 +1,103 @@
+# 检索 / 重排 配置模板 / Retrieval & rerank config template
+# 两个用途：
+#   1) kb.search    —— 长期知识库检索
+#   2) memory.search —— 中期 memory 检索（type 过滤）
+# 与 schemas/retrieval-query.schema.json 等价
+
+version: "1.0.0"
+
+# 默认配置（被单次请求覆盖）
+defaults:
+
+  # ── kb.search ──────────────────────────────────────────
+  kb:
+    mode: "hybrid"                  # vector | keyword | hybrid
+    top_k: 8
+    scopes:
+      - "opspilot:public-kb"
+    filters:
+      classification:
+        in: ["public", "internal"]
+    hybrid:
+      vector_weight: 0.6
+      keyword_weight: 0.4
+      fusion: "rrf"                 # 默认 RRF；对排名鲁棒
+      rrf_k: 60
+    rerank:
+      enabled: true
+      type: "cross_encoder"
+      top_n: 4
+      model_ref: "ollama-local/bge-reranker-v2-m3@2024-08"
+    return_citations: true
+    budget_usd: 0.02
+
+  # ── memory.search ──────────────────────────────────────
+  memory:
+    mode: "hybrid"
+    top_k: 5
+    scopes:
+      - "opspilot:user"
+      - "opspilot:feedback"
+      - "opspilot:project"
+    type_filter: []                 # 空 = 所有类型
+    hybrid:
+      vector_weight: 0.5
+      keyword_weight: 0.5
+      fusion: "rrf"
+      rrf_k: 60
+    rerank:
+      enabled: false                # 中期记录通常量级小，不必 rerank
+    confidence_boost:
+      high: 1.2
+      medium: 1.0
+      low: 0.7
+    return_citations: true
+    budget_usd: 0.005
+
+# Citation 注入到 prompt 的格式（建议）
+citation_injection:
+  enabled: true
+  style: "footnote_marker"          # footnote_marker | inline_quote | structured_block
+  marker_format: "[^kb-{rank}]"
+  footnote_format: |
+    [^kb-{rank}]: {source_path}:{line_start}-{line_end} · {heading_path_joined}
+  # prompt 中保留多少字给检索摘要
+  max_chars_per_result: 800
+  max_total_chars: 4800
+
+# 安全约束 / Security
+security:
+  # 检索时强制按 session.sensitivity 收紧 scope
+  enforce_session_sensitivity: true
+  sensitivity_to_max_classification:
+    public: "public"
+    internal: "internal"
+    confidential: "internal"
+    restricted: "internal"          # restricted session 不能检索 restricted KB（避免越权）
+  # 多租户：禁止跨 namespace 检索（除非显式列出）
+  forbid_implicit_cross_namespace: true
+
+# 可观测 / Observability
+observability:
+  # 每次检索写一条 trace event（type=tool_call + tool=kb.search）
+  emit_trace_event: true
+  metrics:
+    - "vector_hits"
+    - "keyword_hits"
+    - "rerank_used"
+    - "cost_usd"
+    - "latency_ms"
+  # 长尾分析：低分命中 / 零结果 写入分析池
+  low_score_log:
+    enabled: true
+    threshold: 0.3
+    target: "${index_root}/low-score-queries.jsonl"
+
+# Fallback 策略 / Fallback
+fallback:
+  # rerank 模型失败 → 退化到 hybrid（不重排）
+  on_rerank_failure: "skip_rerank"
+  # 向量检索失败 → 退化到纯 keyword
+  on_vector_failure: "keyword_only"
+  # keyword 也失败 → 返回空结果 + system 事件
+  on_total_failure: "empty_results_with_system_event"

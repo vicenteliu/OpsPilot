@@ -1,0 +1,50 @@
+# 默认保留策略模板 / Default retention policy template
+# 与 governance/ 中的整体保留方针保持一致。
+# 到期动作：清空 inputs/ 与 artifacts/，保留 meta.yaml + audit.log 摘要。
+
+version: "1.0.0"
+
+# 保留等级 / Retention classes
+classes:
+  low:
+    description: "公开/低敏感；可较长保留以利复盘 / Public or low-sensitivity"
+    retain_days: 90
+    purge_action: "soft"          # soft = 清正文留 meta；hard = 全清（需审批）
+    audit_retain_days: 365
+
+  medium:
+    description: "内部一般；默认级别 / Internal general; default class"
+    retain_days: 30
+    purge_action: "soft"
+    audit_retain_days: 365
+
+  high:
+    description: "敏感（含工单原文/客户信息脱敏后）/ Sensitive (post-redaction)"
+    retain_days: 7
+    purge_action: "soft"
+    audit_retain_days: 365
+
+  critical:
+    description: "强敏感（事故/合规调查相关）/ Critical (incident/compliance)"
+    retain_days: 1                 # 默认 1 天后归档；归档后由人工决定 purge
+    purge_action: "manual_only"    # 必须人工触发
+    audit_retain_days: 730
+
+# 数据分级与建议 retention class 的映射（可被显式覆盖）
+sensitivity_to_class_default:
+  public: "low"
+  internal: "medium"
+  confidential: "high"
+  restricted: "critical"
+
+# 自动清理调度（建议） / Automatic purge schedule
+schedule:
+  cron: "0 3 * * *"                # 每日 03:00 本地时区扫描
+  timezone: "Asia/Shanghai"
+  dry_run: true                     # 首次部署强烈建议 dry_run，确认无误后置 false
+
+# 用户手动操作 / Manual ops
+manual:
+  archive_requires_owner: true      # 仅 owner 可主动 archive
+  delete_requires_two_person: true  # purge 需 2 人复核
+  export_before_purge: true         # 默认导出脱敏摘要到 case-studies/

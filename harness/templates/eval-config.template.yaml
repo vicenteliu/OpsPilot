@@ -1,0 +1,115 @@
+# 一次评估 Run 的配置模板 / Eval run config template
+# 复制为 harness-data/runs/<run_id>/config.yaml；执行后产生 results.jsonl + report.*
+
+version: "1.0.0"
+
+run:
+  id: "run_01J0Z9ZQXK7M6P3F0XK5K7C5K0"   # ULID；运行时生成
+  name: "weekly-regression-2026W18"
+  triggered_by: "ci"                       # ci | manual | nightly
+  ts: "2026-05-01T02:00:00Z"
+
+# 选择要测的场景 / Scenarios
+scenarios:
+  - id: "scn_ticket_summary_zh"
+    fixtures:
+      include_tags: ["L1", "zh-CN"]
+      exclude_tags: ["wip"]
+      ids: []                              # 留空 = 上面 tags 选中
+    rubric: "rubrics/scn_ticket_summary_zh.md"
+
+  - id: "scn_log_triage_en"
+    fixtures:
+      include_tags: ["nginx", "k8s"]
+    rubric: "rubrics/scn_log_triage_en.md"
+
+# Playbook 矩阵（被评估对象） / Playbook(s)
+playbooks:
+  - id: "pb_ticket_summary_zh"
+    versions: ["1.1.0", "1.2.0"]           # 同时跑两个版本，比较回归
+
+# 模型矩阵 / Model matrix
+# 格式 = <provider_id>/<name>@<version>；provider_id 来自 providers/templates/provider-registry
+# 也可用 registry alias（如 @chat-strong / @judge），由 runner 在执行前解析
+models:
+  - "anthropic-claude/claude-sonnet-4-6@2026-04"
+  - "openai-main/gpt-4o@2024-11-20"
+  - "openrouter-main/google/gemini-2.5-pro@2025-03"
+  - "grok-main/grok-3@2025-02"
+  - "ollama-local/qwen2.5:14b-instruct@2024-09"
+
+# 评估器配置 / Evaluators
+evaluators:
+  - id: "ev_pii_check"
+    type: "rule.pii_check"
+    weight: 0.0                            # 仅 hard-fail，不计入加权
+    hard_fail: true
+    rules_ref: "../session/templates/redaction-rules.template.yaml"
+
+  - id: "ev_must_contain"
+    type: "rule.regex"
+    weight: 0.10
+    config:
+      from_golden: true                    # 自动取 golden.must_contain
+      mode: "all"
+
+  - id: "ev_must_not_contain"
+    type: "rule.regex"
+    weight: 0.0
+    hard_fail: true
+    config:
+      from_golden: true                    # 自动取 golden.must_not_contain
+      mode: "none"
+
+  - id: "ev_schema"
+    type: "rule.json_schema"
+    weight: 0.20
+    config:
+      schema_ref: "schemas/scn_ticket_summary_v1.json"
+
+  - id: "ev_semantic"
+    type: "semantic.embedding"
+    weight: 0.20
+    config:
+      embedding_model: "openai/text-embedding-3-large@2025-01"
+      threshold_cosine: 0.78
+
+  - id: "ev_judge"
+    type: "judge.llm"
+    weight: 0.50
+    config:
+      judge_model: "anthropic/claude-haiku-4-5@2025-10"   # 必须锁版本
+      judge_prompt_hash: "sha256:0000...required"
+      rubric_ref: "rubrics/scn_ticket_summary_zh.md"
+
+# 阈值与回归门 / Thresholds & gate
+thresholds:
+  pass_rate_min: 0.85                      # 通过率阈值
+  regression_delta_max: -0.03              # 相对 baseline 掉 3% 即阻断
+  cost_per_run_usd_max: 1.50
+  latency_p95_ms_max: 9000
+
+baseline:
+  run_id: "run_01J0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z0"
+  source: "main-branch-last-green"
+
+# 重跑控制（处理 flakiness） / Retries
+retries:
+  on_evaluator_failure: 0
+  on_infra_error: 2
+  flake_detection:
+    enabled: true
+    repeats: 3
+    flag_if_variance_gt: 0.1
+
+# 报告 / Reports
+report:
+  formats: ["md", "json"]                  # 暂不强制 html
+  archive_to: "case-studies/regressions/"
+
+# CI 集成 / CI
+ci:
+  block_merge_on_gate_fail: true
+  notify:
+    on_regression: ["#opspilot-alerts"]
+    on_green: []

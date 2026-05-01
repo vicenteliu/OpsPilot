@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opspilot.dev/schemas/kb-document.schema.json",
+  "title": "KB Document",
+  "description": "长期知识库文档元数据（markdown 源 + 派生索引）",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "source_path",
+    "title",
+    "classification",
+    "content_hash",
+    "ingested_at",
+    "language",
+    "namespace",
+    "chunk_strategy",
+    "embedding_model",
+    "embedding_dim",
+    "redaction_passed"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^doc_[a-f0-9]{8}$",
+      "description": "doc_<sha8>，由 source_path + 初始 content_hash 派生"
+    },
+    "source_path": {
+      "type": "string",
+      "description": "repo 内相对路径（markdown）"
+    },
+    "source_url": {
+      "type": ["string", "null"],
+      "format": "uri",
+      "description": "若来自外部 wiki / Confluence / Notion，记录原 URL"
+    },
+    "title": { "type": "string", "minLength": 1 },
+    "classification": {
+      "type": "string",
+      "enum": ["public", "internal", "confidential", "restricted"]
+    },
+    "content_hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "version": {
+      "type": ["string", "null"],
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "ingested_at": { "type": "string", "format": "date-time" },
+    "last_modified": { "type": "string", "format": "date-time" },
+    "language": {
+      "type": "string",
+      "examples": ["zh-CN", "en", "mixed"]
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "namespace": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*:[a-z][a-z0-9_-]*$"
+    },
+    "chunk_strategy": {
+      "type": "string",
+      "enum": [
+        "headings_then_size",
+        "fixed_size",
+        "sentence_boundary",
+        "code_aware",
+        "semantic"
+      ]
+    },
+    "chunk_count": { "type": "integer", "minimum": 0 },
+    "embedding_model": {
+      "type": "string",
+      "description": "<provider_id>/<name>@<version>；禁用 latest / auto / stable",
+      "not": { "pattern": "@(latest|auto|stable)$" }
+    },
+    "embedding_dim": { "type": "integer", "minimum": 32 },
+    "redaction_passed": {
+      "type": "boolean",
+      "const": true,
+      "description": "未通过脱敏检查的文档不允许入索引"
+    },
+    "redaction_rules_version": { "type": "string" },
+    "license": {
+      "type": ["string", "null"],
+      "description": "若来自第三方公开数据集，必须填写"
+    },
+    "extensions": {
+      "type": "object",
+      "default": {}
+    }
+  }
+}

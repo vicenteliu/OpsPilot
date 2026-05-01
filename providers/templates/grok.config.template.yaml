@@ -1,0 +1,93 @@
+# xAI Grok provider 配置模板 / Grok (xAI) provider config template
+# 文档：https://docs.x.ai（信息日期 2026-05-01；使用前核验）
+# Grok API 与 OpenAI 兼容形态接近，可直接复用 OpenAI SDK。
+
+id: "grok-main"
+kind: "grok"
+display_name: "xAI Grok"
+enabled: true
+
+base_url: "https://api.x.ai/v1"
+
+auth:
+  type: "api_key_header"
+  env: "XAI_API_KEY"
+  header: "Authorization"
+  prefix: "Bearer "
+
+default_headers: {}
+
+capabilities:
+  streaming: true
+  tools: true                          # function calling
+  vision: true                         # 视模型；grok-2-vision 系
+  audio_in: false
+  audio_out: false
+  json_mode: true                      # OpenAI 兼容路径；response_format=json_schema
+  prompt_caching: false                # 以官方为准
+  reasoning_mode: true                 # grok-3 reasoning / grok-think 类
+  computer_use: false
+  embeddings: false                    # 暂不主推（以官方为准）
+  long_context_tokens: 131072
+  max_output_tokens: 8192
+
+limits:
+  context_window_tokens: 131072
+  max_output_tokens: 8192
+  rpm: 60
+  tpm: 200000
+  concurrent: 4
+
+cost:
+  pricing:
+    input_per_1k_usd: 0.005            # 近似；以 catalog 为准
+    output_per_1k_usd: 0.015
+    cached_input_per_1k_usd: null
+    pricing_as_of: "2026-05-01"
+    source_url: "https://x.ai/api"
+  monthly_budget_usd: 30
+  per_call_budget_usd: 0.5
+  on_budget_exceeded: "block"
+  downgrade_to: "openrouter-main"
+
+retry:
+  max_attempts: 3
+  initial_backoff_ms: 500
+  max_backoff_ms: 8000
+  jitter: "full"
+  retry_on:
+    - "http_408"
+    - "http_429"
+    - "http_500"
+    - "http_502"
+    - "http_503"
+    - "http_504"
+    - "timeout_read"
+  give_up_on: ["http_400", "http_401", "http_403", "http_404", "http_413"]
+
+timeouts:
+  connect_ms: 5000
+  read_ms: 60000
+  total_ms: 90000
+
+compliance:
+  data_residency: "us"
+  telemetry_optout: true               # 控制台中显式关闭训练用途；以官方为准
+  zero_data_retention: false
+  pii_allowed: false
+  red_lines:
+    - "不发送未脱敏 PII"
+    - "不发送内部代号"
+
+labels:
+  region: "us"
+
+extensions:
+  grok:
+    # live search（实时检索）能力开关；按官方文档调整
+    live_search:
+      enabled: false
+      # mode: "on" | "auto" | "off"
+      max_results: 10
+    # 是否允许"实时数据"参与回答（合规要点）
+    allow_realtime_data: false

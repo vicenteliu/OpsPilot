@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opspilot.dev/schemas/memory-record.schema.json",
+  "title": "Memory Record (mid-term)",
+  "description": "中期 memory 的结构化记录；与 markdown frontmatter 等价",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "type",
+    "scope",
+    "title",
+    "body",
+    "source",
+    "created_at",
+    "updated_at",
+    "confidence",
+    "redacted"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^mem_[a-f0-9]{8}$",
+      "description": "mem_<sha8>；内容寻址"
+    },
+    "type": {
+      "type": "string",
+      "enum": ["user", "feedback", "project", "reference"],
+      "description": "见 SPEC.md §2"
+    },
+    "scope": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*:[a-z][a-z0-9_-]*$",
+      "description": "命名空间，例 opspilot:user / opspilot:project"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "body": {
+      "type": "string",
+      "description": "markdown；feedback/project 类型必须含 **Why:** 与 **How to apply:** 段"
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["origin"],
+      "properties": {
+        "origin": {
+          "type": "string",
+          "enum": ["session", "user_input", "ingest", "system"]
+        },
+        "session_id": {
+          "type": ["string", "null"],
+          "pattern": "^sess_[0-9A-HJKMNP-TV-Z]{26}$"
+        },
+        "trace_seq": { "type": ["integer", "null"], "minimum": 0 },
+        "document_id": {
+          "type": ["string", "null"],
+          "pattern": "^doc_[a-f0-9]{8}$"
+        },
+        "url": {
+          "type": ["string", "null"],
+          "format": "uri"
+        }
+      }
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "valid_until": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "显式过期时间；过期后只读"
+    },
+    "confidence": {
+      "type": "string",
+      "enum": ["low", "medium", "high"],
+      "description": "影响检索权重；user 直接确认的为 high"
+    },
+    "redacted": {
+      "type": "boolean",
+      "const": true,
+      "description": "memory 必须脱敏后入库；该字段必须为 true"
+    },
+    "redaction_rules_version": { "type": "string" },
+    "labels": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "default": {}
+    },
+    "extensions": {
+      "type": "object",
+      "default": {}
+    }
+  }
+}

@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opspilot.dev/schemas/fixture.schema.json",
+  "title": "Harness Fixture",
+  "description": "评估用例（输入快照），必须脱敏",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "scenario_id", "version", "content_hash", "input", "redacted"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^fix_[a-f0-9]{8}$",
+      "description": "fix_<sha8>"
+    },
+    "scenario_id": {
+      "type": "string",
+      "pattern": "^scn_[a-z0-9_]+$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "content_hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "description": "sha256 of the canonical JSON of `input` field"
+    },
+    "title": { "type": "string" },
+    "description": { "type": "string" },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "language": {
+      "type": "string",
+      "examples": ["zh-CN", "en", "mixed"]
+    },
+    "input": {
+      "type": "object",
+      "description": "场景相关的结构化输入；具体字段由 scenario 定义"
+    },
+    "redacted": {
+      "type": "boolean",
+      "const": true,
+      "description": "fixture 必须已脱敏；该字段必须为 true 才能入库"
+    },
+    "redaction_rules_version": {
+      "type": "string",
+      "description": "脱敏规则版本，用于回溯"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string", "enum": ["session", "manual", "public_dataset", "synthetic"] },
+        "ref": { "type": "string", "description": "session_id / dataset_url / generator id" },
+        "license": { "type": "string", "description": "若来源为公开数据集，此处必填" }
+      },
+      "required": ["type"]
+    },
+    "expected_difficulty": {
+      "type": "string",
+      "enum": ["easy", "medium", "hard", "edge_case"]
+    },
+    "extensions": {
+      "type": "object",
+      "default": {}
+    }
+  }
+}

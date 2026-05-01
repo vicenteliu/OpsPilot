@@ -1,0 +1,75 @@
+# 短期 memory 配置模板 / Short-term memory config template
+# 短期 memory 不单独建表；本配置控制"上下文窗口管理"与"摘要触发"。
+# 实际数据走 session/trace.jsonl。
+
+version: "1.0.0"
+
+# 1. 上下文窗口预算 / Context window budgeting
+context_window:
+  # 与所选 model 的 long_context_tokens 对齐；保守设小
+  max_tokens: 100000
+  # 留给本次响应（避免被截断）
+  reserve_for_response: 8000
+  # 留给 system prompt + tool schema
+  reserve_for_system: 4000
+  # 留给 RAG 检索注入（kb.search 结果）
+  reserve_for_retrieval: 12000
+
+# 2. 溢出策略 / Overflow policy
+policy:
+  # truncate           : 直接砍最旧（信息丢失大）
+  # summarize_oldest   : 把最旧 N 条合并为摘要 system 事件（默认）
+  # summarize_smart    : 让 LLM 选择保留/摘要的事件
+  on_overflow: "summarize_oldest"
+
+  # 剩余 token 低于此值时主动触发摘要（防止突然超限）
+  summarize_when_remaining_lt: 16000
+
+  # 用户 pin 的事件不参与裁剪
+  keep_pinned: true
+
+  # 永远保留最后 N 轮 user 消息（避免摘要把刚说的话也压缩了）
+  keep_last_n_user_turns: 4
+
+  # 工具调用与结果配对保留（不能摘要掉一半）
+  keep_tool_call_pairs: true
+
+# 3. 摘要 / Summarization
+summary:
+  # 用 registry alias 而非具体模型；摘要走快速档
+  use_provider_alias: "@chat-fast"
+  # 摘要 prompt 模板（在 prompts/ 中）
+  template_ref: "prompts/summarize_session_zh.md"
+  max_summary_tokens: 1024
+  # 摘要写回 trace 的方式：作为 system 事件 + 标记 summary_marker
+  store_as_trace_event: "system"
+  summary_marker_event: "summary_marker"
+  # 摘要必须保留的元素
+  must_preserve:
+    - "user 显式陈述的偏好（potential mid-term feedback 候选）"
+    - "已采纳的决策"
+    - "已执行的 sandbox action 列表（含 exit_code）"
+    - "kb.search 命中的 document_id 列表"
+
+# 4. Scratchpad / 临时工作区
+scratchpad:
+  enabled: true
+  # 工作区在 trace 中以何种事件类型存放
+  trace_event_type: "system"
+  trace_event_subtype: "scratchpad"
+  # 单条 scratchpad 字数上限；超过走 artifact
+  max_inline_chars: 4096
+  # session archived 时是否清空 scratchpad
+  clear_on_archive: true
+
+# 5. 短期 → 中期收割触发 / Harvest triggers
+harvest_to_mid_term:
+  enabled: true
+  triggers:
+    - "user_action == pin_to_memory"
+    - "user 反馈含 '记住' / 'remember' 关键词"
+    - "session.status 转为 archived（候选清单提交，等用户确认）"
+  candidate_review:
+    # 自动入库 vs 候选审阅
+    mode: "candidate_review"   # auto | candidate_review
+    require_user_confirmation: true

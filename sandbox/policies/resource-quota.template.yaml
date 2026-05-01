@@ -1,0 +1,64 @@
+# 资源配额模板 / Resource quota template
+# 按 action class 分级，可被单条 action_request 在不超出最大值前提下覆盖。
+
+version: "1.0.0"
+
+# 通用上限（绝对不可突破） / Hard caps (never exceed)
+hard_caps:
+  cpu: "2"                  # cores
+  memory: "1Gi"
+  disk_tmpfs: "256Mi"
+  pids: 256
+  timeout_seconds: 300
+
+# 默认（绝大多数动作走这里） / Defaults
+defaults:
+  cpu: "1"
+  memory: "512Mi"
+  disk_tmpfs: "64Mi"
+  pids: 128
+  timeout_seconds: 30
+
+# 按 action class 微调 / Per action class
+action_classes:
+  shell.read_only:           # 只读探查（cat、grep、ps）
+    cpu: "0.5"
+    memory: "256Mi"
+    timeout_seconds: 15
+
+  shell.tooling:             # 一般命令行工具
+    cpu: "1"
+    memory: "512Mi"
+    timeout_seconds: 30
+
+  script.python:             # Python 脚本（含 pip 安装时记得放行 egress）
+    cpu: "1"
+    memory: "768Mi"
+    timeout_seconds: 60
+
+  script.ansible:            # Ansible playbook 试运行
+    cpu: "1"
+    memory: "768Mi"
+    timeout_seconds: 120
+
+  http.request:              # 单次 HTTP
+    cpu: "0.5"
+    memory: "128Mi"
+    timeout_seconds: 10
+
+  sql.readonly:              # 只读 SQL；超时较短，避免长查询
+    cpu: "0.5"
+    memory: "256Mi"
+    timeout_seconds: 15
+
+  workflow.dryrun:           # n8n / Argo 试运行
+    cpu: "1"
+    memory: "768Mi"
+    timeout_seconds: 60
+
+# 超限处理 / On exceed
+on_exceed:
+  cpu_throttle: true         # CPU 软限：超出走 throttle，不直接 kill
+  memory_kill: true          # 内存硬限：OOM kill
+  timeout_kill: true         # 墙钟超时：强 kill 容器
+  record_in_audit: true

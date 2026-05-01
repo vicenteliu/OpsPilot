@@ -1,0 +1,78 @@
+# Provider 注册表模板 / Provider registry template
+# 顶层入口；session/harness 通过 provider_id 引用具体 provider。
+# 实际部署时建议放在 governance/providers/ 下，避免与模板混淆。
+
+version: "1.0.0"
+
+# 注册的 provider 实例（每条须满足 schemas/provider-config.schema.json）
+# 通过 $include 引入分散的 yaml；下方 provider_refs 是实现层惯例（本仓库不强制）
+provider_refs:
+  - "providers/templates/ollama.config.template.yaml"
+  - "providers/templates/openrouter.config.template.yaml"
+  - "providers/templates/openai.config.template.yaml"
+  - "providers/templates/anthropic.config.template.yaml"
+  - "providers/templates/gemini.config.template.yaml"
+  - "providers/templates/grok.config.template.yaml"
+
+# 默认 provider（未声明 routing 时使用）
+default_provider: "ollama-local"
+
+# 模型简称别名 / Aliases
+# playbook 引用 @chat-strong / @judge / @local-fast 而非具体模型，便于切换
+aliases:
+  "@chat-strong":  "anthropic/claude-sonnet-4-6@2026-04"   # 使用前请按 catalogs.md 核验
+  "@chat-fast":    "openai/gpt-4o-mini@2024-07-18"
+  "@judge":        "anthropic/claude-haiku-4-5@2025-10"
+  "@local-fast":   "ollama/qwen2.5:7b-instruct@2024-09"
+  "@local-strong": "ollama/qwen2.5:14b-instruct@2024-09"
+  "@vision":       "gemini/gemini-2.5-pro@2025-03"
+  "@live-search":  "grok/grok-3@2025-02"
+
+# Routing 策略（任选其一为顶层；多策略可在 rules 中分场景叠加）
+routing:
+  strategy: "fixed"                    # fixed | fallback | capability | cost-aware
+
+  # —— fallback 策略：主备链 ————————————————————————
+  fallback_chain:
+    - "anthropic-claude"
+    - "openrouter-main"
+    - "ollama-local"
+
+  # —— capability 策略：声明式筛选 ————————————————————
+  capability_rules:
+    - when: "playbook.requires.tools == true"
+      candidates: ["openai-main", "anthropic-claude", "grok-main"]
+    - when: "playbook.requires.long_context >= 200000"
+      candidates: ["anthropic-claude", "gemini-main"]
+    - when: "playbook.requires.local == true || session.sensitivity == 'restricted'"
+      candidates: ["ollama-local"]
+
+  # —— cost-aware 策略：满足能力下挑最便宜 ————————————
+  cost_aware:
+    enabled: false
+    prefer: "output_per_1k_usd"
+    constraints:
+      min_capabilities: ["streaming", "json_mode"]
+
+  # 通用规则（无论何种策略均生效）
+  hard_constraints:
+    # 数据不出网场景强制本地
+    - when: "session.sensitivity in ['confidential', 'restricted']"
+      must_be_local: true
+    # PII 不允许的 provider 不能接含 redaction warning 的 Session
+    - when: "session.flags includes 'redaction_warning'"
+      require_pii_allowed: true
+
+# 全局策略 / Global policies
+global:
+  log_provider_config_hash_to_audit: true   # 每次调用把命中 config hash 写入 audit
+  refuse_on_version_unset: true              # @latest / 空版本一律拒绝
+  monthly_budget_total_usd: 200              # 全部 provider 合计预算（额外的最外层闸）
+  on_total_budget_exceeded: "block"
+
+# 健康检查 / Health probe（仅约定；实现层周期性跑）
+health_probe:
+  interval_seconds: 300
+  prompt: "ping"                       # 极小 prompt
+  required_pass: 1                     # 失败 N 次 → enabled=false
+  failure_threshold: 3

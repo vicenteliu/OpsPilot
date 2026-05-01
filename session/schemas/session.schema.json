@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opspilot.dev/schemas/session.schema.json",
+  "title": "Session Meta",
+  "description": "OpsPilot Session 顶层元数据（meta.yaml 的等价 JSON 表示）",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "schema_version",
+    "owner",
+    "playbook",
+    "model",
+    "status",
+    "created_at",
+    "updated_at",
+    "retention_class",
+    "sensitivity"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^sess_[0-9A-HJKMNP-TV-Z]{26}$",
+      "description": "ULID-based session id"
+    },
+    "schema_version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "owner": {
+      "type": "string",
+      "description": "Email or user id"
+    },
+    "collaborators": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    },
+    "playbook": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version"],
+      "properties": {
+        "id": { "type": "string" },
+        "version": { "type": "string" }
+      }
+    },
+    "prompts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "version"],
+        "properties": {
+          "id": { "type": "string" },
+          "version": { "type": "string" }
+        }
+      },
+      "default": []
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider_id", "kind", "name", "version"],
+      "description": "模型引用；provider_id 必须在 providers/templates/provider-registry 中注册。等价 model_ref = <provider_id>/<name>@<version>",
+      "properties": {
+        "provider_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{1,63}$",
+          "description": "Provider 实例 id（来自 providers/templates/provider-registry）"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "ollama",
+            "openrouter",
+            "openai",
+            "anthropic",
+            "gemini",
+            "grok",
+            "openai_compatible"
+          ],
+          "description": "Provider 类别；与 providers/schemas/provider-config.schema.json 一致"
+        },
+        "name": {
+          "type": "string",
+          "description": "模型名（不含版本）；走 OpenRouter 时含厂商前缀，例 anthropic/claude-sonnet-4-6"
+        },
+        "version": {
+          "type": "string",
+          "not": { "enum": ["latest", "auto", "stable", ""] },
+          "description": "厂商显式版本字符串或日期；禁用 latest / auto / stable / 空"
+        },
+        "alias_used": {
+          "type": ["string", "null"],
+          "description": "如通过 registry alias 解析（@chat-strong 等），此处记录原别名"
+        },
+        "params": {
+          "type": "object",
+          "properties": {
+            "temperature": { "type": "number", "minimum": 0, "maximum": 2 },
+            "top_p": { "type": "number", "minimum": 0, "maximum": 1 },
+            "max_tokens": { "type": "integer", "minimum": 1 },
+            "seed": { "type": "integer" }
+          },
+          "additionalProperties": true
+        },
+        "provider_config_hash": {
+          "type": ["string", "null"],
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "description": "命中的 provider 配置 sha256；用于审计与 drift 检测"
+        }
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "active", "paused", "aborted", "archived", "purged"]
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "parent_id": {
+      "type": ["string", "null"],
+      "pattern": "^sess_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "retention_class": {
+      "type": "string",
+      "enum": ["low", "medium", "high", "critical"]
+    },
+    "sensitivity": {
+      "type": "string",
+      "enum": ["public", "internal", "confidential", "restricted"]
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    },
+    "labels": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "default": {}
+    },
+    "extensions": {
+      "type": "object",
+      "description": "Vendor-specific extension namespace; keys must be vendor identifiers",
+      "additionalProperties": { "type": "object" },
+      "default": {}
+    }
+  }
+}

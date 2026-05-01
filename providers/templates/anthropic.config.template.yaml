@@ -1,0 +1,105 @@
+# Anthropic (Claude API) provider 配置模板 / Anthropic provider config template
+# 文档：https://docs.claude.com（信息日期 2026-05-01；使用前核验）
+# 注：Anthropic 鉴权用 x-api-key + 必需的 anthropic-version header。
+
+id: "anthropic-claude"
+kind: "anthropic"
+display_name: "Anthropic Claude"
+enabled: true
+
+base_url: "https://api.anthropic.com/v1"
+
+auth:
+  type: "api_key_custom_header"
+  env: "ANTHROPIC_API_KEY"
+  header: "x-api-key"
+  # 可选：第三方代理需要 OAuth/JWT 时切走
+  extra_env: {}
+
+# anthropic-version 必填；具体版本字符串以官方文档为准
+default_headers:
+  anthropic-version: "2023-06-01"
+  # 启用 prompt caching beta（如适用，按官方文档调整）
+  # anthropic-beta: "prompt-caching-2024-07-31"
+
+capabilities:
+  streaming: true
+  tools: true
+  vision: true
+  audio_in: false
+  audio_out: false
+  json_mode: true                      # 通过 tool_use 强制 JSON 模式
+  prompt_caching: true                 # 显式 cache_control，需正确配置
+  reasoning_mode: true                 # 部分模型支持 extended thinking
+  computer_use: true                   # claude-sonnet-4 系列起；以模型 catalog 为准
+  embeddings: false                    # Anthropic 暂不主推自家 embedding
+  long_context_tokens: 200000
+  max_output_tokens: 8192
+
+limits:
+  context_window_tokens: 200000
+  max_output_tokens: 8192
+  rpm: 50
+  tpm: 100000
+  concurrent: 8
+
+cost:
+  # ⚠️ 单价以 catalogs.md / 官方为准；这里以 sonnet 档位近似
+  pricing:
+    input_per_1k_usd: 0.003
+    output_per_1k_usd: 0.015
+    cached_input_per_1k_usd: 0.0003    # 缓存命中价（约 1/10）
+    pricing_as_of: "2026-05-01"
+    source_url: "https://www.anthropic.com/pricing"
+  monthly_budget_usd: 50
+  per_call_budget_usd: 0.5
+  on_budget_exceeded: "block"
+  downgrade_to: "openrouter-main"
+
+retry:
+  max_attempts: 3
+  initial_backoff_ms: 500
+  max_backoff_ms: 8000
+  jitter: "full"
+  retry_on:
+    - "http_408"
+    - "http_429"
+    - "http_500"
+    - "http_502"
+    - "http_503"
+    - "http_504"
+    - "timeout_read"
+    - "http_529"                       # Anthropic overloaded
+  give_up_on: ["http_400", "http_401", "http_403", "http_404", "http_413"]
+
+timeouts:
+  connect_ms: 5000
+  read_ms: 60000
+  total_ms: 90000
+
+compliance:
+  data_residency: "us"                 # 默认；企业/Bedrock 可选 region
+  telemetry_optout: true               # API 默认不用于训练；以官方政策为准
+  zero_data_retention: false           # 默认 30 天保留；ZDR 走合同
+  pii_allowed: false                   # 默认禁
+  red_lines:
+    - "不发送未脱敏 PII"
+    - "不发送内部代号"
+
+labels:
+  region: "us"
+
+extensions:
+  anthropic:
+    # 走 AWS Bedrock 或 GCP Vertex 时切换（保留位）
+    deployment_mode: "anthropic"       # anthropic | bedrock | vertex
+    # bedrock_region: "us-east-1"
+    # vertex_project: "<gcp-project>"
+    # vertex_location: "us-east5"
+    # prompt caching 默认 cache_control 配置
+    cache_control_default:
+      type: "ephemeral"                # ephemeral | persistent（按官方支持情况）
+    # extended thinking（如适用）
+    thinking:
+      enabled: false
+      budget_tokens: 0

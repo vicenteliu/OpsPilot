@@ -1,0 +1,103 @@
+# OpenRouter provider 配置模板 / OpenRouter provider config template
+# 聚合网关：一把 key 接入数十家模型；适合做降级链与成本对比。
+# 文档：https://openrouter.ai/docs（信息日期 2026-05-01；使用前核验）
+# 注：通过 OpenRouter 调用时，model 字段需写厂商前缀，例 "anthropic/claude-sonnet-4-6"。
+
+id: "openrouter-main"
+kind: "openrouter"
+display_name: "OpenRouter (聚合网关)"
+enabled: true
+
+# OpenAI 兼容
+base_url: "https://openrouter.ai/api/v1"
+
+auth:
+  type: "api_key_header"
+  env: "OPENROUTER_API_KEY"
+  header: "Authorization"
+  prefix: "Bearer "
+
+# OpenRouter 推荐携带 referrer 与 title，便于在你 dashboard 中归因
+default_headers:
+  HTTP-Referer: "https://github.com/your-org/OpsPilot"
+  X-Title: "OpsPilot"
+
+# 能力以"路由后命中的具体模型"为准；这里给 conservative 上限
+capabilities:
+  streaming: true
+  tools: true                          # 视底层模型；OR 透传 tool_use
+  vision: true
+  audio_in: false
+  audio_out: false
+  json_mode: true
+  prompt_caching: false                # 部分底层模型支持；OR 透传不一致
+  reasoning_mode: true                 # 命中 o1/o3/Gemini-thinking 时为 true
+  embeddings: false                    # OpenRouter 不主推 embedding
+  long_context_tokens: 200000
+  max_output_tokens: 8192
+
+limits:
+  context_window_tokens: 200000
+  max_output_tokens: 8192
+  rpm: 200
+  tpm: 200000
+  concurrent: 8
+
+cost:
+  # 注意：OR 单价随路由模型变化；这里写"路由策略默认上限"以做总闸
+  pricing:
+    input_per_1k_usd: 0.005
+    output_per_1k_usd: 0.015
+    cached_input_per_1k_usd: null
+    pricing_as_of: "2026-05-01"
+    source_url: "https://openrouter.ai/models"
+  monthly_budget_usd: 50
+  per_call_budget_usd: 0.5
+  on_budget_exceeded: "block"
+  downgrade_to: "ollama-local"
+
+retry:
+  max_attempts: 3
+  initial_backoff_ms: 500
+  max_backoff_ms: 8000
+  jitter: "full"
+  retry_on:
+    - "http_408"
+    - "http_429"
+    - "http_500"
+    - "http_502"
+    - "http_503"
+    - "http_504"
+    - "timeout_read"
+  give_up_on: ["http_400", "http_401", "http_403", "http_404", "http_413"]
+
+timeouts:
+  connect_ms: 5000
+  read_ms: 60000
+  total_ms: 90000
+
+compliance:
+  data_residency: "unspecified"
+  telemetry_optout: true               # 在账户设置中关闭训练用途/日志保留
+  zero_data_retention: false           # 取决于底层模型与 OR 设置
+  pii_allowed: false                   # 默认禁；按 governance 决定
+  red_lines:
+    - "不发送未脱敏 PII"
+    - "不发送内部代号"
+
+labels:
+  gateway: "openrouter"
+
+extensions:
+  openrouter:
+    # 路由偏好（透传到 OR）
+    provider_preferences:
+      order: ["Anthropic", "OpenAI"]   # 优先选这些子供应商
+      allow_fallbacks: true
+      data_collection: "deny"          # OR 侧的训练数据收集开关
+    # 模型路由路径示例（实际 model 字段由 session/harness 传入）
+    example_models:
+      - "anthropic/claude-sonnet-4-6"
+      - "openai/gpt-4o"
+      - "google/gemini-2.5-pro"
+      - "x-ai/grok-3"

@@ -1,0 +1,96 @@
+# 中期 memory 配置模板 / Mid-term memory config template
+# 后端：SQLite（含 FTS5 全文索引） + 配套 markdown 源（人类可读、git 友好）
+
+version: "1.0.0"
+
+# 1. 存储 / Storage
+storage:
+  # SQLite 文件路径；本地用户私有走 ~/.opspilot/，团队共享走 repo 内
+  sqlite_path: "${OPSPILOT_HOME:-~/.opspilot}/memory/mid-term.db"
+  # markdown 源目录；id 与文件名对应（mem_<sha8>.md）
+  markdown_dir: "${OPSPILOT_HOME:-~/.opspilot}/memory/records/"
+  # 启动时校验 SQLite ←→ markdown 一致性（hash 对齐）
+  consistency_check_on_start: true
+  # 备份策略
+  backup:
+    enabled: true
+    cron: "0 4 * * *"            # 每日 04:00
+    retain_days: 14
+    target: "${OPSPILOT_HOME:-~/.opspilot}/memory/backups/"
+
+# 2. 命名空间 / Namespaces
+namespaces:
+  - name: "opspilot:user"
+    description: "用户角色、偏好、知识"
+    visibility: "private"        # private | team | public
+    require_redaction: true
+
+  - name: "opspilot:feedback"
+    description: "AI 协作纠正与确认（含 why）"
+    visibility: "private"
+    require_redaction: true
+
+  - name: "opspilot:project"
+    description: "项目状态、决策、deadline"
+    visibility: "team"
+    require_redaction: true
+
+  - name: "opspilot:reference"
+    description: "外部系统指针（不是事实本身）"
+    visibility: "team"
+    require_redaction: false      # 通常不含 PII
+
+# 3. 写入策略 / Write policy
+write_policy:
+  # feedback / project 类型必须含 **Why:** 与 **How to apply:** 段
+  enforce_structured_body:
+    feedback: true
+    project: true
+  # 单条 body 最大长度
+  max_body_chars: 4000
+  # 重复检测：title + body 高度相似 → 提示更新而非新建
+  dedup:
+    enabled: true
+    similarity_threshold: 0.92
+    similarity_method: "embedding"   # embedding | shingle
+
+# 4. 保留与过期 / Retention
+retention:
+  # 默认无过期；显式设置 valid_until 才过期
+  default_ttl_days: null
+  # 过期后行为：read_only | archive | delete
+  on_expire: "read_only"
+  # archive 后 N 天可恢复
+  archive_grace_days: 30
+
+# 5. 检索（默认参数）/ Retrieval defaults
+retrieval_defaults:
+  mode: "hybrid"
+  top_k: 5
+  hybrid:
+    vector_weight: 0.5
+    keyword_weight: 0.5
+    fusion: "rrf"
+  rerank:
+    enabled: false
+  # 默认按 confidence 加权（high=1.2, medium=1.0, low=0.7）
+  confidence_boost:
+    high: 1.2
+    medium: 1.0
+    low: 0.7
+
+# 6. 收割与生命周期 / Harvest & lifecycle
+harvest:
+  # 由短期 short-term-config.harvest_to_mid_term 触发
+  enabled: true
+  # 候选审阅队列
+  review_queue_path: "${OPSPILOT_HOME:-~/.opspilot}/memory/review-queue.jsonl"
+  # 审阅过期：N 天未审阅 → 自动丢弃
+  review_ttl_days: 7
+
+# 7. 反模式提醒 / Anti-patterns（仅文档化，不入运行时）
+anti_patterns:
+  - "不要把代码模式 / 文件路径 / 项目结构入 memory（grep 即可得）"
+  - "不要把 git history / 谁改了什么入 memory（git log/blame 是权威）"
+  - "不要把调试解决方案入 memory（修复在代码里，commit 有 context）"
+  - "不要把 ephemeral 的 in-progress 任务入 memory（用 session 或 task）"

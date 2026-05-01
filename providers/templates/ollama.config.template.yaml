@@ -1,0 +1,91 @@
+# Ollama provider 配置模板 / Ollama provider config template
+# 自托管本地推理；数据不出网；适合"敏感/离线"场景默认。
+# 服务端：https://ollama.com  /  https://github.com/ollama/ollama
+# 注：以下数值为模板默认；最终须按 catalogs.md 与你的实际部署核验。
+
+id: "ollama-local"
+kind: "ollama"
+display_name: "Ollama (本地 / Local)"
+enabled: true
+
+# 内网/本机地址；不允许指向公网
+# OpenAI 兼容路径：/v1/chat/completions（推荐，便于复用 SDK）
+# 原生路径：     /api/chat
+base_url: "http://localhost:11434/v1"
+
+# 默认无鉴权；若 ollama serve 套了反向代理 + token，则切到 api_key_header
+auth:
+  type: "none"
+  # type: "api_key_header"
+  # env: "OLLAMA_API_KEY"
+  # header: "Authorization"
+  # prefix: "Bearer "
+
+default_headers: {}
+
+# 能力以你实际跑的模型为准；下面是 qwen2.5:14b-instruct 一类 14B 模型的常见组合
+capabilities:
+  streaming: true
+  tools: true                          # 取决具体模型；llama3.1+ / qwen2.5+ 支持
+  vision: false                        # 视模型而定（llava、qwen2-vl 等支持）
+  audio_in: false
+  audio_out: false
+  json_mode: true                      # OpenAI 兼容路径下可用 response_format
+  prompt_caching: false
+  reasoning_mode: false
+  embeddings: true                     # ollama 自带 embedding 模型（如 nomic-embed-text）
+  long_context_tokens: 32768           # 视模型与 num_ctx 设置
+  max_output_tokens: 4096
+
+limits:
+  context_window_tokens: 32768
+  max_output_tokens: 4096
+  rpm: 600
+  tpm: 1000000
+  concurrent: 4
+
+cost:
+  pricing:
+    input_per_1k_usd: 0.0              # 本地推理零外购成本
+    output_per_1k_usd: 0.0
+    cached_input_per_1k_usd: null
+    pricing_as_of: "2026-05-01"
+    source_url: "https://ollama.com"
+  monthly_budget_usd: 0
+  per_call_budget_usd: 0
+  on_budget_exceeded: "warn"
+  downgrade_to: null
+
+retry:
+  max_attempts: 2
+  initial_backoff_ms: 200
+  max_backoff_ms: 2000
+  jitter: "full"
+  retry_on: ["timeout_connect", "timeout_read", "http_503"]
+  give_up_on: ["http_400", "http_404"]
+
+timeouts:
+  connect_ms: 2000
+  read_ms: 120000                      # 本地大模型可能较慢
+  total_ms: 180000
+
+compliance:
+  data_residency: "unspecified"        # 本地：你的机器；按你的物理位置
+  telemetry_optout: true               # ollama 默认无远端遥测
+  zero_data_retention: true            # 本地不保留外部
+  pii_allowed: true                    # 通常允许；最终以 governance 为准
+  red_lines:
+    - "不在 Ollama 实例上跑你不信任的第三方模型"
+    - "确保宿主机磁盘加密 + sudo 访问受控"
+
+labels:
+  deployment: "local"
+  gpu: "none"                          # none | rtx4090 | a100 | ...
+
+# 厂商特性扩展
+extensions:
+  ollama:
+    keep_alive: "5m"                   # 模型常驻显存时间
+    num_ctx: 32768                     # 上下文窗口（与 capabilities.long_context_tokens 一致）
+    num_predict: 4096                  # 最大生成
+    template: null                     # 可选：自定义 prompt template

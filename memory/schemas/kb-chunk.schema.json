@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opspilot.dev/schemas/kb-chunk.schema.json",
+  "title": "KB Chunk",
+  "description": "知识库 chunk 元数据；向量本体在 LanceDB，本 schema 描述 SQLite 元数据行 + LanceDB 引用",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "document_id",
+    "seq",
+    "content_hash",
+    "char_start",
+    "char_end",
+    "line_start",
+    "line_end",
+    "embedding_model",
+    "vector_id"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^chk_[a-f0-9]{8}$"
+    },
+    "document_id": {
+      "type": "string",
+      "pattern": "^doc_[a-f0-9]{8}$"
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "在 document 内的有序编号"
+    },
+    "content": {
+      "type": ["string", "null"],
+      "description": "脱敏后 chunk 文本；超过 8 KiB 时为 null，正文走 artifact"
+    },
+    "content_artifact_id": {
+      "type": ["string", "null"],
+      "pattern": "^art_[a-f0-9]{16}$"
+    },
+    "content_hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "char_start": { "type": "integer", "minimum": 0 },
+    "char_end": { "type": "integer", "minimum": 0 },
+    "line_start": { "type": "integer", "minimum": 1 },
+    "line_end": { "type": "integer", "minimum": 1 },
+    "heading_path": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "标题面包屑，例 ['VPN SOP','故障排查','认证错误']"
+    },
+    "anchor": {
+      "type": ["string", "null"],
+      "description": "markdown anchor 或 fragment，例 '#故障排查-认证错误'"
+    },
+    "token_count": { "type": "integer", "minimum": 1 },
+    "embedding_model": {
+      "type": "string",
+      "not": { "pattern": "@(latest|auto|stable)$" }
+    },
+    "vector_id": {
+      "type": "string",
+      "description": "LanceDB 行主键；与 SQLite chunk 行一一对应"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "namespace": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*:[a-z][a-z0-9_-]*$"
+        },
+        "classification": {
+          "type": "string",
+          "enum": ["public", "internal", "confidential", "restricted"]
+        },
+        "language": { "type": "string" }
+      },
+      "required": ["namespace", "classification"]
+    }
+  }
+}

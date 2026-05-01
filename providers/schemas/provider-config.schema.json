@@ -1,0 +1,228 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opspilot.dev/schemas/provider-config.schema.json",
+  "title": "Provider Config",
+  "description": "OpsPilot LLM provider 配置（单实例）",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "kind",
+    "display_name",
+    "base_url",
+    "auth",
+    "capabilities",
+    "limits",
+    "cost",
+    "retry",
+    "timeouts",
+    "enabled"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]{1,63}$",
+      "description": "Provider 实例 id；同一厂商可注册多个实例（如 ollama-gpu1）"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "ollama",
+        "openrouter",
+        "openai",
+        "anthropic",
+        "gemini",
+        "grok",
+        "openai_compatible"
+      ]
+    },
+    "display_name": { "type": "string" },
+    "base_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "完整 URL；ollama 必须为内网/本机地址"
+    },
+    "default_headers": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "none",
+            "api_key_header",
+            "api_key_custom_header",
+            "api_key_query",
+            "oauth2_service_account"
+          ]
+        },
+        "env": {
+          "type": "string",
+          "description": "API key 来源的环境变量名；与 type=none 互斥"
+        },
+        "header": { "type": "string" },
+        "prefix": { "type": "string", "examples": ["Bearer "] },
+        "query_param": { "type": "string", "examples": ["key"] },
+        "extra_env": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "其它必需 header/凭证的环境变量映射"
+        },
+        "key_file_env": {
+          "type": "string",
+          "description": "OAuth2 service account JSON 路径的环境变量"
+        }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "streaming",
+        "tools",
+        "vision",
+        "json_mode",
+        "long_context_tokens",
+        "max_output_tokens"
+      ],
+      "properties": {
+        "streaming": { "type": "boolean" },
+        "tools": { "type": "boolean" },
+        "vision": { "type": "boolean" },
+        "audio_in": { "type": "boolean", "default": false },
+        "audio_out": { "type": "boolean", "default": false },
+        "json_mode": { "type": "boolean" },
+        "prompt_caching": { "type": "boolean", "default": false },
+        "reasoning_mode": { "type": "boolean", "default": false },
+        "computer_use": { "type": "boolean", "default": false },
+        "embeddings": { "type": "boolean", "default": false },
+        "long_context_tokens": { "type": "integer", "minimum": 1024 },
+        "max_output_tokens": { "type": "integer", "minimum": 256 }
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["context_window_tokens", "max_output_tokens"],
+      "properties": {
+        "context_window_tokens": { "type": "integer", "minimum": 1024 },
+        "max_output_tokens": { "type": "integer", "minimum": 256 },
+        "rpm": { "type": "integer", "minimum": 1 },
+        "tpm": { "type": "integer", "minimum": 1 },
+        "concurrent": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "cost": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pricing", "monthly_budget_usd", "on_budget_exceeded"],
+      "properties": {
+        "pricing": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["input_per_1k_usd", "output_per_1k_usd", "pricing_as_of"],
+          "properties": {
+            "input_per_1k_usd": { "type": "number", "minimum": 0 },
+            "output_per_1k_usd": { "type": "number", "minimum": 0 },
+            "cached_input_per_1k_usd": {
+              "type": ["number", "null"],
+              "minimum": 0
+            },
+            "pricing_as_of": {
+              "type": "string",
+              "format": "date",
+              "description": "信息日期；与 catalogs.md 一致"
+            },
+            "source_url": { "type": "string", "format": "uri" }
+          }
+        },
+        "monthly_budget_usd": { "type": "number", "minimum": 0 },
+        "per_call_budget_usd": { "type": "number", "minimum": 0 },
+        "on_budget_exceeded": {
+          "type": "string",
+          "enum": ["block", "warn", "downgrade"]
+        },
+        "downgrade_to": {
+          "type": ["string", "null"],
+          "description": "provider_id；当 on_budget_exceeded=downgrade 时必填"
+        }
+      }
+    },
+    "retry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_attempts", "initial_backoff_ms", "max_backoff_ms"],
+      "properties": {
+        "max_attempts": { "type": "integer", "minimum": 1, "maximum": 10 },
+        "initial_backoff_ms": { "type": "integer", "minimum": 0 },
+        "max_backoff_ms": { "type": "integer", "minimum": 0 },
+        "jitter": { "type": "string", "enum": ["none", "full"] },
+        "retry_on": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "http_408",
+              "http_409",
+              "http_425",
+              "http_429",
+              "http_500",
+              "http_502",
+              "http_503",
+              "http_504",
+              "timeout_connect",
+              "timeout_read",
+              "network_reset"
+            ]
+          }
+        },
+        "give_up_on": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "timeouts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["connect_ms", "read_ms", "total_ms"],
+      "properties": {
+        "connect_ms": { "type": "integer", "minimum": 100 },
+        "read_ms": { "type": "integer", "minimum": 1000 },
+        "total_ms": { "type": "integer", "minimum": 1000 }
+      }
+    },
+    "compliance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "data_residency": {
+          "type": "string",
+          "enum": ["us", "eu", "apac", "cn", "unspecified"]
+        },
+        "telemetry_optout": { "type": "boolean", "default": true },
+        "zero_data_retention": { "type": "boolean", "default": false },
+        "pii_allowed": { "type": "boolean", "default": false },
+        "red_lines": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "enabled": { "type": "boolean" },
+    "labels": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "extensions": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "厂商特性扩展（如 anthropic.cache_control、gemini.safety_settings）"
+    }
+  }
+}

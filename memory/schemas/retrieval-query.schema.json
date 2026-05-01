@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opspilot.dev/schemas/retrieval-query.schema.json",
+  "title": "Retrieval Query",
+  "description": "检索请求与响应（kb.search / memory.search 共用）",
+  "type": "object",
+  "$defs": {
+    "Filter": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "in": { "type": "array", "items": { "type": ["string", "number", "boolean"] } },
+        "any_of": { "type": "array", "items": { "type": "string" } },
+        "all_of": { "type": "array", "items": { "type": "string" } },
+        "eq": {},
+        "neq": {},
+        "gte": {},
+        "lte": {}
+      }
+    },
+    "Citation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_path", "line_start", "line_end"],
+      "properties": {
+        "source_path": { "type": "string" },
+        "source_url": { "type": ["string", "null"], "format": "uri" },
+        "line_start": { "type": "integer", "minimum": 1 },
+        "line_end": { "type": "integer", "minimum": 1 },
+        "heading_path": { "type": "array", "items": { "type": "string" } },
+        "anchor": { "type": ["string", "null"] }
+      }
+    }
+  },
+  "oneOf": [
+    {
+      "title": "Request",
+      "additionalProperties": false,
+      "required": ["query", "mode", "scopes", "top_k"],
+      "properties": {
+        "kind": { "const": "request" },
+        "query": { "type": "string", "minLength": 1 },
+        "mode": {
+          "type": "string",
+          "enum": ["vector", "keyword", "hybrid"]
+        },
+        "scopes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]*:[a-z][a-z0-9_-]*$"
+          }
+        },
+        "top_k": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "filters": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/Filter" }
+        },
+        "type_filter": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["user", "feedback", "project", "reference"]
+          },
+          "description": "仅 memory.search 使用"
+        },
+        "hybrid": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fusion"],
+          "properties": {
+            "vector_weight": { "type": "number", "minimum": 0, "maximum": 1 },
+            "keyword_weight": { "type": "number", "minimum": 0, "maximum": 1 },
+            "fusion": { "type": "string", "enum": ["rrf", "weighted_sum"] },
+            "rrf_k": { "type": "integer", "minimum": 1, "default": 60 }
+          }
+        },
+        "rerank": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "type"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "type": { "type": "string", "enum": ["none", "cross_encoder", "llm"] },
+            "top_n": { "type": "integer", "minimum": 1, "maximum": 50 },
+            "model_ref": { "type": "string" }
+          }
+        },
+        "budget_usd": { "type": "number", "minimum": 0 },
+        "return_citations": { "type": "boolean", "default": true },
+        "session_id": {
+          "type": ["string", "null"],
+          "pattern": "^sess_[0-9A-HJKMNP-TV-Z]{26}$"
+        }
+      }
+    },
+    {
+      "title": "Response",
+      "additionalProperties": false,
+      "required": ["kind", "query_id", "results", "metadata"],
+      "properties": {
+        "kind": { "const": "response" },
+        "query_id": { "type": "string", "pattern": "^q_[0-9A-HJKMNP-TV-Z]{26}$" },
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["chunk_id", "document_id", "score", "rank"],
+            "properties": {
+              "chunk_id": { "type": "string", "pattern": "^chk_[a-f0-9]{8}$" },
+              "document_id": { "type": "string", "pattern": "^doc_[a-f0-9]{8}$" },
+              "score": { "type": "number", "minimum": 0, "maximum": 1 },
+              "rank": { "type": "integer", "minimum": 1 },
+              "content": { "type": ["string", "null"] },
+              "citation": { "$ref": "#/$defs/Citation" },
+              "namespace": { "type": "string" },
+              "classification": { "type": "string" }
+            }
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "total_candidates": { "type": "integer", "minimum": 0 },
+            "vector_hits": { "type": "integer", "minimum": 0 },
+            "keyword_hits": { "type": "integer", "minimum": 0 },
+            "rerank_used": { "type": "boolean" },
+            "cost_usd": { "type": "number", "minimum": 0 },
+            "latency_ms": { "type": "integer", "minimum": 0 },
+            "embedding_model": { "type": "string" }
+          }
+        }
+      }
+    }
+  ]
+}

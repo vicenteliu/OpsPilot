@@ -1,0 +1,110 @@
+# Google Gemini provider 配置模板 / Gemini provider config template
+# 文档：https://ai.google.dev/docs（信息日期 2026-05-01；使用前核验）
+# 两条接入路径：
+#   1) Generative Language API：API key（本模板默认）
+#   2) Vertex AI：OAuth2 service account（适合企业/GCP 场景；切换 deployment_mode）
+
+id: "gemini-main"
+kind: "gemini"
+display_name: "Google Gemini"
+enabled: true
+
+# Generative Language API endpoint
+base_url: "https://generativelanguage.googleapis.com/v1beta"
+
+auth:
+  # 默认：API key 走 query string（Google 风格）
+  type: "api_key_query"
+  env: "GEMINI_API_KEY"
+  query_param: "key"
+  # 走 Vertex AI 时切到：
+  # type: "oauth2_service_account"
+  # key_file_env: "GOOGLE_APPLICATION_CREDENTIALS"
+
+default_headers: {}
+
+capabilities:
+  streaming: true
+  tools: true                          # function calling
+  vision: true
+  audio_in: true
+  audio_out: false                     # TTS 走单独 API
+  json_mode: true                      # responseSchema / responseMimeType=application/json
+  prompt_caching: true                 # context caching（需显式创建 cache）
+  reasoning_mode: true                 # gemini-2.5 thinking 模式（视具体模型）
+  computer_use: false
+  embeddings: true                     # text-embedding-004 等
+  long_context_tokens: 1000000         # gemini-2.5-pro 量级；以 catalog 为准
+  max_output_tokens: 8192
+
+limits:
+  context_window_tokens: 1000000
+  max_output_tokens: 8192
+  rpm: 60
+  tpm: 1000000
+  concurrent: 8
+
+cost:
+  # 注意：Gemini 长上下文阈值会切换到不同档位（128k 以上更贵）
+  pricing:
+    input_per_1k_usd: 0.00125          # 短上下文档位近似
+    output_per_1k_usd: 0.005
+    cached_input_per_1k_usd: 0.0003125
+    pricing_as_of: "2026-05-01"
+    source_url: "https://ai.google.dev/pricing"
+  monthly_budget_usd: 50
+  per_call_budget_usd: 0.5
+  on_budget_exceeded: "block"
+  downgrade_to: "openrouter-main"
+
+retry:
+  max_attempts: 3
+  initial_backoff_ms: 500
+  max_backoff_ms: 8000
+  jitter: "full"
+  retry_on:
+    - "http_408"
+    - "http_429"
+    - "http_500"
+    - "http_502"
+    - "http_503"
+    - "http_504"
+    - "timeout_read"
+  give_up_on: ["http_400", "http_401", "http_403", "http_404", "http_413"]
+
+timeouts:
+  connect_ms: 5000
+  read_ms: 60000
+  total_ms: 120000                     # 长上下文 + thinking 模式可能较慢
+
+compliance:
+  data_residency: "us"                 # Generative Language API；Vertex 可选 region
+  telemetry_optout: true               # 免费档下可能用于训练；付费档默认不用，仍以官方为准
+  zero_data_retention: false
+  pii_allowed: false                   # 默认禁
+  red_lines:
+    - "免费档（unpaid tier）禁止发送任何敏感数据"
+    - "不发送未脱敏 PII"
+
+labels:
+  region: "global"
+
+extensions:
+  gemini:
+    deployment_mode: "generative_language"   # generative_language | vertex
+    # vertex_project: "<gcp-project>"
+    # vertex_location: "us-central1"
+    # 安全过滤（按官方枚举值；过滤过严会改变输出）
+    safety_settings:
+      - category: "HARM_CATEGORY_DANGEROUS_CONTENT"
+        threshold: "BLOCK_MEDIUM_AND_ABOVE"
+      - category: "HARM_CATEGORY_HARASSMENT"
+        threshold: "BLOCK_MEDIUM_AND_ABOVE"
+      - category: "HARM_CATEGORY_HATE_SPEECH"
+        threshold: "BLOCK_MEDIUM_AND_ABOVE"
+      - category: "HARM_CATEGORY_SEXUALLY_EXPLICIT"
+        threshold: "BLOCK_MEDIUM_AND_ABOVE"
+    # thinking 模式（如适用）
+    thinking:
+      enabled: false
+      thinking_budget: 0

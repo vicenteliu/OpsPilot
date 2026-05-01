@@ -1,0 +1,43 @@
+# 网络出网白名单模板 / Network egress allowlist template
+# 默认 deny-all；按需放行最小子集。
+
+version: "1.0.0"
+
+# mode: deny-all（默认）| allowlist | open
+# 强烈不推荐 open（除非用于一次性 troubleshooting，且事后立即收回）
+mode: "deny-all"
+
+# DNS 解析器（仅 allowlist/open 模式下生效）
+dns:
+  resolvers:
+    - "1.1.1.1"
+    - "8.8.8.8"
+  block_dot_local: true            # 默认屏蔽 .local / .lan / .internal 等内网后缀
+  block_metadata_endpoints: true   # 屏蔽 169.254.169.254 等云元数据端点（防 SSRF）
+
+# 出网允许的目标（mode=allowlist 时生效）
+egress:
+  hosts:
+    # - "pkg.debian.org"
+    # - "deb.debian.org"
+    # - "security.debian.org"
+    # - "registry-1.docker.io"
+    # - "auth.docker.io"
+    # - "production.cloudflare.docker.com"
+
+  cidrs:
+    # - "10.0.0.0/8"               # 内网（按需放行；默认屏蔽）
+
+  ports:
+    allow: [443, 80]               # HTTP/HTTPS；其他端口默认拒绝
+    deny: [22, 23, 25, 3306, 5432, 6379]  # 远程登录与数据库默认拒绝（按需开）
+
+# 入站全部拒绝；不为 sandbox 暴露入站端口
+ingress:
+  mode: "deny-all"
+
+# 违规处理 / On violation
+on_violation:
+  action: "abort"                  # abort | log_only
+  log_to_audit: true
+  notify_on_third_strike: true     # 同一会话第 3 次违规升级告警

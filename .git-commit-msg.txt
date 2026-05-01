@@ -1,0 +1,34 @@
+feat: scaffold AI agent loop spec — providers/memory/session/sandbox/harness
+
+Establish spec-only foundation for OpsPilot's "AI agent loop"
+(规范+模板，不含运行实现):
+
+- providers/   Pluggable LLM providers: ollama / openrouter / openai /
+               anthropic / gemini / grok. Auth, capabilities, cost,
+               retry, compliance contracts; registry with aliases and
+               routing strategies.
+- memory/      3-tier memory (short / mid / long) + local KB + RAG.
+               Storage: trace + SQLite/FTS5 + LanceDB; markdown is the
+               authoritative source.
+- session/     AI task context + trace + artifacts + audit packaging.
+               Lifecycle, redaction integration, retention, RBAC.
+- sandbox/     Isolated execution layer; Docker default, gVisor /
+               Firecracker / Kata / Remote VM kept as optional backend
+               docs. Action contract, dry-run, approval gate, recording.
+- harness/     Prompt/playbook unit tests + regression gate.
+               Object model, evaluator types (incl. RAG: recall_at_k,
+               precision_at_k, citation_validity), thresholds, CI hooks.
+
+Cross-cutting contracts:
+- model_ref / embedding_model = <provider_id>/<name>@<version>;
+  values "latest" / "auto" / "stable" are forbidden.
+- ULID for session/action ids; sha256 content-addressed for artifacts,
+  chunks, memory records.
+- Redaction is mandatory at ingestion; PII never enters SQLite or
+  vectors. restricted-classification documents skip the vector index.
+- LanceDB / mid-term DB / sessions / .env are gitignored; markdown
+  sources are the authoritative inputs in git.
+
+Other updates:
+- README.md   Five-tier architecture diagram + cross-references.
+- .gitignore  LanceDB / mid-term DB / sessions / .env patterns.

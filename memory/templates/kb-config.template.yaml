@@ -1,0 +1,129 @@
+# 长期 KB 配置模板 / Long-term KB config template
+# 一份配置 = 一个 KB 实例；同一项目可有多个 KB（团队、产品线、敏感度）
+
+version: "1.0.0"
+
+kb:
+  id: "kb_public_zh"
+  display_name: "OpsPilot 公开知识库（中文）"
+  description: "面向 L1/L2 IT 运维的公开 SOP / Runbook 集"
+  namespace: "opspilot:public-kb"
+  language: "zh-CN"
+
+# 1. 存储 / Storage
+storage:
+  # markdown 源目录（git 管控；输入与权威）
+  source_root: "playbooks/"
+  # 派生索引（git ignored）
+  index_root: "${OPSPILOT_HOME:-~/.opspilot}/kb/${kb.id}/"
+  # SQLite 元数据路径
+  sqlite_path: "${OPSPILOT_HOME:-~/.opspilot}/kb/${kb.id}/meta.db"
+  # LanceDB 数据目录
+  lancedb_path: "${OPSPILOT_HOME:-~/.opspilot}/kb/${kb.id}/lancedb/"
+  # 必入 .gitignore
+  gitignore_required:
+    - "${index_root}"
+    - "*.lance/"
+
+# 2. 摄入源 / Sources
+sources:
+  - kind: "filesystem"
+    glob:
+      - "playbooks/**/*.md"
+      - "governance/**/*.md"
+    exclude:
+      - "**/_drafts/**"
+      - "**/private/**"
+    classification_default: "internal"
+
+  # 外部 wiki / Confluence / Notion 等：先导出 markdown 再走 filesystem
+  # - kind: "filesystem"
+  #   glob: ["external/wiki-export/**/*.md"]
+  #   classification_default: "internal"
+  #   tag_default: ["wiki-import"]
+
+# 3. 分类与命名空间映射 / Classification mapping
+classification_rules:
+  # 通过 frontmatter / 路径判定 classification；无匹配走 default
+  - if: "frontmatter.classification exists"
+    use: "frontmatter.classification"
+  - if: "path matches 'governance/**'"
+    set: "internal"
+  - if: "frontmatter.tags includes 'public'"
+    set: "public"
+  default: "internal"
+
+  # restricted 文档默认不入向量库（仅关键字 + 受限命名空间）
+  restricted_handling:
+    skip_vector_index: true
+    require_explicit_namespace: "opspilot:restricted-kb"
+
+# 4. 脱敏 / Redaction（强约束）
+redaction:
+  rules_ref: "../../session/templates/redaction-rules.template.yaml"
+  enforce_before_chunking: true
+  hard_fail_on_pii_check: true       # 摄入失败 → 文档不入索引
+  audit_log_path: "${index_root}/audit.log"
+
+# 5. 分块 / Chunking
+chunking:
+  strategy: "headings_then_size"     # 见 SPEC.md §7
+  target_size_tokens: 512
+  max_size_tokens: 1024
+  overlap_tokens: 64
+  preserve_heading_path: true        # 强制保留
+  token_counter: "tiktoken-cl100k"   # 与 embedding 模型 token 计数对齐
+
+# 6. Embedding（必经 providers/ 抽象层）/ Embedding via providers
+embedding:
+  # registry 中 provider_id；要求 capabilities.embeddings: true
+  provider_id: "ollama-local"
+  model: "nomic-embed-text"
+  version: "2024-02"
+  dim: 768
+  batch_size: 32
+  on_provider_unavailable: "fail"    # fail | retry_with_backoff
+  # 升级 embedding model = 全量重建索引；显式确认
+  upgrade_policy:
+    require_full_rebuild: true
+    require_user_confirm: true
+
+# 7. 索引（LanceDB）/ Vector index
+vector_index:
+  table_name: "chunks"
+  metric: "cosine"                   # cosine | l2 | dot
+  ann:
+    type: "ivf_pq"                   # ivf_pq | hnsw（按 LanceDB 版本支持）
+    num_partitions: 64               # 数据量 < 50万时 32~128 即可
+    num_sub_vectors: 96
+  refresh_on_upsert: false           # 大批量摄入完再 refresh
+  optimize_cron: "0 5 * * 0"          # 每周日 05:00 整理
+
+# 8. 关键字索引（SQLite FTS5）/ Keyword index
+keyword_index:
+  fts_version: "fts5"
+  tokenizer: "porter unicode61 remove_diacritics 2"
+  # 中文需特殊 tokenizer（如 jieba）；建议在 implementation 阶段决定
+  cjk_strategy: "ngram"              # ngram | jieba | simple
+  ngram_range: [2, 3]
+
+# 9. 摄入调度 / Ingestion schedule
+ingestion:
+  mode: "incremental"                # full | incremental
+  trigger:
+    on_git_post_commit: true
+    cron: "0 2 * * *"                # 每日 02:00 全量增量扫描
+  parallelism: 4
+  failure_quarantine_dir: "${index_root}/quarantine/"
+
+# 10. 检索默认 / Retrieval defaults（被 retrieval.template.yaml 覆盖）
+retrieval_defaults:
+  mode: "hybrid"
+  top_k: 8
+  hybrid:
+    vector_weight: 0.6
+    keyword_weight: 0.4
+    fusion: "rrf"
+    rrf_k: 60
+  rerank:
+    enabled: false
