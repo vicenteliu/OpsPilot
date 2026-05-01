@@ -132,13 +132,9 @@ Pick one of the paths:
 │   └── templates/          # fixture / golden / rubric / eval-config
 │
 └── examples/               # 端到端样例（spec 闭环自验证）| End-to-end samples
-    └── scn_ticket_summary_zh/   # 工单摘要 + RAG 检索 + 评估 全链路
-        ├── README.md       # 数据流图 + 阅读顺序
-        ├── checks.md       # 跨文件契约自检清单
-        ├── kb/             # KB markdown 源 + doc-meta + chunks.jsonl
-        ├── retrieval/      # kb.search 请求与响应
-        ├── session/        # meta + trace.jsonl + artifacts + audit.log
-        └── harness/        # fixture/golden/rubric/run-config/results.jsonl
+    ├── scn_ticket_summary_zh/   # 中文工单摘要全链路 (zh-CN)
+    └── scn_ticket_summary_en/   # 英文工单摘要全链路 (en) — i18n 镜像
+        # 每个样例含: README + checks.md + kb/ + retrieval/ + session/ + harness/
 ```
 
 ## Architecture: Providers × Memory × Session × Sandbox × Harness

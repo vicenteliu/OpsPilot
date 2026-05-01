@@ -1,0 +1,109 @@
+# Run config for this end-to-end English sample
+# Same shape as harness/templates/eval-config.template.yaml; tightened to a single fixture
+
+version: "1.0.0"
+
+run:
+  id: "run_01K1A0AQXM7N7Q4G1YK6K8D6RR"
+  name: "e2e-sample-scn_ticket_summary_en-2026W18"
+  triggered_by: "manual"
+  ts: "2026-05-01T10:10:00Z"
+
+scenarios:
+  - id: "scn_ticket_summary_en"
+    fixtures:
+      ids: ["fix_329faee7"]
+    rubric: "examples/scn_ticket_summary_en/harness/rubric.md"
+
+playbooks:
+  - id: "pb_ticket_summary_en"
+    versions: ["1.2.0"]
+
+# Single model; matrix evaluation lives in harness/templates/eval-config.template.yaml
+models:
+  - "anthropic-claude/claude-sonnet-4-6@2026-04"
+
+# Evaluators (incl. 3 RAG types)
+evaluators:
+  - id: "ev_pii_check"
+    type: "rule.pii_check"
+    weight: 0.0
+    hard_fail: true
+    rules_ref: "session/templates/redaction-rules.template.yaml"
+
+  - id: "ev_must_contain"
+    type: "rule.regex"
+    weight: 0.10
+    config:
+      from_golden: true
+      mode: "all"
+
+  - id: "ev_must_not_contain"
+    type: "rule.regex"
+    weight: 0.0
+    hard_fail: true
+    config:
+      from_golden: true
+      mode: "none"
+
+  - id: "ev_schema"
+    type: "rule.json_schema"
+    weight: 0.15
+    config:
+      schema_ref: "examples/scn_ticket_summary_en/harness/golden.json#schema_check"
+
+  - id: "ev_rag_recall_at_k"
+    type: "rag.recall_at_k"
+    weight: 0.10
+    config:
+      k: 3
+      ground_truth_field: "extensions.rag_ground_truth.must_retrieve_doc_ids"
+      retrieval_response_ref: "examples/scn_ticket_summary_en/retrieval/response.json"
+
+  - id: "ev_rag_precision_at_k"
+    type: "rag.precision_at_k"
+    weight: 0.05
+    config:
+      k: 3
+      ground_truth_field: "extensions.rag_ground_truth.must_retrieve_chunk_ids"
+      relevant_set_field: "extensions.rag_ground_truth.should_retrieve_chunk_ids"
+      retrieval_response_ref: "examples/scn_ticket_summary_en/retrieval/response.json"
+
+  - id: "ev_rag_citation_validity"
+    type: "rag.citation_validity"
+    weight: 0.20
+    hard_fail: true
+    config:
+      check: "every citation must resolve to a chunk_id present in the retrieval response AND its line range must match the kb chunk"
+      retrieval_response_ref: "examples/scn_ticket_summary_en/retrieval/response.json"
+      chunks_ref: "examples/scn_ticket_summary_en/kb/chunks.jsonl"
+
+  - id: "ev_judge"
+    type: "judge.llm"
+    weight: 0.40
+    config:
+      judge_model: "anthropic-claude/claude-haiku-4-5@2025-10"
+      judge_prompt_hash: "sha256:22e23f0a8d6b5c4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e"
+      rubric_ref: "examples/scn_ticket_summary_en/harness/rubric.md"
+
+thresholds:
+  pass_rate_min: 1.0
+  regression_delta_max: -0.03
+  cost_per_run_usd_max: 0.05
+  latency_p95_ms_max: 9000
+
+baseline: null
+
+retries:
+  on_evaluator_failure: 0
+  on_infra_error: 1
+
+report:
+  formats: ["md", "json"]
+  archive_to: "case-studies/e2e-samples/"
+
+ci:
+  block_merge_on_gate_fail: true
+  notify:
+    on_regression: []
+    on_green: []

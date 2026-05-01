@@ -1,0 +1,67 @@
+{
+  "_comment": "kb.search response; conforms to memory/schemas/retrieval-query.schema.json#oneOf[1] (Response)",
+  "kind": "response",
+  "query_id": "q_01K1A0AQXM7N7Q4G1YK6K8D6M1",
+  "results": [
+    {
+      "chunk_id": "chk_e3fe2afe",
+      "document_id": "doc_afe80531",
+      "score": 0.92,
+      "rank": 1,
+      "content": "### 2.1 Authentication errors\n\nWhen several users fail authentication at the same time, the issue is almost always on the **server-side auth chain**, not the endpoint. Verify the server side first:\n\n1. **Read client logs**: `grep -E \"auth|fail\" vpn-client.log` — distinguish `peer authentication failed` from `local auth failed`.\n2. **Backend health**: confirm RADIUS (ports 1812/1813) or AD LDAP (389/636) is reachable; check for recent change windows.\n3. **Test login from console**: use a test account in the VPN gateway admin UI to see if it fails the same way.\n4. **Time sync**: certificate validation is clock-sensitive. Server `chronyc tracking` / client `ntpq -p`; > 30s skew triggers failures.\n\nEscalation: multiple users affected + no auth records in server logs → escalate to L2 networking team.\n",
+      "citation": {
+        "source_path": "examples/scn_ticket_summary_en/kb/sop_vpn_en.md",
+        "source_url": null,
+        "line_start": 37,
+        "line_end": 46,
+        "heading_path": ["VPN Troubleshooting SOP", "2. Investigation order", "2.1 Authentication errors"],
+        "anchor": "#21-authentication-errors"
+      },
+      "namespace": "opspilot:public-kb-en",
+      "classification": "internal"
+    },
+    {
+      "chunk_id": "chk_6bb25d8e",
+      "document_id": "doc_afe80531",
+      "score": 0.71,
+      "rank": 2,
+      "content": "# VPN Troubleshooting SOP\n\n> Scope: Corporate IPSec / IKEv2 VPN. SSL VPN is covered separately (see doc_aaaaaaaa).\n\n## 1. Symptom classification\n\nUse the client error and log keywords to triage quickly:\n\n| Symptom | Keywords | Likely cause |\n|---|---|---|\n| Auth failure | `authentication failed`, `peer auth failed`, `IKE_SA_INIT failed` | Auth backend / wrong password / clock skew |\n| Tunnel won't establish | `IKE timeout`, `UDP 500/4500 dropped` | Network layer / firewall / NAT |\n| Connected but slow | latency > 200ms, throughput < 1Mbps | MTU / congestion / server load |\n",
+      "citation": {
+        "source_path": "examples/scn_ticket_summary_en/kb/sop_vpn_en.md",
+        "source_url": null,
+        "line_start": 21,
+        "line_end": 33,
+        "heading_path": ["VPN Troubleshooting SOP", "1. Symptom classification"],
+        "anchor": "#1-symptom-classification"
+      },
+      "namespace": "opspilot:public-kb-en",
+      "classification": "internal"
+    },
+    {
+      "chunk_id": "chk_e8c1c078",
+      "document_id": "doc_afe80531",
+      "score": 0.40,
+      "rank": 3,
+      "content": "### 2.2 Tunnel establishment failure\n\n1. End-to-end reachability: `nc -vzu <vpn_gw> 500` / `nc -vzu <vpn_gw> 4500`.\n2. ESP (IP protocol 50) being dropped by NAT devices: NAT-T must be supported.\n3. MTU: `ping -M do -s 1400 <vpn_gw>`, decrease until packets pass — usually around 1200.\n\n## 3. Escalation policy\n\n> - Multiple users affected + no auth records on server → L2 networking\n> - Single user, persistent failure, client reinstallable → L2 endpoint\n> - Certificate expiry / CA change → L3 security\n\n## 4. Related links\n\n- doc_aaaaaaaa: SSL VPN troubleshooting SOP\n- doc_bbbbbbbb: Network change-window SOP\n",
+      "citation": {
+        "source_path": "examples/scn_ticket_summary_en/kb/sop_vpn_en.md",
+        "source_url": null,
+        "line_start": 48,
+        "line_end": 63,
+        "heading_path": ["VPN Troubleshooting SOP", "2. Investigation order", "2.2 Tunnel establishment failure / 3. Escalation policy / 4. Related links"],
+        "anchor": "#22-tunnel-establishment-failure"
+      },
+      "namespace": "opspilot:public-kb-en",
+      "classification": "internal"
+    }
+  ],
+  "metadata": {
+    "total_candidates": 3,
+    "vector_hits": 3,
+    "keyword_hits": 2,
+    "rerank_used": true,
+    "cost_usd": 0.0008,
+    "latency_ms": 398,
+    "embedding_model": "ollama-local/nomic-embed-text@2024-02"
+  }
+}

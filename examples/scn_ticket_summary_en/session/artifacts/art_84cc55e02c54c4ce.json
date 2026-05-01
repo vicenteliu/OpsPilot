@@ -1,0 +1,60 @@
+{
+  "_comment": "Final structured ticket summary; trace.tool_result references this via artifact_id",
+  "schema_version": "ticket_summary_v1",
+  "ticket_ref": "T-YYYY",
+
+  "summary": "Several users have been failing VPN authentication since 09:00 today ('authentication failed' / 'ike sa establishment failed'). The endpoint and network paths have been cross-validated (different hosts, mobile hotspot — all fail), so the issue is most likely on the server-side authentication chain. Suggested priority: investigate the VPN gateway and the auth backend.",
+
+  "symptoms": [
+    "authentication failed",
+    "ike sa establishment failed"
+  ],
+
+  "scope": "multiple_users",
+
+  "tried_steps": [
+    "Restarted the VPN client",
+    "Switched network to mobile hotspot",
+    "Tested from a different host"
+  ],
+
+  "missing_fields": [
+    "VPN client version",
+    "List of affected accounts",
+    "Whether any change window occurred around 09:00"
+  ],
+
+  "next_actions": [
+    {
+      "action": "Verify VPN gateway and auth services (RADIUS / AD LDAP) health",
+      "rationale": "When several users fail authentication simultaneously the issue is almost always on the server-side auth chain, not the endpoint",
+      "citations": ["kb-1"]
+    },
+    {
+      "action": "Ask the user for VPN client version and the list of affected accounts",
+      "rationale": "Missing fields will block L2 from reproducing",
+      "citations": []
+    },
+    {
+      "action": "Check whether any change window occurred around 09:00 (DNS / certs / firewall)",
+      "rationale": "Certificate expiry or clock skew can cause auth failures",
+      "citations": ["kb-1"]
+    }
+  ],
+
+  "severity_suggested": "P2",
+
+  "escalation_hint": "Multiple users affected + no auth records on server → L2 networking team",
+
+  "citations": [
+    {
+      "id": "kb-1",
+      "chunk_id": "chk_e3fe2afe",
+      "document_id": "doc_afe80531",
+      "source_path": "examples/scn_ticket_summary_en/kb/sop_vpn_en.md",
+      "line_start": 37,
+      "line_end": 46,
+      "heading_path": ["VPN Troubleshooting SOP", "2. Investigation order", "2.1 Authentication errors"]
+    }
+  ]
+}

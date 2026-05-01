@@ -1,0 +1,23 @@
+{
+  "_comment": "kb-document instance; conforms to memory/schemas/kb-document.schema.json",
+  "id": "doc_afe80531",
+  "source_path": "examples/scn_ticket_summary_en/kb/sop_vpn_en.md",
+  "source_url": null,
+  "title": "VPN Troubleshooting SOP (English)",
+  "classification": "internal",
+  "content_hash": "sha256:afe80531ad5aca3dab28814d0cead9cb77dada556f18f70a296bff0be818d877",
+  "version": "1.3.0",
+  "ingested_at": "2026-05-01T10:00:00Z",
+  "last_modified": "2026-04-28T08:30:00Z",
+  "language": "en",
+  "tags": ["vpn", "sop", "L1", "ipsec", "ikev2"],
+  "namespace": "opspilot:public-kb-en",
+  "chunk_strategy": "headings_then_size",
+  "chunk_count": 3,
+  "embedding_model": "ollama-local/nomic-embed-text@2024-02",
+  "embedding_dim": 768,
+  "redaction_passed": true,
+  "redaction_rules_version": "1.0.0",
+  "license": null,
+  "extensions": {}
+}

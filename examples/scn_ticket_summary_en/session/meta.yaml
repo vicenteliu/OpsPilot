@@ -1,0 +1,49 @@
+# Session meta (instance, not template)
+# Conforms to session/schemas/session.schema.json
+
+id: "sess_01K1A0AQXM7N7Q4G1YK6K8D6M0"
+schema_version: "1.0.0"
+
+owner: "vicente@example.com"
+collaborators: []
+
+playbook:
+  id: "pb_ticket_summary_en"
+  version: "1.2.0"
+
+prompts:
+  - id: "prompt_summary_en"
+    version: "0.4.1"
+
+# Model & sampling (provider_id must be registered in providers/templates/provider-registry)
+model:
+  provider_id: "anthropic-claude"
+  kind: "anthropic"
+  name: "claude-sonnet-4-6"
+  version: "2026-04"
+  alias_used: "@chat-strong"
+  params:
+    temperature: 0.2
+    top_p: 0.9
+    max_tokens: 2000
+    seed: 42
+  provider_config_hash: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+
+status: "archived"
+
+created_at: "2026-05-01T10:08:35.000Z"
+updated_at: "2026-05-01T10:09:14.812Z"
+
+parent_id: null
+
+retention_class: "medium"
+sensitivity: "internal"
+
+tags: ["ticket", "en", "L1-support", "vpn"]
+labels:
+  team: "service-desk"
+  cost_center: "IT-OPS"
+  pilot: "phase-1"
+  fixture_id: "fix_329faee7"   # cross-link to harness/fixture.json
+
+extensions: {}

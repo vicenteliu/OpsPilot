@@ -1,0 +1,46 @@
+{
+  "_comment": "Harness fixture instance; conforms to harness/schemas/fixture.schema.json",
+  "id": "fix_329faee7",
+  "scenario_id": "scn_ticket_summary_en",
+  "version": "1.0.0",
+  "content_hash": "sha256:329faee770c05e105d73dd8e60bfa7e170c951e2ca82025dbd165db1ebe53dcf",
+  "title": "L1 ticket: multiple-user VPN auth failure (redacted sample)",
+  "description": "Multi-user VPN auth-failure ticket with vpn-client.log error snippet; evaluates whether the summary captures the key trio (symptoms / scope / tried-steps) and recalls sop_vpn_en's 'Authentication errors' section from the KB.",
+  "tags": ["ticket", "vpn", "auth", "L1", "en"],
+  "language": "en",
+
+  "input": {
+    "ticket_id": "T-YYYY",
+    "channel": "service-desk",
+    "submitted_at": "2026-04-30T09:08:00Z",
+    "submitter_role": "[REDACTED:role:33333333]",
+    "subject": "Cannot connect to VPN",
+    "body": "Several teammates cannot connect to VPN since 09:00 today. The auth dialog says 'authentication failed'. I tried restarting the client and switching to a mobile hotspot — neither helped. I tested from [REDACTED:hostname:44444444].",
+    "attachments": [
+      {
+        "name": "vpn-client.log",
+        "snippet": "2026-04-30T09:02:13Z auth phase1 init\n2026-04-30T09:02:14Z error: peer authentication failed\n2026-04-30T09:02:14Z error: ike sa establishment failed"
+      }
+    ]
+  },
+
+  "redacted": true,
+  "redaction_rules_version": "1.0.0",
+
+  "source": {
+    "type": "manual",
+    "ref": "constructed-from-real-pattern"
+  },
+
+  "expected_difficulty": "easy",
+
+  "extensions": {
+    "rag_ground_truth": {
+      "_comment": "RAG eval: rag.recall_at_k / rag.precision_at_k use this as ground truth",
+      "must_retrieve_doc_ids": ["doc_afe80531"],
+      "must_retrieve_chunk_ids": ["chk_e3fe2afe"],
+      "should_retrieve_chunk_ids": ["chk_6bb25d8e"],
+      "irrelevant_chunk_ids": []
+    }
+  }
+}

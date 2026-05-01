@@ -1,0 +1,28 @@
+{
+  "_comment": "kb.search request; conforms to memory/schemas/retrieval-query.schema.json#oneOf[0] (Request)",
+  "kind": "request",
+  "query": "VPN authentication failed multiple users how to triage",
+  "mode": "hybrid",
+  "scopes": ["opspilot:public-kb-en"],
+  "top_k": 8,
+  "filters": {
+    "classification": { "in": ["public", "internal"] },
+    "tags": { "any_of": ["vpn", "auth"] },
+    "language": { "eq": "en" }
+  },
+  "hybrid": {
+    "vector_weight": 0.6,
+    "keyword_weight": 0.4,
+    "fusion": "rrf",
+    "rrf_k": 60
+  },
+  "rerank": {
+    "enabled": true,
+    "type": "cross_encoder",
+    "top_n": 4,
+    "model_ref": "ollama-local/bge-reranker-v2-m3@2024-08"
+  },
+  "budget_usd": 0.02,
+  "return_citations": true,
+  "session_id": "sess_01K1A0AQXM7N7Q4G1YK6K8D6M0"
+}

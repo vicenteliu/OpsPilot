@@ -1,0 +1,42 @@
+{
+  "_comment": "Harness golden instance; paired with fix_329faee7",
+  "id": "gold_329faee7",
+  "fixture_id": "fix_329faee7",
+  "scenario_id": "scn_ticket_summary_en",
+  "version": "1.0.0",
+
+  "expected_structured": {
+    "schema_version": "ticket_summary_v1",
+    "ticket_ref": "T-YYYY",
+    "summary": "Multiple users have been failing VPN authentication since 09:00 today; endpoint/network paths cross-validated and ruled out; suggested priority is investigating the VPN gateway and auth backend.",
+    "symptoms": ["authentication failed", "ike sa establishment failed"],
+    "scope": "multiple_users",
+    "tried_steps_min": ["Restarted the VPN client", "Switched to mobile hotspot"],
+    "missing_fields_min": ["VPN client version", "List of affected accounts"],
+    "next_actions_min_count": 3,
+    "severity_suggested": "P2",
+    "must_have_citation_to_chunk": "chk_e3fe2afe"
+  },
+
+  "expected_summary_nl": "Multiple users have been failing VPN authentication since 09:00 today; endpoint/network paths cross-validated and ruled out; investigate the VPN gateway and auth backend first.",
+
+  "rubric_ref": "examples/scn_ticket_summary_en/harness/rubric.md",
+
+  "must_contain": ["authentication failed", "multiple users", "VPN gateway"],
+  "must_not_contain": ["[REDACTED:", "T-YYYY real id"],
+
+  "schema_check": {
+    "name": "ticket_summary_v1",
+    "rules": {
+      "required_keys": [
+        "schema_version", "ticket_ref", "summary", "symptoms",
+        "scope", "tried_steps", "missing_fields", "next_actions",
+        "severity_suggested", "citations"
+      ],
+      "scope_enum": ["single_user", "multiple_users", "site_wide", "unknown"],
+      "next_actions_min_items": 3,
+      "citations_min_items": 1,
+      "severity_pattern": "^P[0-4]$"
+    }
+  }
+}

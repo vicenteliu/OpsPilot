@@ -1,0 +1,32 @@
+# Artifact sidecar (per session/SPEC.md §4)
+# canonical path: artifacts/<artifact_id>.<ext>
+# sidecar path:   artifacts/<artifact_id>.meta.yaml
+
+artifact_id: "art_84cc55e02c54c4ce"
+filename: "art_84cc55e02c54c4ce.json"
+content_type: "application/json"
+content_sha256: "84cc55e02c54c4ce49cb60ed91b1d4494d59c31a56bf1deaa6660a4a1e07c638"
+size_bytes: 2138
+
+session_id: "sess_01K1A0AQXM7N7Q4G1YK6K8D6M0"
+produced_by:
+  trace_seq: 6
+  tool: "artifact.write"
+  action_id: "act_01K1A0AQXM7N7Q4G1YK6K8D6MB"
+
+schema:
+  ref: "examples/scn_ticket_summary_en/harness/golden.json#schema_check"
+  name: "ticket_summary_v1"
+
+redacted: true
+redaction_rules_version: "1.0.0"
+
+created_at: "2026-05-01T10:08:42.512Z"
+
+# Citation traceability
+cited_chunks:
+  - "chk_e3fe2afe"
+
+# Sandbox leftover note: dev-time `_summary_pending.json` could not be unlinked
+# from the FUSE mount; canonical is the file referenced by this sidecar
+# (art_84cc55e02c54c4ce.json). Tidy up after first commit.

@@ -1,0 +1,15 @@
+{
+  "_comment": "Redacted ticket input; equivalent to harness/fixture.json#input",
+  "ticket_id": "T-YYYY",
+  "channel": "service-desk",
+  "submitted_at": "2026-04-30T09:08:00Z",
+  "submitter_role": "[REDACTED:role:33333333]",
+  "subject": "Cannot connect to VPN",
+  "body": "Several teammates cannot connect to VPN since 09:00 today. The auth dialog says 'authentication failed'. I tried restarting the client and switching to a mobile hotspot — neither helped. I tested from [REDACTED:hostname:44444444].",
+  "attachments": [
+    {
+      "name": "vpn-client.log",
+      "snippet": "2026-04-30T09:02:13Z auth phase1 init\n2026-04-30T09:02:14Z error: peer authentication failed\n2026-04-30T09:02:14Z error: ike sa establishment failed"
+    }
+  ]
+}
