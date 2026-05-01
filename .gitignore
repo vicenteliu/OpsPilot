@@ -236,3 +236,4 @@ sessions/
 .env
 .env.*
 !.env.example
+.git-commit-msg*
