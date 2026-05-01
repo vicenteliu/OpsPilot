@@ -1,0 +1,42 @@
+{
+  "_comment": "Harness golden 实例；与 fix_a1b2c3d4 配对",
+  "id": "gold_a1b2c3d4",
+  "fixture_id": "fix_a1b2c3d4",
+  "scenario_id": "scn_ticket_summary_zh",
+  "version": "1.0.0",
+
+  "expected_structured": {
+    "schema_version": "ticket_summary_v1",
+    "ticket_ref": "T-XXXX",
+    "summary": "上午 10:00 起多名用户 VPN 认证失败；终端/网络已交叉验证可排除；建议优先排查 VPN 网关与认证后端。",
+    "symptoms": ["authentication failed", "ike sa establishment failed"],
+    "scope": "multiple_users",
+    "tried_steps_min": ["重启客户端", "更换网络（4G 热点）"],
+    "missing_fields_min": ["VPN 客户端版本", "受影响账号"],
+    "next_actions_min_count": 3,
+    "severity_suggested": "P2",
+    "must_have_citation_to_chunk": "chk_0cf89826"
+  },
+
+  "expected_summary_nl": "上午 10:00 起多名用户 VPN 认证失败；终端/网络已交叉验证可排除；建议优先排查 VPN 网关与认证后端。",
+
+  "rubric_ref": "examples/scn_ticket_summary_zh/harness/rubric.md",
+
+  "must_contain": ["authentication failed", "多名用户", "VPN 网关"],
+  "must_not_contain": ["[REDACTED:", "T-XXXX 真实 ID"],
+
+  "schema_check": {
+    "name": "ticket_summary_v1",
+    "rules": {
+      "required_keys": [
+        "schema_version", "ticket_ref", "summary", "symptoms",
+        "scope", "tried_steps", "missing_fields", "next_actions",
+        "severity_suggested", "citations"
+      ],
+      "scope_enum": ["single_user", "multiple_users", "site_wide", "unknown"],
+      "next_actions_min_items": 3,
+      "citations_min_items": 1,
+      "severity_pattern": "^P[0-4]$"
+    }
+  }
+}

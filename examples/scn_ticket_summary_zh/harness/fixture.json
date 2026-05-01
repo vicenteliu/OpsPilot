@@ -1,0 +1,46 @@
+{
+  "_comment": "Harness fixture 实例；对应 harness/schemas/fixture.schema.json",
+  "id": "fix_a1b2c3d4",
+  "scenario_id": "scn_ticket_summary_zh",
+  "version": "1.0.0",
+  "content_hash": "sha256:3df3f7198b79c475b2a2a5d734e30c396f8f2ee00eb446be76ec1678ac34ca95",
+  "title": "L1 工单：多人 VPN 认证失败（脱敏样本）",
+  "description": "多人受影响的 VPN 认证失败工单，含 vpn-client.log 错误片段；评估摘要是否抓到关键三件套（现象/范围/已尝试），并能从 KB 召回 sop_vpn_zh 的 '认证错误' 章节。",
+  "tags": ["ticket", "vpn", "auth", "L1", "zh-CN"],
+  "language": "zh-CN",
+
+  "input": {
+    "ticket_id": "T-XXXX",
+    "channel": "service-desk",
+    "submitted_at": "2026-04-30T10:08:00Z",
+    "submitter_role": "[REDACTED:role:11111111]",
+    "subject": "VPN 连不上",
+    "body": "今天上午 10 点开始连不上 VPN，弹窗显示 'authentication failed'。同事说他们也连不上。我用 [REDACTED:hostname:22222222] 这台机器试过，重启过，没用。我手机热点也试过，一样。",
+    "attachments": [
+      {
+        "name": "vpn-client.log",
+        "snippet": "2026-04-30T10:02:13Z auth phase1 init\n2026-04-30T10:02:14Z error: peer authentication failed\n2026-04-30T10:02:14Z error: ike sa establishment failed"
+      }
+    ]
+  },
+
+  "redacted": true,
+  "redaction_rules_version": "1.0.0",
+
+  "source": {
+    "type": "manual",
+    "ref": "constructed-from-real-pattern"
+  },
+
+  "expected_difficulty": "easy",
+
+  "extensions": {
+    "rag_ground_truth": {
+      "_comment": "RAG 评估专用：rag.recall_at_k / rag.precision_at_k 用此作为 ground truth",
+      "must_retrieve_doc_ids": ["doc_e5f6g7h8"],
+      "must_retrieve_chunk_ids": ["chk_0cf89826"],
+      "should_retrieve_chunk_ids": ["chk_ea5a0261"],
+      "irrelevant_chunk_ids": []
+    }
+  }
+}

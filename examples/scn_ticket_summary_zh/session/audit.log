@@ -1,0 +1,9 @@
+2026-05-01T10:08:35.000Z	system	create	sess_01J0Z9ZQXK7M6P3F0XK5K7C5K0	{"playbook":"pb_ticket_summary_zh@1.2.0","retention_class":"medium","sensitivity":"internal"}
+2026-05-01T10:08:35.011Z	system	redact	sess_01J0Z9ZQXK7M6P3F0XK5K7C5K0/inputs/ticket.json	{"rules_version":"1.0.0","hits":{"hostname":1,"role":1},"hard_fail":false}
+2026-05-01T10:08:35.012Z	system	state_change	sess_01J0Z9ZQXK7M6P3F0XK5K7C5K0	{"from":"draft","to":"active"}
+2026-05-01T10:08:36.420Z	model:anthropic:claude-sonnet-4-6:2026-04	tool_call	kb.search	{"action_id":"act_01J0Z9ZQXK7M6P3F0XK5K7C5KA","scopes":["opspilot:public-kb"]}
+2026-05-01T10:08:36.832Z	tool:kb.search	tool_result	kb.search	{"action_id":"act_01J0Z9ZQXK7M6P3F0XK5K7C5KA","status":"ok","candidates":3,"latency_ms":412,"cost_usd":0.0008}
+2026-05-01T10:08:42.001Z	model:anthropic:claude-sonnet-4-6:2026-04	tool_call	artifact.write	{"action_id":"act_01J0Z9ZQXK7M6P3F0XK5K7C5KB"}
+2026-05-01T10:08:42.512Z	tool:artifact.write	tool_result	artifact.write	{"action_id":"act_01J0Z9ZQXK7M6P3F0XK5K7C5KB","status":"ok","artifact_id":"art_56d3a0e44dd6d022","bytes":1830}
+2026-05-01T10:09:08.130Z	user:vicente@example.com	user_action	accept	{"target":"art_56d3a0e44dd6d022"}
+2026-05-01T10:09:14.812Z	system	state_change	sess_01J0Z9ZQXK7M6P3F0XK5K7C5K0	{"from":"active","to":"archived","reason":"user_action.accept"}

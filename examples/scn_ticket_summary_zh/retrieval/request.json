@@ -1,0 +1,28 @@
+{
+  "_comment": "kb.search 请求；对应 memory/schemas/retrieval-query.schema.json#oneOf[0] (Request)",
+  "kind": "request",
+  "query": "VPN 认证失败 多人受影响 如何排查",
+  "mode": "hybrid",
+  "scopes": ["opspilot:public-kb"],
+  "top_k": 8,
+  "filters": {
+    "classification": { "in": ["public", "internal"] },
+    "tags": { "any_of": ["vpn", "auth"] },
+    "language": { "eq": "zh-CN" }
+  },
+  "hybrid": {
+    "vector_weight": 0.6,
+    "keyword_weight": 0.4,
+    "fusion": "rrf",
+    "rrf_k": 60
+  },
+  "rerank": {
+    "enabled": true,
+    "type": "cross_encoder",
+    "top_n": 4,
+    "model_ref": "ollama-local/bge-reranker-v2-m3@2024-08"
+  },
+  "budget_usd": 0.02,
+  "return_citations": true,
+  "session_id": "sess_01J0Z9ZQXK7M6P3F0XK5K7C5K0"
+}

@@ -126,10 +126,19 @@ Pick one of the paths:
 │   ├── backends/           # Docker / gVisor / Firecracker / Remote VM 选型
 │   ├── policies/           # network / seccomp / resource quota
 │   └── templates/          # action-request / approval-policy
-└── harness/                # 评估与回归骨架 | Eval & regression harness
-    ├── SPEC.md             # 对象模型、evaluator 分类、指标
-    ├── schemas/            # fixture / eval-result JSON Schemas
-    └── templates/          # fixture / golden / rubric / eval-config
+├── harness/                # 评估与回归骨架 | Eval & regression harness
+│   ├── SPEC.md             # 对象模型、evaluator 分类、指标
+│   ├── schemas/            # fixture / eval-result JSON Schemas
+│   └── templates/          # fixture / golden / rubric / eval-config
+│
+└── examples/               # 端到端样例（spec 闭环自验证）| End-to-end samples
+    └── scn_ticket_summary_zh/   # 工单摘要 + RAG 检索 + 评估 全链路
+        ├── README.md       # 数据流图 + 阅读顺序
+        ├── checks.md       # 跨文件契约自检清单
+        ├── kb/             # KB markdown 源 + doc-meta + chunks.jsonl
+        ├── retrieval/      # kb.search 请求与响应
+        ├── session/        # meta + trace.jsonl + artifacts + audit.log
+        └── harness/        # fixture/golden/rubric/run-config/results.jsonl
 ```
 
 ## Architecture: Providers × Memory × Session × Sandbox × Harness

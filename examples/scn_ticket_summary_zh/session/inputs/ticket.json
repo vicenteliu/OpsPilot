@@ -1,0 +1,15 @@
+{
+  "_comment": "已脱敏的工单输入；与 harness/fixture.json#input 等价",
+  "ticket_id": "T-XXXX",
+  "channel": "service-desk",
+  "submitted_at": "2026-04-30T10:08:00Z",
+  "submitter_role": "[REDACTED:role:11111111]",
+  "subject": "VPN 连不上",
+  "body": "今天上午 10 点开始连不上 VPN，弹窗显示 'authentication failed'。同事说他们也连不上。我用 [REDACTED:hostname:22222222] 这台机器试过，重启过，没用。我手机热点也试过，一样。",
+  "attachments": [
+    {
+      "name": "vpn-client.log",
+      "snippet": "2026-04-30T10:02:13Z auth phase1 init\n2026-04-30T10:02:14Z error: peer authentication failed\n2026-04-30T10:02:14Z error: ike sa establishment failed"
+    }
+  ]
+}

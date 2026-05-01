@@ -232,6 +232,11 @@ __marimo__/
 # OpsPilot — Sessions 本地数据（敏感；不入 git）
 sessions/
 
+# OpsPilot — examples/ 下的端到端样例日志属于规范产物，需要入 git
+# （compensate Django-style *.log 的过宽匹配）
+!examples/**/audit.log
+!examples/**/*.log
+
 # OpsPilot — Secrets（API keys 一律走 env 或 broker）
 .env
 .env.*
