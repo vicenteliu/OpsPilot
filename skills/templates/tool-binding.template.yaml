@@ -1,0 +1,66 @@
+# Skill tool/MCP 绑定模板 / Skill tool binding template
+# 与 schemas/tool-binding.schema.json 等价
+# 放在每个 skill 目录内：skills/repo/<skill_name>/tool-binding.yaml
+
+skill_ref: "ticket_summary_zh@1.2.0"
+
+bindings:
+
+  # —— 内置工具 / Builtin tools ——————————————————
+  - tool: "kb.search"
+    kind: "builtin"
+    safety_class: "read"
+    approval_required: false
+    rate_limit:
+      rpm: 30
+      per_session_max: 10
+    timeout_ms: 5000
+    config:
+      default_scopes: ["opspilot:public-kb"]
+      default_top_k: 8
+      default_mode: "hybrid"
+      default_rerank:
+        enabled: true
+        type: "cross_encoder"
+        top_n: 4
+        model_ref: "ollama-local/bge-reranker-v2-m3@2024-08"
+
+  - tool: "artifact.write"
+    kind: "builtin"
+    safety_class: "write"
+    approval_required: false        # 写到本 session 的 artifact 区是默认允许的
+    timeout_ms: 5000
+    config:
+      schema_name: "ticket_summary_v1"
+      max_size_bytes: 32768
+
+  # —— MCP 工具示例（本 skill 不实际使用；仅说明形态）——————————
+  # - tool: "mcp__notion__create_page"
+  #   kind: "mcp"
+  #   mcp_id: "notion-main"
+  #   safety_class: "write"
+  #   approval_required: true       # 第三方写动作 → 强制审批
+  #   rate_limit:
+  #     rpm: 10
+  #     per_session_max: 3
+  #   timeout_ms: 10000
+  #   config:
+  #     default_database_id: "${NOTION_DB_ID}"
+  #     default_visibility: "team"
+
+  # —— Sandbox 动作示例 ——————————————————
+  # - tool: "shell.exec"
+  #   kind: "sandbox"
+  #   sandbox_class: "shell.read_only"   # 见 sandbox/policies/resource-quota.template.yaml
+  #   safety_class: "execute"
+  #   approval_required: true
+  #   timeout_ms: 30000
+  #   config:
+  #     allowed_commands_regex: "^(grep|cat|tail|head|jq|wc) "
+  #     network: "deny-all"
+
+# 全局策略 / Global policy
+global_policy:
+  deny_on_unknown_tool: true                    # SKILL.md.requires 中没声明的工具不允许调
+  max_total_calls_per_invocation: 12            # 单次 skill 触发的总工具调用上限
+  max_total_cost_usd_per_invocation: 0.05       # 含 LLM token 与 MCP 计费

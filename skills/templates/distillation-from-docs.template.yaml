@@ -1,0 +1,69 @@
+# Distillation Recipe — from existing markdown docs / SOPs / playbooks
+# 把人写的 SOP 转成可执行 skill，附引用回原文档
+
+recipe_version: "1.0.0"
+type: "from_docs"
+run_id: null
+ts: null
+
+# 1. 输入源 / Sources
+sources:
+  doc_paths:
+    - "playbooks/sop_vpn_zh.md"
+    - "examples/scn_ticket_summary_zh/kb/sop_vpn_zh.md"
+    # - "playbooks/runbook_*.md"   # 可用 glob
+
+# 2. 脱敏 / Redaction
+redaction:
+  enforce: true
+  rules_ref: "session/templates/redaction-rules.template.yaml"
+  hard_fail_on_pii: true
+
+# 3. 模式挖掘 / Mining
+mining:
+  strategy: "llm_distill"
+  min_support: 1
+  llm_model: "anthropic-claude/claude-sonnet-4-6@2026-04"   # docs 复杂度高，用强模型
+  extract:
+    - "trigger_phrases"                       # SOP 适用条件 → skill description
+    - "tool_call_sequences"                   # SOP 中的命令/工具步骤 → requires.tools
+    - "prompt_templates"                      # SOP 的步骤章节 → skill body
+    - "safety_constraints"                    # SOP 中的红线 → skill.safety + body
+
+# 4. 草稿生成 / Drafting
+drafting:
+  target_format: "skill"                      # 也可改 "playbook" 输出 OpsPilot playbook 形态
+  template_ref: "skills/templates/SKILL.template.md"
+  language: "zh-CN"
+  max_body_chars: 4500
+  must_emit:
+    - "SKILL.md"
+    - "tool-binding.yaml"
+
+# 5. 审阅 / Review
+review:
+  mode: "auto_then_human"
+  auto_checks:
+    - "schema_valid"
+    - "pii_check"
+    - "description_length"
+    - "no_prompt_injection"
+    - "tool_resolvable"
+  reviewers:
+    - "vicente@example.com"
+
+# 6. 注册 / Register
+register_as:
+  trust: "distilled"
+  lifecycle_state: "draft"
+  registry_ref: "governance/skills/registry.yaml"
+
+# 7. 预算 / Budget
+budget:
+  total_usd: 1.00
+  per_skill_max_usd: 0.40                     # docs 转 skill 通常单价较高（输入更长）
+
+# 8. 注释 / Notes
+# - 蒸馏出的 skill 必须把原文档作为 resources 引用，便于审计与回溯
+# - 若 SOP 标记 classification=restricted，蒸馏产物默认继承同等级
+# - 同一文档反复蒸馏不应产生多个 skill；用 doc 路径做去重 key

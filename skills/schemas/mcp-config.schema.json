@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opspilot.dev/schemas/mcp-config.schema.json",
+  "title": "MCP Config Registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "mcps"],
+  "properties": {
+    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "mcps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name", "transport", "tools_prefix", "enabled", "trust"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]*$"
+          },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "transport": {
+            "type": "string",
+            "enum": ["stdio", "http", "sse"]
+          },
+          "command": {
+            "type": ["string", "null"],
+            "description": "Required for transport=stdio"
+          },
+          "args": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "url": {
+            "type": ["string", "null"],
+            "format": "uri",
+            "description": "Required for transport=http or sse"
+          },
+          "env": {
+            "type": "object",
+            "additionalProperties": { "type": "string" },
+            "description": "Each value must be either ${ENV_VAR} placeholder or a non-secret literal"
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": { "type": "string" }
+          },
+          "tools_prefix": {
+            "type": "string",
+            "pattern": "^mcp__[a-z][a-z0-9_]*__$",
+            "description": "Tool name namespace exposed by this server, e.g. mcp__notion__"
+          },
+          "tools_allowlist": {
+            "type": ["array", "null"],
+            "items": { "type": "string" },
+            "description": "If non-null, only these tool suffixes from this server are exposed"
+          },
+          "tools_denylist": {
+            "type": ["array", "null"],
+            "items": { "type": "string" }
+          },
+          "enabled": { "type": "boolean" },
+          "trust": {
+            "type": "string",
+            "enum": ["trusted", "community", "unknown"]
+          },
+          "auth": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["none", "api_key_header", "bearer_env", "oauth2"]
+              },
+              "env": { "type": "string" },
+              "header": { "type": "string" }
+            }
+          },
+          "compliance": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "data_residency": {
+                "type": "string",
+                "enum": ["us", "eu", "apac", "cn", "unspecified"]
+              },
+              "pii_allowed": { "type": "boolean", "default": false },
+              "telemetry_optout": { "type": "boolean", "default": true }
+            }
+          },
+          "health_probe": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "interval_seconds": { "type": "integer", "minimum": 30 },
+              "method": { "type": "string", "enum": ["list_tools", "ping"] },
+              "failure_threshold": { "type": "integer", "minimum": 1 }
+            }
+          },
+          "limits": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "rpm": { "type": "integer", "minimum": 1 },
+              "concurrent": { "type": "integer", "minimum": 1 },
+              "monthly_budget_usd": { "type": "number", "minimum": 0 }
+            }
+          }
+        },
+        "allOf": [
+          {
+            "if": { "properties": { "transport": { "const": "stdio" } } },
+            "then": { "required": ["command"] }
+          },
+          {
+            "if": { "properties": { "transport": { "enum": ["http", "sse"] } } },
+            "then": { "required": ["url"] }
+          }
+        ]
+      }
+    },
+    "global_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "default_deny_on_disabled": { "type": "boolean", "default": true },
+        "block_secrets_in_env_literals": { "type": "boolean", "default": true },
+        "audit_every_call": { "type": "boolean", "default": true }
+      }
+    }
+  }
+}

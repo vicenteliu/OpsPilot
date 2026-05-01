@@ -1,0 +1,243 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opspilot.dev/schemas/iteration.schema.json",
+  "title": "Skill Iteration Record",
+  "description": "One iteration cycle on a skill: trigger → propose → vary → evaluate → decide → apply",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "skill_ref",
+    "ts",
+    "trigger",
+    "hypothesis",
+    "proposed_changes",
+    "variants_created",
+    "evaluation",
+    "decision"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^itr_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "skill_ref": {
+      "type": "string",
+      "description": "Stable baseline skill reference (<name>@<version>)"
+    },
+    "ts": { "type": "string", "format": "date-time" },
+
+    "trigger": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "regression_detected",
+            "feedback_signal",
+            "distillation_candidate",
+            "model_upgrade",
+            "scheduled",
+            "manual"
+          ]
+        },
+        "source_run": {
+          "type": ["string", "null"],
+          "pattern": "^run_[0-9A-HJKMNP-TV-Z]{26}$",
+          "description": "harness run that detected regression (when type=regression_detected)"
+        },
+        "feedback_window_signals": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^fb_[0-9A-HJKMNP-TV-Z]{26}$" }
+        },
+        "distillation_run": {
+          "type": ["string", "null"],
+          "pattern": "^run_dist_[0-9A-HJKMNP-TV-Z]{20}$"
+        },
+        "model_upgrade": {
+          "type": "object",
+          "properties": {
+            "model_ref_old": { "type": "string" },
+            "model_ref_new": { "type": "string" }
+          }
+        },
+        "manual_actor": {
+          "type": "string",
+          "description": "Required when type=manual"
+        }
+      }
+    },
+
+    "hypothesis": {
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 500,
+      "description": "What we expect to improve and why; 1-2 sentences"
+    },
+
+    "proposed_changes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["field", "kind"],
+        "properties": {
+          "field": {
+            "type": "string",
+            "enum": [
+              "description",
+              "body",
+              "model_compat",
+              "requires.tools",
+              "requires.mcps",
+              "requires.providers",
+              "safety",
+              "outputs.schema_ref",
+              "tool-binding"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["replace", "append", "remove", "tighten", "loosen"]
+          },
+          "diff_ref": {
+            "type": ["string", "null"],
+            "description": "Reference to a diff/patch artifact"
+          },
+          "rationale": { "type": "string" }
+        }
+      }
+    },
+
+    "variants_created": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "pattern": "^var_[a-f0-9]{8}$"
+      }
+    },
+
+    "evaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fixtures", "baseline_run", "variant_runs"],
+      "properties": {
+        "fixtures": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^fix_[a-f0-9]{8}$" }
+        },
+        "anchor_fixtures": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^fix_[a-f0-9]{8}$" },
+          "description": "Subset of fixtures used as no-regression anchors"
+        },
+        "baseline_run": { "type": "string", "pattern": "^run_[0-9A-HJKMNP-TV-Z]{26}$" },
+        "variant_runs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["variant_id", "run_id", "delta", "verdict"],
+            "properties": {
+              "variant_id": { "type": "string", "pattern": "^var_[a-f0-9]{8}$" },
+              "run_id": { "type": "string", "pattern": "^run_[0-9A-HJKMNP-TV-Z]{26}$" },
+              "delta": {
+                "type": "object",
+                "properties": {
+                  "weighted": { "type": "number" },
+                  "pass_rate": { "type": "number" },
+                  "cost_pct": { "type": "number" },
+                  "latency_p95_pct": { "type": "number" },
+                  "trigger_recall": { "type": "number" },
+                  "trigger_false_positive": { "type": "number" }
+                }
+              },
+              "verdict": {
+                "type": "string",
+                "enum": ["winning", "losing", "inconclusive"]
+              },
+              "verdict_reasons": {
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["outcome", "decided_by", "decided_at"],
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "enum": ["promote", "reject", "merge", "iterate_again"]
+        },
+        "promoted_variant_id": {
+          "type": ["string", "null"],
+          "pattern": "^var_[a-f0-9]{8}$",
+          "description": "Required when outcome=promote"
+        },
+        "merged_variant_ids": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^var_[a-f0-9]{8}$" },
+          "description": "Required when outcome=merge"
+        },
+        "next_iteration_hypothesis": {
+          "type": ["string", "null"],
+          "description": "Required when outcome=iterate_again"
+        },
+        "decided_by": { "type": "string" },
+        "decided_at": { "type": "string", "format": "date-time" },
+        "approval_chain": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["approver", "ts", "verdict"],
+            "properties": {
+              "approver": { "type": "string" },
+              "ts": { "type": "string", "format": "date-time" },
+              "verdict": { "type": "string", "enum": ["approve", "reject"] },
+              "comment": { "type": "string" }
+            }
+          }
+        },
+        "notes": { "type": "string" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "outcome": { "const": "promote" } } },
+          "then": { "required": ["promoted_variant_id"] }
+        },
+        {
+          "if": { "properties": { "outcome": { "const": "merge" } } },
+          "then": { "required": ["merged_variant_ids"] }
+        },
+        {
+          "if": { "properties": { "outcome": { "const": "iterate_again" } } },
+          "then": { "required": ["next_iteration_hypothesis"] }
+        }
+      ]
+    },
+
+    "applied": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "new_skill_version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+        "registry_updated_at": { "type": "string", "format": "date-time" },
+        "lineage_entry_added": { "type": "boolean" },
+        "rollback_window_until": { "type": "string", "format": "date-time" }
+      }
+    },
+
+    "extensions": { "type": "object" }
+  }
+}

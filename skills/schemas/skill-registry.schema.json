@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opspilot.dev/schemas/skill-registry.schema.json",
+  "title": "Skill Registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "skills"],
+  "properties": {
+    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "skills": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["skill_ref", "path", "trust", "lifecycle_state", "enabled"],
+        "properties": {
+          "skill_ref": {
+            "type": "string",
+            "description": "<name>@<version>"
+          },
+          "path": {
+            "type": "string",
+            "description": "Relative path to the skill directory containing SKILL.md"
+          },
+          "trust": {
+            "type": "string",
+            "enum": [
+              "self_authored",
+              "distilled",
+              "imported_trusted",
+              "imported_community",
+              "imported_unknown"
+            ]
+          },
+          "lifecycle_state": {
+            "type": "string",
+            "enum": ["draft", "reviewed", "trusted", "installed", "enabled", "archived", "deprecated"]
+          },
+          "enabled": { "type": "boolean" },
+          "installed_at": { "type": "string", "format": "date-time" },
+          "last_updated_at": { "type": "string", "format": "date-time" },
+          "trigger_eval_run": {
+            "type": ["string", "null"],
+            "pattern": "^run_[0-9A-HJKMNP-TV-Z]{26}$",
+            "description": "Latest harness run that exercised this skill's description triggers"
+          },
+          "checksum": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$",
+            "description": "sha256 of SKILL.md (for tamper detection)"
+          },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "aliases": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "description": "Mapping from short alias to <name>@<version>"
+    },
+    "groups": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": { "type": "string" }
+      },
+      "description": "Named bundles of skill_refs"
+    },
+    "installation_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "default_trust_for_imports": {
+          "type": "string",
+          "enum": ["imported_community", "imported_unknown"]
+        },
+        "require_trigger_eval_before_enable": { "type": "boolean", "default": true },
+        "require_pii_check_before_install": { "type": "boolean", "default": true },
+        "auto_disable_on_provider_unavailable": { "type": "boolean", "default": true }
+      }
+    }
+  }
+}

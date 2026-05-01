@@ -1,0 +1,63 @@
+# Skill 注册表模板 / Skill registry template
+# 与 schemas/skill-registry.schema.json 等价
+# 实际部署放在 governance/skills/ 下，配 .gitignore 保护私有 skill
+
+version: "1.0.0"
+
+# 注册的 skill 实例
+skills:
+
+  - skill_ref: "ticket_summary_zh@1.2.0"
+    path: "skills/repo/ticket_summary_zh/"   # 含 SKILL.md 与可选的 tool-binding.yaml + resources/
+    trust: "self_authored"
+    lifecycle_state: "enabled"
+    enabled: true
+    installed_at: "2026-05-01T10:00:00Z"
+    last_updated_at: "2026-05-01T10:00:00Z"
+    trigger_eval_run: "run_01J0Z9ZQXK7M6P3F0XK5K7TRG1"
+    checksum: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    tags: ["ticket", "L1"]
+
+  - skill_ref: "ticket_summary_en@1.2.0"
+    path: "skills/repo/ticket_summary_en/"
+    trust: "self_authored"
+    lifecycle_state: "enabled"
+    enabled: true
+    installed_at: "2026-05-01T10:00:00Z"
+    last_updated_at: "2026-05-01T10:00:00Z"
+    trigger_eval_run: "run_01K1A0AQXM7N7Q4G1YK6K8TRG1"
+    checksum: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    tags: ["ticket", "L1", "en"]
+
+  # 蒸馏来的 skill 默认进 draft state，等 review 通过后再 enable
+  - skill_ref: "vpn_runbook@0.1.0"
+    path: "skills/distilled/vpn_runbook/"
+    trust: "distilled"
+    lifecycle_state: "draft"
+    enabled: false
+    installed_at: "2026-05-01T12:30:00Z"
+    last_updated_at: "2026-05-01T12:30:00Z"
+    trigger_eval_run: null
+    checksum: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    tags: ["vpn", "runbook", "auto-generated"]
+
+# 别名：playbook 引用 alias 而非具体 ref，便于版本切换
+aliases:
+  "@summarize-ticket-zh": "ticket_summary_zh@1.2.0"
+  "@summarize-ticket-en": "ticket_summary_en@1.2.0"
+  "@vpn-runbook":         "vpn_runbook@0.1.0"
+
+# 场景包：批量启用一组相关 skill
+groups:
+  it-l1-bundle:
+    - "ticket_summary_zh@1.2.0"
+    - "ticket_summary_en@1.2.0"
+    - "vpn_runbook@0.1.0"
+  data-analysis-bundle: []   # 留空示意
+
+# 安装策略 / Installation policy
+installation_policy:
+  default_trust_for_imports: "imported_community"   # 远端导入默认进 community；显式提升才到 trusted
+  require_trigger_eval_before_enable: true          # description 必须先过 trigger eval
+  require_pii_check_before_install: true            # 加载时静态扫描 PII
+  auto_disable_on_provider_unavailable: true        # 依赖的 provider/MCP 不可用 → 自动 disable

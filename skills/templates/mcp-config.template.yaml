@@ -1,0 +1,100 @@
+# MCP server 注册模板 / MCP server registry template
+# 与 schemas/mcp-config.schema.json 等价
+# 与 providers/templates/provider-registry 同等地位（一个管模型，一个管"业务工具"）
+
+version: "1.0.0"
+
+mcps:
+
+  # —— 本地工具：filesystem 风格 stdio MCP ————————————
+  - id: "fs-readonly"
+    name: "Filesystem (read-only)"
+    description: "Read files under workspace root; sandboxed deny-all by default."
+    transport: "stdio"
+    command: "npx"
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "${WORKSPACE_ROOT:-/workspace}"]
+    env: {}
+    tools_prefix: "mcp__fs__"
+    tools_allowlist: ["read_file", "list_directory"]   # 仅放行只读工具
+    tools_denylist: null
+    enabled: true
+    trust: "trusted"
+    auth:
+      type: "none"
+    compliance:
+      data_residency: "unspecified"
+      pii_allowed: false
+      telemetry_optout: true
+    health_probe:
+      interval_seconds: 600
+      method: "list_tools"
+      failure_threshold: 3
+    limits:
+      rpm: 60
+      concurrent: 4
+      monthly_budget_usd: 0
+
+  # —— Notion（云端 SaaS） ————————————————
+  - id: "notion-main"
+    name: "Notion (main workspace)"
+    description: "Create / read pages and databases in the main Notion workspace."
+    transport: "stdio"
+    command: "npx"
+    args: ["-y", "@notionhq/mcp-server"]
+    env:
+      NOTION_TOKEN: "${NOTION_API_KEY}"          # 必须 env 占位；不允许 inline
+    tools_prefix: "mcp__notion__"
+    tools_allowlist: null
+    tools_denylist: ["delete_page", "delete_database"]   # 防误删
+    enabled: false                                # 默认关闭，按需启用
+    trust: "trusted"
+    auth:
+      type: "bearer_env"
+      env: "NOTION_API_KEY"
+      header: "Authorization"
+    compliance:
+      data_residency: "us"
+      pii_allowed: false
+      telemetry_optout: true
+    health_probe:
+      interval_seconds: 600
+      method: "list_tools"
+      failure_threshold: 3
+    limits:
+      rpm: 30
+      concurrent: 4
+      monthly_budget_usd: 5
+
+  # —— 远端 HTTP MCP 示例 ————————————————
+  - id: "internal-search-http"
+    name: "Internal search service"
+    transport: "http"
+    url: "https://search.corp.local/mcp"
+    headers:
+      Authorization: "Bearer ${CORP_SEARCH_TOKEN}"
+    env: {}
+    tools_prefix: "mcp__corpsearch__"
+    enabled: false
+    trust: "trusted"
+    auth:
+      type: "bearer_env"
+      env: "CORP_SEARCH_TOKEN"
+      header: "Authorization"
+    compliance:
+      data_residency: "cn"
+      pii_allowed: false
+      telemetry_optout: true
+    health_probe:
+      interval_seconds: 300
+      method: "list_tools"
+      failure_threshold: 2
+    limits:
+      rpm: 60
+      concurrent: 8
+      monthly_budget_usd: 0
+
+# 全局策略 / Global policy
+global_policy:
+  default_deny_on_disabled: true              # 加载时校验：disabled MCP 的 tool 即使被 skill 引用也拒绝绑定
+  block_secrets_in_env_literals: true         # env 字段值含明文 secret 模式（API_KEY=xyz...）即拒绝加载
+  audit_every_call: true                      # 每次 MCP 调用写入 session.audit.log

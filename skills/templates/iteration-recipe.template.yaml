@@ -1,0 +1,67 @@
+# Iteration Recipe — 单次迭代配方 / Single iteration config
+# 与 schemas/iteration.schema.json 等价（recipe 形式；运行后回填 evaluation + decision 段）
+
+id: "itr_01J0Z9ZQXK7M6P3F0XK5K7C5IT0"            # 运行时分配 ULID
+skill_ref: "ticket_summary_zh@1.2.0"
+ts: "2026-05-01T12:00:00Z"
+
+# 1. Trigger（必填）
+trigger:
+  type: "feedback_signal"                         # regression_detected | feedback_signal | distillation_candidate | model_upgrade | scheduled | manual
+  source_run: null
+  feedback_window_signals:                        # 触发本次迭代的 signal id 集合
+    - "fb_01J0Z9ZQXK7M6P3F0XK5K7C5SG1"
+    - "fb_01J0Z9ZQXK7M6P3F0XK5K7C5SG2"
+    - "fb_01J0Z9ZQXK7M6P3F0XK5K7C5SG3"
+  distillation_run: null
+  model_upgrade: null
+  manual_actor: null
+
+# 2. Hypothesis（必填，10-500 字）
+hypothesis: |
+  Recent user_action.edit signals show users frequently rewriting
+  next_actions to add explicit "ask user for X" steps when log fields
+  are missing. Adding a missing-field branch to the body should
+  reduce edit rate without hurting trigger recall.
+
+# 3. Proposed changes（必填；建议每次只改 1-2 个字段，便于归因）
+proposed_changes:
+  - field: "body"
+    kind: "append"
+    diff_ref: "iterations/itr_01J0Z9ZQXK7M6P3F0XK5K7C5IT0/body.patch"
+    rationale: "Append a 'missing-field handling' subsection; do not touch description"
+
+  # 反模式提醒：不要同时改 description + body + requires.tools
+  # - field: "description"
+  #   kind: "tighten"
+
+# 4. Variants（运行时由 propose 阶段填入；recipe 阶段可只声明计划数量）
+variants_created: []                              # 例 ["var_a1b2c3d4", "var_e5f6g7h8"]
+
+# 5. Evaluation 配置（运行后回填 baseline_run / variant_runs / verdicts）
+evaluation:
+  fixtures:                                       # 跑哪些 fixture
+    - "fix_a1b2c3d4"
+    - "fix_b2c3d4e5"
+  anchor_fixtures:                                # 不允许在这些上回归（promotion 必备）
+    - "fix_a1b2c3d4"
+  baseline_run: null                              # 运行时填 run_id
+  variant_runs: []                                # 运行时填每 variant 的结果
+
+# 6. Decision（运行后填）
+decision:
+  outcome: null                                   # promote | reject | merge | iterate_again
+  promoted_variant_id: null
+  merged_variant_ids: []
+  next_iteration_hypothesis: null
+  decided_by: null
+  decided_at: null
+  approval_chain: []
+  notes: null
+
+# 7. Applied（promotion 后填）
+applied:
+  new_skill_version: null
+  registry_updated_at: null
+  lineage_entry_added: false
+  rollback_window_until: null

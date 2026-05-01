@@ -1,0 +1,66 @@
+# Distillation Recipe — from other skill collections
+# 从外部 skill 库（anthropic-skills、社区仓库等）学习共有结构与风格
+
+recipe_version: "1.0.0"
+type: "from_skills"
+run_id: null
+ts: null
+
+# 1. 输入源 / Sources
+sources:
+  skill_refs:
+    # - "anthropic-skills:docx@1.0.0"
+    # - "anthropic-skills:pptx@1.0.0"
+    # - "data:analyze@1.0.0"
+    # - "data:explore-data@1.0.0"
+    # - "legal:contract-review@1.0.0"
+
+# 2. 脱敏 / Redaction
+redaction:
+  enforce: true
+  rules_ref: "session/templates/redaction-rules.template.yaml"
+  hard_fail_on_pii: true                      # 第三方 skill 的 description / body 也要扫描
+
+# 3. 模式挖掘 / Mining
+mining:
+  strategy: "llm_distill"                     # 主要靠 LLM 抽象共性
+  min_support: 1                               # skill 数量通常少，放宽
+  llm_model: "anthropic-claude/claude-haiku-4-5@2025-10"
+  extract:
+    - "trigger_phrases"                       # 共有的 description 风格
+    - "prompt_templates"                      # body 章节结构
+    - "safety_constraints"                    # 共有的 safety 段落
+
+# 4. 草稿生成 / Drafting
+drafting:
+  target_format: "skill"
+  template_ref: "skills/templates/SKILL.template.md"
+  language: "en"                               # 多 skill 来源时通常用英文
+  max_body_chars: 3000
+  must_emit:
+    - "SKILL.md"
+
+# 5. 审阅 / Review
+review:
+  mode: "human"                                # 借鉴他人 skill 必须人工审阅版权与风格
+  auto_checks:
+    - "schema_valid"
+    - "no_prompt_injection"
+  reviewers:
+    - "vicente@example.com"
+
+# 6. 注册 / Register
+register_as:
+  trust: "distilled"                           # 即使来源是 imported_trusted，蒸馏产物仍走 distilled
+  lifecycle_state: "draft"
+  registry_ref: "governance/skills/registry.yaml"
+
+# 7. 预算 / Budget
+budget:
+  total_usd: 0.80
+  per_skill_max_usd: 0.20
+
+# 8. 版权与归属注意 / Attribution（重要）
+# - 来自 imported_trusted 源 skill 的内容若被改写后纳入新 skill，distillation.sources 必须列全
+# - 不要把第三方 skill 的 description 原样复制（可能侵权 or 误触发）
+# - 若产生的新 skill 与某源 skill 高度重合，应标记为该 skill 的 fork 而非新建

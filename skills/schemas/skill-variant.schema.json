@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opspilot.dev/schemas/skill-variant.schema.json",
+  "title": "Skill Variant",
+  "description": "A candidate variant of a stable skill, lives at skills/repo/<name>/variants/<variant_id>/",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "variant_id",
+    "parent_skill_ref",
+    "variant_label",
+    "created_from_iteration",
+    "created_at",
+    "status",
+    "diff_summary",
+    "checksum"
+  ],
+  "properties": {
+    "variant_id": {
+      "type": "string",
+      "pattern": "^var_[a-f0-9]{8}$",
+      "description": "var_<sha8> derived from variant SKILL.md content"
+    },
+    "parent_skill_ref": {
+      "type": "string",
+      "description": "Stable parent in <name>@<version> form"
+    },
+    "parent_variant_id": {
+      "type": ["string", "null"],
+      "pattern": "^var_[a-f0-9]{8}$",
+      "description": "If this variant was derived from another variant (not directly from stable), reference it here"
+    },
+    "variant_label": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(-[a-z0-9.]+)?$",
+      "description": "Human-readable label like 1.3.0-alpha (NOT a real version yet)"
+    },
+    "created_from_iteration": {
+      "type": "string",
+      "pattern": "^itr_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+
+    "status": {
+      "type": "string",
+      "enum": ["draft", "active", "winning", "losing", "merged", "promoted", "archived"]
+    },
+    "status_changed_at": { "type": "string", "format": "date-time" },
+
+    "diff_summary": {
+      "type": "string",
+      "description": "1-3 sentences describing what changed vs parent"
+    },
+    "diff_ref": {
+      "type": ["string", "null"],
+      "description": "Pointer to a unified-diff artifact"
+    },
+
+    "checksum": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "description": "sha256 of variant SKILL.md"
+    },
+
+    "eval_runs": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^run_[0-9A-HJKMNP-TV-Z]{26}$" }
+    },
+
+    "merged_into_variant": {
+      "type": ["string", "null"],
+      "pattern": "^var_[a-f0-9]{8}$",
+      "description": "Set when status=merged"
+    },
+    "merged_from_variants": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^var_[a-f0-9]{8}$" },
+      "description": "Set on merge target variants"
+    },
+
+    "expires_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "If still in active/draft after this, auto-archive"
+    },
+
+    "notes": { "type": "string" },
+    "extensions": { "type": "object" }
+  }
+}

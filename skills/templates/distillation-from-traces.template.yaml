@@ -1,0 +1,82 @@
+# Distillation Recipe — from session traces
+# 从 OpsPilot 自家 session.trace.jsonl 集合蒸馏出 skill 草稿
+# 与 schemas/distillation-recipe.schema.json 等价
+
+recipe_version: "1.0.0"
+type: "from_traces"
+run_id: null                          # 运行时分配（run_dist_<ULID20>）
+ts: null
+
+# 1. 输入源 / Sources
+sources:
+
+  # 选项 A：显式列出 session_id
+  session_ids: []
+  #   - "sess_01J0Z9ZQXK7M6P3F0XK5K7C5K0"
+  #   - "sess_01K1A0AQXM7N7Q4G1YK6K8D6M0"
+
+  # 选项 B：按条件筛选（与 A 互补；空 session_ids 时按筛选规则选）
+  session_filter:
+    playbook: "pb_ticket_summary_zh"          # 仅来自此 playbook 的 session
+    min_harness_score: 0.85                    # 仅 harness 评分 ≥0.85 的 session（确保是"成功样本"）
+    since: "2026-04-01T00:00:00Z"
+    until: "2026-04-30T23:59:59Z"
+    tags_any_of: ["L1-support"]
+
+# 2. 脱敏（强约束）/ Redaction
+redaction:
+  enforce: true
+  rules_ref: "session/templates/redaction-rules.template.yaml"
+  hard_fail_on_pii: true                      # PII 检查失败 → 整个 pipeline 中止
+
+# 3. 模式挖掘 / Mining
+mining:
+  strategy: "hybrid"                          # pattern_mining + llm_distill 并用
+  min_support: 5                              # 至少 5 个 session 出现的模式才提取
+  llm_model: "anthropic-claude/claude-haiku-4-5@2025-10"   # 必须锁版本
+  extract:
+    - "trigger_phrases"                       # 哪些 user 输入触发了成功响应
+    - "tool_call_sequences"                   # kb.search → artifact.write 的顺序
+    - "prompt_templates"                      # 共有的 prompt 结构
+    - "output_schemas"                        # 输出 JSON 的字段集
+    - "citation_style"                        # citation 注入风格
+    - "safety_constraints"                    # 拒绝/审批的触发条件
+
+# 4. 草稿生成 / Drafting
+drafting:
+  target_format: "skill"
+  template_ref: "skills/templates/SKILL.template.md"
+  language: "zh-CN"
+  max_body_chars: 4000
+  must_emit:
+    - "SKILL.md"
+    - "tool-binding.yaml"
+    - "trigger-fixtures.jsonl"                # 用于后续 trigger eval
+
+# 5. 审阅 / Review
+review:
+  mode: "auto_then_human"                     # 自动检查通过后进人工 review queue
+  auto_checks:
+    - "schema_valid"                          # SKILL.md frontmatter 通过 skill.schema.json
+    - "pii_check"                             # body 通过 rule.pii_check
+    - "description_length"                    # ≤300 chars
+    - "no_prompt_injection"                   # 静态扫描
+    - "tool_resolvable"                       # requires.tools/mcps 全部能解析
+    - "trigger_eval"                          # 跑 trigger fixtures
+  trigger_eval:
+    fixtures_ref: "examples/scn_ticket_summary_zh/harness/fixture.json"
+    min_recall: 0.9
+    max_false_positive: 0.05
+  reviewers:
+    - "vicente@example.com"
+
+# 6. 注册策略 / Register
+register_as:
+  trust: "distilled"                           # 不允许直接 imported_trusted（必须人工提升）
+  lifecycle_state: "draft"                     # 只能进 draft；review 通过后由人工切到 reviewed
+  registry_ref: "governance/skills/registry.yaml"   # 主注册表的实际路径
+
+# 7. 预算 / Budget
+budget:
+  total_usd: 1.50                              # 整次 pipeline 总预算
+  per_skill_max_usd: 0.30                      # 单个 skill 草稿不超过此值

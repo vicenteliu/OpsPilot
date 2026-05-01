@@ -112,6 +112,12 @@ Pick one of the paths:
 │   ├── catalogs.md         # 6 家 provider 已知模型清单（带核验日期）
 │   ├── schemas/            # provider-config JSON Schema
 │   └── templates/          # registry + ollama/openrouter/openai/anthropic/gemini/grok
+├── skills/                 # 技能注册、制作、蒸馏、迭代 | Skill registry, authoring, distillation, iteration
+│   ├── SPEC.md             # frontmatter / lifecycle / tool binding / distillation / iteration overview
+│   ├── ITERATION.md        # 迭代机制详细规范（lineage / variants / feedback / decision）
+│   ├── catalogs.md         # 已知 skill 来源 + 跨平台字段映射 + 推荐 MCP 清单
+│   ├── schemas/            # skill / registry / tool-binding / mcp-config / distillation / iteration / variant / feedback
+│   └── templates/          # SKILL + 蒸馏 4 类 + iteration recipe/policy + feedback collector + lifecycle policy
 ├── memory/                 # 记忆与本地知识库 | Memory & local KB / RAG
 │   ├── SPEC.md             # 三层 memory + RAG pipeline + 检索/重排契约
 │   ├── schemas/            # memory-record / kb-document / kb-chunk / retrieval-query
@@ -137,38 +143,41 @@ Pick one of the paths:
         # 每个样例含: README + checks.md + kb/ + retrieval/ + session/ + harness/
 ```
 
-## Architecture: Providers × Memory × Session × Sandbox × Harness
+## Architecture: Providers × Skills × Memory × Session × Sandbox × Harness
 
-五者构成 OpsPilot 的"AI 代办闭环"：
+六者构成 OpsPilot 的"AI 代办闭环"：
 
 ```
-        ┌───────────────┐                ┌───────────────────────────┐
-        │  providers/   │                │  memory/                   │
-        │  registry     │                │  short / mid / long-term   │
-        │ Ollama/OR/OAI │                │  SQLite + LanceDB + md     │
-        │ Anthropic/    │                │  RAG (kb.search /          │
-        │ Gemini/Grok   │                │       memory.search)       │
-        └──────┬────────┘                └──────────┬─────────────────┘
-               │ provider_id + model_ref            │ kb.search results
-               ▼                                    │ + memory recall
-playbooks/  ──▶  Session(create) ◀──────────────────┘
+   ┌───────────┐  ┌───────────┐  ┌───────────────────────────┐
+   │ providers/│  │  skills/  │  │  memory/                   │
+   │  models   │  │ registry +│  │  short / mid / long-term   │
+   │           │  │ distillation│ │  SQLite + LanceDB + md     │
+   │           │  │ + tool/MCP│  │  RAG (kb.search /          │
+   │           │  │  bindings │  │       memory.search)       │
+   └─────┬─────┘  └─────┬─────┘  └──────────┬─────────────────┘
+         │ model_ref    │ skill_ref +       │ kb.search results
+         ▼              ▼ tool/mcp bindings ▼ + memory recall
+playbooks/  ──▶  Session(create) ◀──────────┘
                         │
                         ▼
                   proposed_action ──▶ sandbox/  ──▶ artifact
                         │                              │
                         ▼                              ▼
                   Session.trace  ◀────────  recording
-                        │  (archive 时归约 → mid-term memory)
+                        │  (archive 时归约 → mid-term memory
+                        │     + 可作为 skill distillation 源)
                         ▼
                   harness/(eval) ──▶  case-studies/
 ```
 
 - **providers/**：可插拔 LLM 提供方（Ollama / OpenRouter / OpenAI / Anthropic / Gemini / Grok）；统一鉴权、能力声明、成本与降级
+- **skills/**：技能注册 + **制作 + 蒸馏 + 迭代 + 工具/MCP 绑定**；从 traces / 文档 / 他人 skill / 跨平台 skill 蒸馏新技能；通过 lineage + variants + feedback signals 驱动持续演进
 - **memory/**：三层记忆——短期（trace 内摘要）/ 中期（SQLite + markdown）/ 长期（LanceDB + markdown）；RAG 检索与重排
 - **session/**：AI 任务的"上下文 + 轨迹 + 产物 + 审计"打包单元；合规落地的载体
 - **sandbox/**：AI 提出动作的"先跑给你看，再决定要不要落地"的隔离执行层；默认 deny-all
 - **harness/**：Prompt/Playbook 的"单元测试 + 回归门"；模型升级前后必跑
 
-> ⚠️ **当前状态 / Status**：五个目录均为 **spec-only**（规范+模板）阶段，不含运行实现。先把契约梳理清楚，再做参考实现。
+> ⚠️ **当前状态 / Status**：六个目录均为 **spec-only**（规范+模板）阶段，不含运行实现。先把契约梳理清楚，再做参考实现。
 > ⚠️ **模型版本**：所有 `model_ref` 与 `embedding_model` 必须显式锁版本；禁用 `latest` / `auto` / `stable`。
-> ⚠️ **PII 红线**：未脱敏内容不得入向量库 / SQLite；redaction 规则参见 `session/templates/redaction-rules.template.yaml`。
+> ⚠️ **PII 红线**：未脱敏内容不得入向量库 / SQLite / 蒸馏 pipeline；redaction 规则参见 `session/templates/redaction-rules.template.yaml`。
+> ⚠️ **Skill 信任**：community / unknown 等级 skill 默认禁写动作 + 强制 sandbox；详见 `skills/templates/lifecycle-policy.template.yaml`。

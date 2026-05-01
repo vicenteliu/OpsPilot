@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opspilot.dev/schemas/feedback-signal.schema.json",
+  "title": "Skill Feedback Signal",
+  "description": "Single redacted feedback signal feeding into iteration triggers; usually appended to skills/feedback/<skill_ref>/signals.jsonl",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "skill_ref",
+    "ts",
+    "signal_type",
+    "weight",
+    "redacted"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^fb_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "skill_ref": { "type": "string" },
+    "ts": { "type": "string", "format": "date-time" },
+
+    "signal_type": {
+      "type": "string",
+      "enum": [
+        "user_action.accept",
+        "user_action.reject",
+        "user_action.edit",
+        "harness_score",
+        "distillation_pattern",
+        "model_drift",
+        "trace_failure"
+      ]
+    },
+
+    "weight": {
+      "type": "number",
+      "description": "Signed weight; positive reinforces current skill, negative suggests iteration"
+    },
+
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "session_id": {
+          "type": ["string", "null"],
+          "pattern": "^sess_[0-9A-HJKMNP-TV-Z]{26}$"
+        },
+        "session_id_hash": {
+          "type": ["string", "null"],
+          "description": "After retention purge, session_id is replaced with sha256 hash for traceability"
+        },
+        "trace_seq": { "type": ["integer", "null"], "minimum": 0 },
+        "harness_run_id": {
+          "type": ["string", "null"],
+          "pattern": "^run_[0-9A-HJKMNP-TV-Z]{26}$"
+        },
+        "distillation_run_id": {
+          "type": ["string", "null"],
+          "pattern": "^run_dist_[0-9A-HJKMNP-TV-Z]{20}$"
+        }
+      }
+    },
+
+    "details": {
+      "type": "object",
+      "description": "signal_type-specific payload",
+      "additionalProperties": false,
+      "properties": {
+        "rating": {
+          "type": ["number", "null"],
+          "minimum": 0, "maximum": 1,
+          "description": "For user_action.* — normalized accept/reject"
+        },
+        "edit_diff_ref": {
+          "type": ["string", "null"],
+          "description": "For user_action.edit — pointer to redacted diff artifact"
+        },
+        "harness_delta": {
+          "type": ["object", "null"],
+          "properties": {
+            "weighted_delta": { "type": "number" },
+            "pass_rate_delta": { "type": "number" },
+            "regression": { "type": "boolean" }
+          }
+        },
+        "pattern_summary": {
+          "type": ["string", "null"],
+          "description": "For distillation_pattern — short description of the new pattern"
+        },
+        "pattern_support": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "description": "Number of sessions exhibiting the pattern"
+        },
+        "drift_metric": {
+          "type": ["object", "null"],
+          "properties": {
+            "metric": { "type": "string" },
+            "before": { "type": "number" },
+            "after": { "type": "number" }
+          }
+        },
+        "failure_reason": { "type": ["string", "null"] }
+      }
+    },
+
+    "redacted": {
+      "type": "boolean",
+      "const": true,
+      "description": "Signals must be redacted; raw prompt/response content never appears here"
+    },
+    "redaction_rules_version": { "type": "string" },
+
+    "expires_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "After this, signal is excluded from aggregation but kept for audit"
+    },
+
+    "decay": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "half_life_days": { "type": "number", "minimum": 0 },
+        "as_of_ts": { "type": "string", "format": "date-time" }
+      }
+    },
+
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "extensions": { "type": "object" }
+  }
+}

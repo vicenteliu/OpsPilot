@@ -1,0 +1,198 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opspilot.dev/schemas/distillation-recipe.schema.json",
+  "title": "Skill Distillation Recipe",
+  "description": "A single distillation pipeline run config",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["recipe_version", "type", "sources", "redaction", "mining", "drafting", "review", "register_as"],
+  "properties": {
+    "recipe_version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "type": {
+      "type": "string",
+      "enum": ["from_traces", "from_skills", "from_docs", "from_foreign"]
+    },
+    "run_id": {
+      "type": ["string", "null"],
+      "pattern": "^run_dist_[0-9A-HJKMNP-TV-Z]{20}$",
+      "description": "Assigned at execution time"
+    },
+    "ts": { "type": ["string", "null"], "format": "date-time" },
+
+    "sources": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "session_ids": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^sess_[0-9A-HJKMNP-TV-Z]{26}$" }
+        },
+        "session_filter": {
+          "type": "object",
+          "description": "When session_ids is empty, select sessions by criteria",
+          "properties": {
+            "playbook": { "type": "string" },
+            "min_harness_score": { "type": "number", "minimum": 0, "maximum": 1 },
+            "since": { "type": "string", "format": "date-time" },
+            "until": { "type": "string", "format": "date-time" },
+            "tags_any_of": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "skill_refs": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "doc_paths": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "foreign_inputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["platform", "ref"],
+            "properties": {
+              "platform": {
+                "type": "string",
+                "enum": ["anthropic_skill", "claude_code_skill", "openai_gpt", "langchain_agent", "other"]
+              },
+              "ref": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+
+    "redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enforce", "rules_ref"],
+      "properties": {
+        "enforce": { "type": "boolean", "const": true },
+        "rules_ref": { "type": "string" },
+        "hard_fail_on_pii": { "type": "boolean", "default": true }
+      }
+    },
+
+    "mining": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["strategy"],
+      "properties": {
+        "strategy": {
+          "type": "string",
+          "enum": ["pattern_mining", "llm_distill", "hybrid"]
+        },
+        "min_support": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "For pattern_mining: minimum sessions exhibiting a pattern to extract it"
+        },
+        "llm_model": {
+          "type": ["string", "null"],
+          "description": "Model used for llm_distill / hybrid; must be version-pinned",
+          "not": { "pattern": "@(latest|auto|stable)$" }
+        },
+        "extract": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "trigger_phrases",
+              "tool_call_sequences",
+              "prompt_templates",
+              "output_schemas",
+              "citation_style",
+              "safety_constraints"
+            ]
+          },
+          "minItems": 1
+        }
+      }
+    },
+
+    "drafting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target_format", "template_ref"],
+      "properties": {
+        "target_format": {
+          "type": "string",
+          "enum": ["skill", "playbook"]
+        },
+        "template_ref": { "type": "string" },
+        "language": { "type": "string", "examples": ["en", "zh-CN"] },
+        "max_body_chars": { "type": "integer", "minimum": 200 },
+        "must_emit": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["SKILL.md", "tool-binding.yaml", "trigger-fixtures.jsonl"]
+          }
+        }
+      }
+    },
+
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["auto", "human", "auto_then_human"]
+        },
+        "auto_checks": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "schema_valid",
+              "pii_check",
+              "description_length",
+              "no_prompt_injection",
+              "tool_resolvable",
+              "trigger_eval"
+            ]
+          }
+        },
+        "trigger_eval": {
+          "type": "object",
+          "properties": {
+            "fixtures_ref": { "type": "string" },
+            "min_recall": { "type": "number", "minimum": 0, "maximum": 1 },
+            "max_false_positive": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        },
+        "reviewers": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+
+    "register_as": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["trust", "lifecycle_state", "registry_ref"],
+      "properties": {
+        "trust": { "type": "string", "enum": ["distilled", "imported_trusted"] },
+        "lifecycle_state": {
+          "type": "string",
+          "enum": ["draft", "reviewed"],
+          "description": "Distilled skills cannot directly enter trusted/installed/enabled"
+        },
+        "registry_ref": { "type": "string" }
+      }
+    },
+
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "total_usd": { "type": "number", "minimum": 0 },
+        "per_skill_max_usd": { "type": "number", "minimum": 0 }
+      }
+    }
+  }
+}
