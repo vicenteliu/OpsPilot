@@ -8,13 +8,13 @@
 | ID | 出现处 1 | 出现处 2 | 出现处 3 |
 |---|---|---|---|
 | `sess_01J0Z9ZQXK7M6P3F0XK5K7C5K0` | `session/meta.yaml#id` | `session/trace.jsonl[*].session_id` | `session/audit.log#col4` |
-| `doc_e5f6g7h8` | `kb/sop_vpn_zh.md#frontmatter.id` | `kb/doc-meta.json#id` | `kb/chunks.jsonl[*].document_id` + `retrieval/response.json#results[*].document_id` + `harness/fixture.json#extensions.rag_ground_truth.must_retrieve_doc_ids` + `session/artifacts/art_56d3a0e44dd6d022.json#citations[0].document_id` |
-| `chk_0cf89826` | `kb/chunks.jsonl[1].id` | `retrieval/response.json#results[0].chunk_id` | `harness/fixture.json#extensions.rag_ground_truth.must_retrieve_chunk_ids[0]` + `session/artifacts/art_56d3a0e44dd6d022.json#citations[0].chunk_id` + `harness/results.jsonl#evaluators[ev_rag_*].details.*chunk_ids*` |
+| `doc_88a277cf` | `kb/sop_vpn_zh.md#frontmatter.id` | `kb/doc-meta.json#id` | `kb/chunks.jsonl[*].document_id` + `retrieval/response.json#results[*].document_id` + `harness/fixture.json#extensions.rag_ground_truth.must_retrieve_doc_ids` + `session/artifacts/art_75fa2fb140c268a4.json#citations[0].document_id` |
+| `chk_0cf89826` | `kb/chunks.jsonl[1].id` | `retrieval/response.json#results[0].chunk_id` | `harness/fixture.json#extensions.rag_ground_truth.must_retrieve_chunk_ids[0]` + `session/artifacts/art_75fa2fb140c268a4.json#citations[0].chunk_id` + `harness/results.jsonl#evaluators[ev_rag_*].details.*chunk_ids*` |
 | `chk_ea5a0261` | `kb/chunks.jsonl[0].id` | `retrieval/response.json#results[1].chunk_id` | `harness/fixture.json#extensions.rag_ground_truth.should_retrieve_chunk_ids[0]` |
 | `chk_0f674194` | `kb/chunks.jsonl[2].id` | `retrieval/response.json#results[2].chunk_id` | (no ground-truth ref) |
-| `art_56d3a0e44dd6d022` | `session/artifacts/art_56d3a0e44dd6d022.json` (canonical 文件名) | `session/artifacts/art_56d3a0e44dd6d022.meta.yaml#artifact_id` | `session/trace.jsonl[seq=7].artifact_ids[0]` + `session/audit.log` + `harness/results.jsonl#output.artifact_id` |
+| `art_75fa2fb140c268a4` | `session/artifacts/art_75fa2fb140c268a4.json` (canonical 文件名) | `session/artifacts/art_75fa2fb140c268a4.meta.yaml#artifact_id` | `session/trace.jsonl[seq=7].artifact_ids[0]` + `session/audit.log` + `harness/results.jsonl#output.artifact_id` |
 | `act_01J0Z9ZQXK7M6P3F0XK5K7C5KA` | `session/trace.jsonl[seq=3].action_id` | `session/trace.jsonl[seq=4].action_id` | `session/audit.log` |
-| `act_01J0Z9ZQXK7M6P3F0XK5K7C5KB` | `session/trace.jsonl[seq=6].action_id` | `session/trace.jsonl[seq=7].action_id` + `session/artifacts/art_56d3a0e44dd6d022.meta.yaml#produced_by.action_id` | `session/audit.log` |
+| `act_01J0Z9ZQXK7M6P3F0XK5K7C5KB` | `session/trace.jsonl[seq=6].action_id` | `session/trace.jsonl[seq=7].action_id` + `session/artifacts/art_75fa2fb140c268a4.meta.yaml#produced_by.action_id` | `session/audit.log` |
 | `fix_a1b2c3d4` | `harness/fixture.json#id` | `harness/golden.json#fixture_id` | `harness/results.jsonl#fixture_id` + `session/meta.yaml#labels.fixture_id` |
 | `run_01J0Z9ZQXK7M6P3F0XK5K7C5RR` | `harness/run-config.yaml#run.id` | `harness/results.jsonl#run_id` | — |
 | `q_01J0Z9ZQXK7M6P3F0XK5K7C5K1` | `retrieval/response.json#query_id` | (`kb.search` 内部生成) | — |
@@ -29,7 +29,7 @@
 | `retrieval/response.json` | `memory/schemas/retrieval-query.schema.json#oneOf[1]` | kind=response；results[].score ∈ [0,1]；citation 必填（return_citations=true 时）|
 | `session/meta.yaml` | `session/schemas/session.schema.json` | model.provider_id 必须在 registry；model.version 不为 latest/auto/stable ✓ |
 | `session/trace.jsonl[*]` | `session/schemas/trace-event.schema.json` | type→属性 oneOf 分支；type=tool_call.action_id 命名空间 act_<ULID> ✓ |
-| `session/artifacts/art_56d3a0e44dd6d022.json` | `harness/golden.json#schema_check` (ticket_summary_v1) | required_keys 全有；scope ∈ enum；next_actions ≥3；citations ≥1；severity 匹配 ^P[0-4]$ |
+| `session/artifacts/art_75fa2fb140c268a4.json` | `harness/golden.json#schema_check` (ticket_summary_v1) | required_keys 全有；scope ∈ enum；next_actions ≥3；citations ≥1；severity 匹配 ^P[0-4]$ |
 | `harness/fixture.json` | `harness/schemas/fixture.schema.json` | redacted=true；scenario_id pattern；source.type ∈ enum |
 | `harness/results.jsonl` | `harness/schemas/eval-result.schema.json` | run_id/fixture_id/playbook_ref/model_ref；evaluators ≥1；scores.weighted ∈ [0,1]；judge_model_ref 锁版本 |
 
@@ -37,7 +37,7 @@
 
 | Evaluator | 输入引用 | 计算 | 结果 |
 |---|---|---|---|
-| `ev_rag_recall_at_k`（k=3）| ground_truth = `harness/fixture.json#extensions.rag_ground_truth.must_retrieve_doc_ids` = `["doc_e5f6g7h8"]`<br>retrieved top-3 doc_ids = `retrieval/response.json#results[0..2].document_id` = `["doc_e5f6g7h8"]`×3 | matched / expected = 1/1 | **1.0 ✓** |
+| `ev_rag_recall_at_k`（k=3）| ground_truth = `harness/fixture.json#extensions.rag_ground_truth.must_retrieve_doc_ids` = `["doc_88a277cf"]`<br>retrieved top-3 doc_ids = `retrieval/response.json#results[0..2].document_id` = `["doc_88a277cf"]`×3 | matched / expected = 1/1 | **1.0 ✓** |
 | `ev_rag_precision_at_k`（k=3）| relevant = must + should = `["chk_0cf89826", "chk_ea5a0261"]`<br>retrieved top-3 chunks = `[chk_0cf89826, chk_ea5a0261, chk_0f674194]` | 命中 2/3 | **0.667 ✓**（无下限阈值，pass）|
 | `ev_rag_citation_validity` | 摘要 citations[0] → chunk_id `chk_0cf89826`, line 37–46 ↔ `kb/chunks.jsonl#chk_0cf89826.line_start=37/line_end=46` | 1/1 valid | **1.0 ✓** |
 
@@ -60,7 +60,7 @@ retrieval/response.json#results[0..2]
 trace.jsonl[seq=5] response (NL summary with [^kb-1] footnote)
     │ + trace.jsonl[seq=6,7] artifact.write
     ▼
-session/artifacts/art_56d3a0e44dd6d022.json
+session/artifacts/art_75fa2fb140c268a4.json
     │ (citations[0].chunk_id == retrieval response 命中)
     │ (citations[0].line_start/end == kb/chunks.jsonl#chk_0cf89826.line_start/end)
     ▼
@@ -79,12 +79,16 @@ case-studies/e2e-samples/ (报告归档目标)
 
 ```bash
 cd ~/Workspace/OpsPilot/examples/scn_ticket_summary_zh/session/artifacts && \
-rm -f summary.structured.json art_d3bf317bf67a4293.json art_d3bf317bf67a4293.meta.yaml
+rm -f summary.structured.json \
+      art_d3bf317bf67a4293.json art_d3bf317bf67a4293.meta.yaml \
+      art_56d3a0e44dd6d022.json art_56d3a0e44dd6d022.meta.yaml
 ```
 
 只保留 canonical：
-- `art_56d3a0e44dd6d022.json`
-- `art_56d3a0e44dd6d022.meta.yaml`
+- `art_75fa2fb140c268a4.json`
+- `art_75fa2fb140c268a4.meta.yaml`
+
+> 历史背景：Fix 1（合规审计）重算了 zh 样例的 doc_id 与 artifact 哈希，artifact 改名 d3bf...→56d3...→75fa...。沙箱 FUSE 不能 unlink，所以这几次 rename 的副本都需要在 host 清理。
 
 ## F. 校验脚本（可机器跑）/ Machine-runnable checks
 

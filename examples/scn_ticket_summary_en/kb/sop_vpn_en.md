@@ -1,6 +1,6 @@
 ---
 id: "doc_afe80531"
-source_path: "playbooks/sop_vpn_en.md"
+source_path: "examples/scn_ticket_summary_en/kb/sop_vpn_en.md"
 title: "VPN Troubleshooting SOP (English)"
 classification: "internal"
 content_hash: "sha256:afe80531ad5aca3dab28814d0cead9cb77dada556f18f70a296bff0be818d877"

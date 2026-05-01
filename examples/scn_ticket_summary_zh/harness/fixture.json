@@ -37,7 +37,7 @@
   "extensions": {
     "rag_ground_truth": {
       "_comment": "RAG 评估专用：rag.recall_at_k / rag.precision_at_k 用此作为 ground truth",
-      "must_retrieve_doc_ids": ["doc_e5f6g7h8"],
+      "must_retrieve_doc_ids": ["doc_88a277cf"],
       "must_retrieve_chunk_ids": ["chk_0cf89826"],
       "should_retrieve_chunk_ids": ["chk_ea5a0261"],
       "irrelevant_chunk_ids": []

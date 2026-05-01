@@ -2,10 +2,10 @@
 # canonical 路径：artifacts/<artifact_id>.<ext>
 # sidecar 路径： artifacts/<artifact_id>.meta.yaml
 
-artifact_id: "art_56d3a0e44dd6d022"
-filename: "art_56d3a0e44dd6d022.json"
+artifact_id: "art_75fa2fb140c268a4"
+filename: "art_75fa2fb140c268a4.json"
 content_type: "application/json"
-content_sha256: "56d3a0e44dd6d02265393c770e0457252eba21c75fe5fc0f7d631c90c973e558"
+content_sha256: "75fa2fb140c268a4411ff4bc571ea8615dc43f23b04cdf42ddda127bfd9d85e1"
 size_bytes: 1830
 
 session_id: "sess_01J0Z9ZQXK7M6P3F0XK5K7C5K0"
@@ -27,6 +27,8 @@ created_at: "2026-05-01T10:08:42.512Z"
 cited_chunks:
   - "chk_0cf89826"
 
-# 沙箱遗留：开发期同名描述性副本（summary.structured.json）以及旧 ID 的对照文件
-# （art_d3bf317bf67a4293.json）会在初次提交后由用户在 host 删除；canonical 是本文件指向的
-# art_56d3a0e44dd6d022.json。
+# 沙箱遗留（Fix 1 级联更新留下的）：
+#   - summary.structured.json
+#   - art_d3bf317bf67a4293.json + art_d3bf317bf67a4293.meta.yaml （早期错误 ID 的副本）
+#   - art_56d3a0e44dd6d022.json + art_56d3a0e44dd6d022.meta.yaml （Fix 1 之前的副本）
+# canonical 是本 sidecar 指向的 art_75fa2fb140c268a4.json；其余请在 host 上 rm。

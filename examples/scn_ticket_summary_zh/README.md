@@ -32,7 +32,7 @@
    │  │  4. tool_call: kb.search ──────────────▶  │  │ retrieval/request.json
    │  │  5. tool_result: chunks ◀──────────────   │  │ retrieval/response.json
    │  │  6. response: NL 摘要 + footnote          │  │
-   │  │  7. tool_call: artifact.write ─────────▶  │  │ artifacts/art_56d3a0e44dd6d022.json
+   │  │  7. tool_call: artifact.write ─────────▶  │  │ artifacts/art_75fa2fb140c268a4.json
    │  │  8. tool_result: artifact written         │  │
    │  │  9. user_action: accept                   │  │
    │  │  10. system: state_change → archived      │  │
@@ -86,7 +86,7 @@
 - `session/trace.jsonl#tool_result.artifact_ids[]`
   ↔ `session/artifacts/<artifact_id>.json` 文件名
 - `harness/results.jsonl#evaluators[rag.citation_validity].details.invalid_citations`
-  ↔ `session/artifacts/summary.structured.json#citations[].chunk_id`
+  ↔ `session/artifacts/art_75fa2fb140c268a4.json#citations[].chunk_id`
   ↔ `kb/chunks.jsonl#id`
 
 `checks.md` 把每条引用与对应 schema 的行号都列了出来，便于评审。

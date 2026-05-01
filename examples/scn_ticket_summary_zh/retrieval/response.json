@@ -5,7 +5,7 @@
   "results": [
     {
       "chunk_id": "chk_0cf89826",
-      "document_id": "doc_e5f6g7h8",
+      "document_id": "doc_88a277cf",
       "score": 0.91,
       "rank": 1,
       "content": "### 2.1 认证错误\n\n多人同时认证失败基本指向**服务端鉴权链路**，不是单端问题。先做服务端复核：\n\n1. **看客户端日志**：`grep -E \"auth|fail\" vpn-client.log`，确认是 `peer authentication failed` 还是 `local auth failed`\n2. **服务端健康**：RADIUS（端口 1812/1813）/ AD LDAP（389/636）是否在线；近期是否有变更窗口\n3. **管理控制台试登录**：用一个测试账号在 VPN 网关后台登录，复现是否同样失败\n4. **时间同步**：证书校验对时间敏感；服务端 `chronyc tracking` / 客户端 `ntpq -p`，时差 > 30s 即报错\n\n升级到 L2 的判断：多人受影响 + 服务端日志无认证记录 → L2 网络组。\n",
@@ -22,7 +22,7 @@
     },
     {
       "chunk_id": "chk_ea5a0261",
-      "document_id": "doc_e5f6g7h8",
+      "document_id": "doc_88a277cf",
       "score": 0.74,
       "rank": 2,
       "content": "# VPN 故障排查 SOP\n\n> 适用范围：公司 IPSec / IKEv2 VPN；不覆盖 SSL VPN（见 doc_aaaaaaaa）\n\n## 1. 现象分类\n\n按客户端报错与日志关键字快速归位：\n\n| 现象 | 关键词 | 优先怀疑方向 |\n|---|---|---|\n| 认证失败 | `authentication failed`、`peer auth failed`、`IKE_SA_INIT failed` | 认证后端 / 用户密码 / 时间不同步 |\n| 隧道建不起 | `IKE timeout`、`UDP 500/4500 dropped` | 网络层 / 防火墙 / NAT |\n| 连上但极慢 | 延迟 > 200ms、吞吐 < 1Mbps | MTU / 拥塞 / 服务端负载 |\n",
@@ -39,7 +39,7 @@
     },
     {
       "chunk_id": "chk_0f674194",
-      "document_id": "doc_e5f6g7h8",
+      "document_id": "doc_88a277cf",
       "score": 0.42,
       "rank": 3,
       "content": "### 2.2 隧道建立失败\n\n1. 端到端连通：`nc -vzu <vpn_gw> 500` / `nc -vzu <vpn_gw> 4500`\n2. ESP（IP 协议号 50）是否被 NAT 设备丢弃：必须支持 NAT-T\n3. MTU：`ping -M do -s 1400 <vpn_gw>`，逐步降到 1200 看是否变通\n\n## 3. 升级策略\n\n> - 多人受影响 + 服务端日志无认证记录 → L2 网络组\n> - 单人长期无法连接 + 客户端可重装 → L2 终端组\n> - 涉及证书过期 / CA 变更 → L3 安全组\n\n## 4. 相关链接\n\n- doc_aaaaaaaa：SSL VPN 排查 SOP\n- doc_bbbbbbbb：网络变更窗口 SOP\n",

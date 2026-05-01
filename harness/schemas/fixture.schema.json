@@ -23,7 +23,7 @@
     "content_hash": {
       "type": "string",
       "pattern": "^sha256:[a-f0-9]{64}$",
-      "description": "sha256 of the canonical JSON of `input` field"
+      "description": "sha256 of the fixture's serialized input file as written on disk (UTF-8 byte-stream of the JSON file containing the `input` field). Reproducible by `sha256sum <fixture-input-file>`. Avoids canonical-JSON serialization fragility."
     },
     "title": { "type": "string" },
     "description": { "type": "string" },
