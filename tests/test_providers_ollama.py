@@ -397,7 +397,7 @@ class TestIntegration:
     def test_chat_smoke(self, provider: OllamaProvider) -> None:
         resp = provider.chat(
             [Message(role="user", content="reply with literally just the word: pong")],
-            model="qwen2.5:14b-instruct",
+            model="gemma4:e4b",
             params=SamplingParams(temperature=0, max_tokens=8),
         )
         assert isinstance(resp, ChatResponse)
@@ -405,7 +405,8 @@ class TestIntegration:
         assert resp.content  # non-empty
 
     def test_embed_smoke(self, provider: OllamaProvider) -> None:
-        out = provider.embed(["hello world"], model="nomic-embed-text")
+        out = provider.embed(["hello world"], model="nomic-embed-text-v2-moe")
         assert len(out) == 1
-        assert len(out[0]) == 768  # nomic-embed-text dimensionality
+        # nomic-embed-text-v2-moe defaults to 768-dim (Matryoshka; truncatable).
+        assert len(out[0]) == 768
         assert all(isinstance(x, float) for x in out[0])

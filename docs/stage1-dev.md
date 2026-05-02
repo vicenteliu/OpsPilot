@@ -55,6 +55,72 @@ opspilot validate examples/scn_ticket_summary_zh/
 opspilot validate examples/itr_ticket_summary_zh_v1_3_0/iteration/record.yaml
 ```
 
+## Ollama setup (local vs docker)
+
+PR-3+ talks to a real Ollama daemon. The Makefile supports two modes via
+`OLLAMA_MODE`:
+
+| Mode | When to use | GPU on macOS | Setup |
+|------|-------------|--------------|-------|
+| `local` (default) | macOS dev box; host already has `ollama` | Metal (full speed) | `brew install ollama && brew services start ollama` |
+| `docker` | CI runners; Linux servers; team-onboarding repro | NVIDIA via `--gpus all`; **no Metal** in Docker Desktop | `make OLLAMA_MODE=docker ollama-up` |
+
+**macOS rule of thumb**: stay in `local` mode. Docker Desktop containers run
+inside a Linux VM and cannot reach Metal Performance Shaders, so an Ollama
+container will fall back to CPU and run 5–10× slower than the host binary.
+
+### Local mode (macOS dev default)
+
+```bash
+# 1. Confirm daemon is up (default port 11434)
+make ollama-up                              # OLLAMA_MODE=local
+# Expected: "Local Ollama running on :11434"
+
+# 2. Pull defaults — override names if you have different tags installed
+make ollama-pull                            # uses OLLAMA_CHAT_MODEL / _EMBED_MODEL
+# Or pin per-invocation:
+make OLLAMA_CHAT_MODEL=qwen2.5:14b-instruct ollama-pull
+
+# 3. Run the integration smoke tests
+make test-ollama
+```
+
+`make ollama-down` and `make ollama-logs` in local mode are informational only —
+host daemons are managed by `brew services` / `launchctl`, not Make.
+
+### Docker mode (CI / Linux servers)
+
+```bash
+make OLLAMA_MODE=docker ollama-up           # docker compose up -d ollama
+make OLLAMA_MODE=docker ollama-pull         # pulls inside the container
+make OLLAMA_MODE=docker test-ollama
+make OLLAMA_MODE=docker ollama-down         # tear down
+```
+
+Persist the choice in your shell:
+
+```bash
+export OLLAMA_MODE=docker                   # for the rest of this session
+```
+
+Or in CI workflow YAML:
+
+```yaml
+env:
+  OLLAMA_MODE: docker
+```
+
+### Default models
+
+| Var | Default | Override example |
+|-----|---------|------------------|
+| `OLLAMA_CHAT_MODEL`  | `gemma4:e4b`              | `make OLLAMA_CHAT_MODEL=qwen2.5:14b-instruct ollama-pull` |
+| `OLLAMA_EMBED_MODEL` | `nomic-embed-text-v2-moe` | `make OLLAMA_EMBED_MODEL=nomic-embed-text ollama-pull` |
+
+Whatever you choose, pin the same `model_ref` (e.g. `ollama-local/<name>@<date>`)
+in `examples/` and `harness/templates/eval-config.yaml` so test fixtures stay
+reproducible.
+
 ## File map (PR-1)
 
 ```
