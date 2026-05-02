@@ -337,7 +337,13 @@ def _do_prefetch(
     if not query_raw:
         # Fall back to the rendered ticket so we always have *something*.
         query_raw = _format_ticket(ticket)
-    query = redactor.redact(query_raw).text
+    # Redact PII first, then strip the [REDACTED:...] placeholders
+    # themselves: they're noise tokens that crater FTS5 implicit-AND
+    # recall (e.g. "REDACTED hostname phone 33a7d3da" can never co-occur
+    # in a real KB chunk). Vector retrieval also benefits from cleaner
+    # input. Loop strips nested placeholders like
+    # ``[REDACTED:hostname:[REDACTED:phone:...]]``.
+    query = _strip_redaction_placeholders(redactor.redact(query_raw).text)
 
     top_k = pb.retrieval.prefetch.top_k or pb.limits.max_kb_search_results
     args = {"query": query, "top_k": top_k}
@@ -364,6 +370,25 @@ def _do_prefetch(
     )
 
     return pb.system_prompt + "\n\n" + _render_prefetch_addendum(payload)
+
+
+_REDACTION_PLACEHOLDER_RE = re.compile(r"\[REDACTED:[^\[\]]*\]")
+
+
+def _strip_redaction_placeholders(text: str) -> str:
+    """Remove ``[REDACTED:...]`` placeholders from a query string.
+
+    Called after the redactor on prefetch queries so that placeholder
+    tokens (REDACTED / hostname / phone / hex ids) don't pollute the
+    FTS5 implicit-AND search. Iterates until stable to handle nested
+    placeholders like ``[REDACTED:hostname:[REDACTED:phone:abc123]]``.
+    """
+    prev: str | None = None
+    cur = text
+    while cur != prev:
+        prev = cur
+        cur = _REDACTION_PLACEHOLDER_RE.sub(" ", cur)
+    return re.sub(r"\s+", " ", cur).strip()
 
 
 def _render_prefetch_addendum(payload: dict[str, Any]) -> str:

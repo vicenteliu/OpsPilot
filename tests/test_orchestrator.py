@@ -685,3 +685,17 @@ def test_prefetch_query_fallback_when_fields_missing(
     tool_calls = [r for r in rows if r["type"] == "tool_call"]
     assert len(tool_calls) == 1
     assert tool_calls[0]["args"]["query"]  # non-empty
+
+
+def test_strip_redaction_placeholders_removes_nested() -> None:
+    """The prefetch query must not carry [REDACTED:...] placeholder noise
+    into FTS5 — those tokens crater implicit-AND recall (PR-8.5 hotfix)."""
+    from opspilot.orchestrator.ticket_summary import _strip_redaction_placeholders
+
+    assert _strip_redaction_placeholders("[REDACTED:role:11111111]") == ""
+    assert (
+        _strip_redaction_placeholders("VPN [REDACTED:hostname:[REDACTED:phone:33a7d3da]] 重启过")
+        == "VPN 重启过"
+    )
+    assert _strip_redaction_placeholders("a [REDACTED:x:1] b [REDACTED:y:2] c") == "a b c"
+    assert _strip_redaction_placeholders("plain text") == "plain text"
