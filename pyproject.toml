@@ -29,6 +29,7 @@ dependencies = [
     "jsonschema >= 4.22",
     "python-ulid >= 2.2",
     "rich >= 13",
+    "httpx >= 0.27",   # PR-3: Ollama HTTP client
 ]
 
 [project.optional-dependencies]
