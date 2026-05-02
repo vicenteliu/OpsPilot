@@ -687,6 +687,49 @@ def test_prefetch_query_fallback_when_fields_missing(
     assert tool_calls[0]["args"]["query"]  # non-empty
 
 
+def test_correct_citation_chunk_ids_fixes_typo() -> None:
+    """gemma4:e4b drops a hex digit when copying chunk_ids out of the
+    prefetch addendum (observed on host: chk_0cf89826 → chk_0cf8926).
+    PR-8.5 hotfix-5 fuzzy-corrects within edit distance 1."""
+    from opspilot.orchestrator.ticket_summary import _correct_citation_chunk_ids
+
+    valid = {"chk_0cf89826", "chk_ea5a0261"}
+    summary = {
+        "citations": [
+            {"id": "kb-1", "chunk_id": "chk_0cf8926"},  # 1 digit dropped
+            {"id": "kb-2", "chunk_id": "chk_ea5a0261"},  # already correct
+        ]
+    }
+    _correct_citation_chunk_ids(summary, valid)
+    assert summary["citations"][0]["chunk_id"] == "chk_0cf89826"
+    assert summary["citations"][1]["chunk_id"] == "chk_ea5a0261"
+
+
+def test_correct_citation_chunk_ids_does_not_overreach() -> None:
+    """Edit distance > 1 must NOT auto-correct — that masks real bugs."""
+    from opspilot.orchestrator.ticket_summary import _correct_citation_chunk_ids
+
+    valid = {"chk_0cf89826"}
+    summary = {"citations": [{"chunk_id": "chk_999999"}]}  # totally different
+    _correct_citation_chunk_ids(summary, valid)
+    assert summary["citations"][0]["chunk_id"] == "chk_999999"
+
+
+def test_correct_citation_chunk_ids_handles_malformed_input() -> None:
+    """Robust against missing/non-string citations fields."""
+    from opspilot.orchestrator.ticket_summary import _correct_citation_chunk_ids
+
+    valid = {"chk_x"}
+    # No citations key
+    s1: dict = {"summary": "x"}
+    _correct_citation_chunk_ids(s1, valid)
+    assert s1 == {"summary": "x"}
+    # citations is not a list
+    s2 = {"citations": "oops"}
+    _correct_citation_chunk_ids(s2, valid)
+    assert s2 == {"citations": "oops"}
+
+
 def test_parse_summary_json_balances_dropped_outer_brace() -> None:
     """gemma4:e4b reliably forgets the outermost `}` after closing all
     nested arrays/objects. _try_balance_brackets must salvage it.

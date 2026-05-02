@@ -112,8 +112,9 @@ def run_ticket_summary(
             effective_system_prompt = pb.system_prompt
             effective_tools: list[ToolDef] = [tool_def]
             effective_max_turns = pb.limits.max_turns
+            prefetch_chunk_ids: set[str] = set()
             if pb.retrieval.mode == "prefetch":
-                effective_system_prompt = _do_prefetch(
+                effective_system_prompt, prefetch_chunk_ids = _do_prefetch(
                     pb=pb,
                     ticket=ticket,
                     redactor=redactor,
@@ -246,6 +247,13 @@ def run_ticket_summary(
                     )
                     break
 
+                # Weak-model salvage: if prefetch is on and the model wrote
+                # a citation chunk_id that is 1 character off from a real
+                # retrieved chunk_id (e.g. dropped a digit), correct it
+                # before schema validation. Bounded by edit-distance ≤ 1.
+                if prefetch_chunk_ids:
+                    _correct_citation_chunk_ids(summary, prefetch_chunk_ids)
+
                 try:
                     schema_validate(pb.output_schema, summary)
                     schema_valid = True
@@ -317,12 +325,17 @@ def _do_prefetch(
     redactor: Redactor,
     tool_handler: Callable[[dict[str, Any]], dict[str, Any]],
     tw: Any,  # TraceWriter — typed Any to avoid import cycle
-) -> str:
-    """Run kb_search once before the chat loop; return augmented system prompt.
+) -> tuple[str, set[str]]:
+    """Run kb_search once before the chat loop; return augmented system prompt + retrieved chunk_ids.
 
     Side effects:
       * writes one ``tool_call`` and one ``tool_result`` event to ``tw``
         (actor=``system`` / ``tool:kb`` respectively)
+
+    Returns:
+        ``(augmented_system_prompt, retrieved_chunk_ids)`` — the chunk_id
+        set is used downstream to fuzzy-correct typos in
+        ``artifact.citations[].chunk_id`` before schema validation.
 
     The query is built from ``pb.retrieval.prefetch.query_fields`` and run
     through the redactor so the trace never carries pre-redaction PII.
@@ -369,7 +382,11 @@ def _do_prefetch(
         )
     )
 
-    return pb.system_prompt + "\n\n" + _render_prefetch_addendum(payload)
+    addendum = _render_prefetch_addendum(payload)
+    chunk_ids: set[str] = {
+        str(h["chunk_id"]) for h in (payload.get("hits") or []) if h.get("chunk_id")
+    }
+    return pb.system_prompt + "\n\n" + addendum, chunk_ids
 
 
 _REDACTION_PLACEHOLDER_RE = re.compile(r"\[REDACTED:[^\[\]]*\]")
@@ -394,9 +411,9 @@ def _strip_redaction_placeholders(text: str) -> str:
 def _render_prefetch_addendum(payload: dict[str, Any]) -> str:
     """Format kb_search hits as a Markdown block to append to system_prompt.
 
-    Uses one ``### chunk_id: chk_xxx`` heading per hit (D4) so the model
-    sees both the citation key and the chunk content side-by-side, and
-    is more likely to copy the chunk_id verbatim into ``citations[]``.
+    Uses one ``### chunk #N: \\`chk_xxx\\``` heading per hit (D4) so the
+    model sees both the citation key (in inline code, less likely to
+    typo when copying) and the chunk content side-by-side.
     """
     hits = payload.get("hits") or []
     if not hits:
@@ -405,12 +422,14 @@ def _render_prefetch_addendum(payload: dict[str, Any]) -> str:
             "（本次 kb_search 未返回结果；请基于工单事实回答，并在 citations 字段写空数组）"
         )
     parts: list[str] = ["## 已预检索 KB / Prefetched KB chunks", ""]
-    for h in hits:
+    for i, h in enumerate(hits, start=1):
         cid = h.get("chunk_id", "?")
         cit = h.get("citation") or {}
         src = cit.get("source_path") or "?"
         ls, le = cit.get("line_start"), cit.get("line_end")
-        parts.append(f"### chunk_id: {cid}")
+        # Inline-code wrap on the chunk_id makes weak models treat it as
+        # an opaque token and copy it character-for-character.
+        parts.append(f"### Chunk {i}: `{cid}`")
         parts.append(f"- source_path: `{src}`")
         if ls is not None and le is not None:
             parts.append(f"- lines: {ls}-{le}")
@@ -420,10 +439,74 @@ def _render_prefetch_addendum(payload: dict[str, Any]) -> str:
         parts.append(str(h.get("content") or "").strip())
         parts.append("")
     parts.append(
-        "请直接基于以上 chunks 引用，**不要调用任何工具**；"
-        "在 `citations[]` 中只能使用上面出现过的真实 `chunk_id`。"
+        "请直接基于以上 chunks 引用，**不要调用任何工具**。"
+        "在 `citations[]` 中的 `chunk_id` **必须逐字符精确复制**上面 "
+        "Chunk N 标题里反引号包裹的字符串，不要省略或修改任何字符。"
     )
     return "\n".join(parts)
+
+
+def _correct_citation_chunk_ids(
+    summary: dict[str, Any],
+    valid_chunk_ids: set[str],
+) -> None:
+    """Fix typo'd chunk_id values in artifact citations (in-place).
+
+    Weak models (gemma4:e4b) sometimes drop a hex digit when copying a
+    chunk_id (observed: ``chk_0cf89826`` → ``chk_0cf8926``). For each
+    citation whose chunk_id isn't in ``valid_chunk_ids``, find the
+    nearest entry by edit distance ≤ 1 and replace it. If no candidate
+    is within 1 edit, leave the value untouched and let schema_check
+    surface the failure.
+    """
+    citations = summary.get("citations")
+    if not isinstance(citations, list):
+        return
+    for c in citations:
+        if not isinstance(c, dict):
+            continue
+        cid = c.get("chunk_id")
+        if not isinstance(cid, str) or cid in valid_chunk_ids:
+            continue
+        match = _nearest_within_edit_distance(cid, valid_chunk_ids, max_distance=1)
+        if match is not None:
+            c["chunk_id"] = match
+
+
+def _nearest_within_edit_distance(
+    needle: str, candidates: set[str], *, max_distance: int = 1
+) -> str | None:
+    """Return the candidate within ``max_distance`` Levenshtein edits, else None.
+
+    Tiny implementation since we expect ≤ 5 candidates and only call
+    when the needle missed an exact match. If multiple candidates tie,
+    returns the first one found — which is safe because the weak-model
+    bug is single-char drops, not arbitrary corruption.
+    """
+    for c in candidates:
+        if abs(len(c) - len(needle)) > max_distance:
+            continue
+        if _edit_distance_at_most(needle, c, max_distance):
+            return c
+    return None
+
+
+def _edit_distance_at_most(a: str, b: str, k: int) -> bool:
+    """True iff Levenshtein(a, b) ≤ k. Bounded DP, O(len(a)·len(b))."""
+    if a == b:
+        return True
+    la, lb = len(a), len(b)
+    if abs(la - lb) > k:
+        return False
+    # Standard DP — OK because strings here are ≤ 16 chars (chunk_id).
+    prev = list(range(lb + 1))
+    for i in range(1, la + 1):
+        cur = [i] + [0] * lb
+        for j in range(1, lb + 1):
+            cost = 0 if a[i - 1] == b[j - 1] else 1
+            cur[j] = min(cur[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost)
+        prev = cur
+    return prev[lb] <= k
 
 
 def _load_ticket(path: Any) -> dict[str, Any]:
