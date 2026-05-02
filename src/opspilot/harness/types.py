@@ -187,13 +187,14 @@ class EvalResult:
     output: dict[str, Any] = field(default_factory=dict)
     flags: list[str] = field(default_factory=list)
     latency_ms: dict[str, Any] = field(default_factory=dict)
+    extensions: dict[str, Any] = field(default_factory=dict)
 
     @property
     def weighted_score(self) -> float:
         return float(self.scores.get("weighted", 0.0))
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        d: dict[str, Any] = {
             "run_id": self.run_id,
             "fixture_id": self.fixture_id,
             "fixture_version": self.fixture_version,
@@ -207,6 +208,9 @@ class EvalResult:
             "flags": list(self.flags),
             "latency_ms": dict(self.latency_ms),
         }
+        if self.extensions:
+            d["extensions"] = dict(self.extensions)
+        return d
 
 
 # ── Loaders ─────────────────────────────────────────────────────────

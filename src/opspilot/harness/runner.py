@@ -119,11 +119,19 @@ def run_harness(
 
     # ── 7. Build EvalResult ─────────────────────────────────────────
     duration_ms = int((time.perf_counter() - started_perf) * 1000)
+    # eval-result.schema.json constrains `flags` to a fixed enum
+    # (nondeterministic / redaction_warning / judge_low_confidence /
+    # manual_review_pending / cost_gate_failed). Orchestrator-level
+    # diagnostics surface in extensions instead so they don't violate
+    # the schema for an otherwise-valid (failing) run.
     flags: list[str] = []
-    if not run_result.schema_valid:
-        flags.append("orchestrator_schema_invalid")
-    if run_result.error:
-        flags.append("orchestrator_error")
+    extensions: dict[str, Any] = {}
+    if not run_result.schema_valid or run_result.error:
+        flags.append("manual_review_pending")
+        extensions["orchestrator"] = {
+            "schema_valid": run_result.schema_valid,
+            "error": run_result.error,
+        }
 
     return EvalResult(
         run_id=run_id,
@@ -142,6 +150,7 @@ def run_harness(
         passed=passed,
         flags=flags,
         latency_ms={"total": duration_ms},
+        extensions=extensions,
     )
 
 
