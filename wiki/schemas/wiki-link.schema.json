@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opspilot.dev/schemas/wiki-link.schema.json",
+  "title": "Wiki Cross-link",
+  "description": "Structured record of one [[slug]] link in a wiki page",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["link_id", "from_page", "to_page", "relation", "created_at"],
+  "properties": {
+    "link_id": {
+      "type": "string",
+      "pattern": "^wlk_[a-f0-9]{8}$"
+    },
+    "from_page": { "type": "string", "pattern": "^wpg_[a-f0-9]{8}$" },
+    "to_page": { "type": "string", "pattern": "^wpg_[a-f0-9]{8}$" },
+    "from_slug": { "type": "string" },
+    "to_slug": { "type": "string" },
+    "relation": {
+      "type": "string",
+      "enum": [
+        "describes",
+        "contradicts",
+        "extends",
+        "supersedes",
+        "depends_on",
+        "compares",
+        "instance_of",
+        "see_also"
+      ]
+    },
+    "context_quote": {
+      "type": ["string", "null"],
+      "maxLength": 200,
+      "description": "Short redacted excerpt around the link in source page (≤200 chars)"
+    },
+    "from_section": {
+      "type": ["string", "null"],
+      "description": "Heading path of the section in from_page that contains the link"
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "created_by": {
+      "type": "string",
+      "description": "Skill ref or user id that emitted this link"
+    },
+    "broken": {
+      "type": "boolean",
+      "default": false,
+      "description": "Set true by lint when to_page no longer exists"
+    },
+    "extensions": { "type": "object" }
+  }
+}

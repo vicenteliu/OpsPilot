@@ -117,7 +117,12 @@ Pick one of the paths:
 │   ├── ITERATION.md        # 迭代机制详细规范（lineage / variants / feedback / decision）
 │   ├── catalogs.md         # 已知 skill 来源 + 跨平台字段映射 + 推荐 MCP 清单
 │   ├── schemas/            # skill / registry / tool-binding / mcp-config / distillation / iteration / variant / feedback
-│   └── templates/          # SKILL + 蒸馏 4 类 + iteration recipe/policy + feedback collector + lifecycle policy
+│   └── templates/          # SKILL + 蒸馏 4 类 + iteration recipe/policy + feedback collector + lifecycle + wiki-maintainer
+├── wiki/                   # LLM 持续维护的 synthesis 层 | LLM-maintained compounding wiki
+│   ├── SPEC.md             # page kinds / ingest / query→page / lint contracts
+│   ├── CONVENTIONS.md      # 编辑约定（schema 等价物）
+│   ├── schemas/            # wiki-page / wiki-link / lint-issue
+│   └── templates/          # 5 类 page + index/log + ingest/query→page/lint recipes
 ├── memory/                 # 记忆与本地知识库 | Memory & local KB / RAG
 │   ├── SPEC.md             # 三层 memory + RAG pipeline + 检索/重排契约
 │   ├── schemas/            # memory-record / kb-document / kb-chunk / retrieval-query
@@ -173,6 +178,7 @@ playbooks/  ──▶  Session(create) ◀──────────┘
 - **providers/**：可插拔 LLM 提供方（Ollama / OpenRouter / OpenAI / Anthropic / Gemini / Grok）；统一鉴权、能力声明、成本与降级
 - **skills/**：技能注册 + **制作 + 蒸馏 + 迭代 + 工具/MCP 绑定**；从 traces / 文档 / 他人 skill / 跨平台 skill 蒸馏新技能；通过 lineage + variants + feedback signals 驱动持续演进
 - **memory/**：三层记忆——短期（trace 内摘要）/ 中期（SQLite + markdown）/ 长期（LanceDB + markdown）；RAG 检索与重排
+- **wiki/**：在 memory 长期 KB 之上叠的"LLM 持续维护的 synthesis 层"——5 类 page + cross-link + lint；与 LLM Wiki 模式对齐；query 答案可回写为新 page，形成 compounding insight loop
 - **session/**：AI 任务的"上下文 + 轨迹 + 产物 + 审计"打包单元；合规落地的载体
 - **sandbox/**：AI 提出动作的"先跑给你看，再决定要不要落地"的隔离执行层；默认 deny-all
 - **harness/**：Prompt/Playbook 的"单元测试 + 回归门"；模型升级前后必跑

@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opspilot.dev/schemas/lint-issue.schema.json",
+  "title": "Wiki Lint Issue",
+  "description": "Single lint finding emitted by a wiki lint pass; can be converted into a feedback_signal of type wiki_lint_issue",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "issue_type",
+    "severity",
+    "detected_at",
+    "scope",
+    "summary",
+    "suggested_action"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^lnt_[a-f0-9]{8}$",
+      "description": "lnt_<sha8> derived from issue_type + scope canonical form"
+    },
+    "issue_type": {
+      "type": "string",
+      "enum": [
+        "contradiction",
+        "stale_claim",
+        "orphan",
+        "missing_concept_page",
+        "missing_cross_ref",
+        "duplicate_concept",
+        "broken_link",
+        "data_gap",
+        "redaction_warning",
+        "schema_invalid"
+      ]
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["low", "medium", "high", "critical"]
+    },
+    "detected_at": { "type": "string", "format": "date-time" },
+    "lint_run_id": {
+      "type": ["string", "null"],
+      "pattern": "^run_lint_[0-9A-HJKMNP-TV-Z]{20}$"
+    },
+
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pages"],
+      "properties": {
+        "pages": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "pattern": "^wpg_[a-f0-9]{8}$" }
+        },
+        "links": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^wlk_[a-f0-9]{8}$" }
+        },
+        "external_refs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Source urls / kb doc_ids relevant to the issue"
+        }
+      }
+    },
+
+    "summary": {
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 500
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["page_id", "quote"],
+        "properties": {
+          "page_id": { "type": "string", "pattern": "^wpg_[a-f0-9]{8}$" },
+          "quote": { "type": "string", "maxLength": 400 },
+          "section": { "type": "string" }
+        }
+      }
+    },
+
+    "suggested_action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "merge_pages",
+            "split_page",
+            "add_cross_ref",
+            "remove_cross_ref",
+            "create_page",
+            "update_claim",
+            "mark_stale",
+            "archive",
+            "redact",
+            "fetch_external"
+          ]
+        },
+        "target_page": { "type": ["string", "null"], "pattern": "^wpg_[a-f0-9]{8}$" },
+        "patch_ref": {
+          "type": ["string", "null"],
+          "description": "Pointer to a draft patch artifact (do NOT auto-apply)"
+        },
+        "rationale": { "type": "string" }
+      }
+    },
+
+    "feedback_signal_id": {
+      "type": ["string", "null"],
+      "pattern": "^fb_[0-9A-HJKMNP-TV-Z]{26}$",
+      "description": "If this lint issue has been promoted to a skills feedback signal, the fb_id"
+    },
+
+    "lifecycle_state": {
+      "type": "string",
+      "enum": ["open", "in_progress", "resolved", "dismissed", "deferred"]
+    },
+    "resolved_at": { "type": ["string", "null"], "format": "date-time" },
+    "resolved_by": { "type": ["string", "null"] },
+    "resolution_notes": { "type": ["string", "null"] },
+
+    "extensions": { "type": "object" }
+  }
+}

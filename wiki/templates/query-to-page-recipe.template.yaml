@@ -1,0 +1,114 @@
+# Query→Page Recipe — 把 session 中的好回答回写为新 wiki page
+# 关键 idea（来自 LLM Wiki）：好答案不应该消失在聊天历史里；让它成为 wiki 的一部分。
+
+version: "1.0.0"
+recipe_kind: "wiki_query_to_page"
+
+# 1. 触发条件（任一即可触发候选）/ Triggers
+triggers:
+
+  # 1a. 强：用户显式接受 + 评分高
+  on_user_accept_with_high_judge_score:
+    enabled: true
+    min_judge_score: 0.85
+    sample_recent_sessions: 100                   # 仅扫描最近 100 个 archived session
+
+  # 1b. 中：综合性问题（多次 kb.search）
+  on_multi_search_session:
+    enabled: true
+    min_kb_searches_in_session: 2
+
+  # 1c. 显式：用户 pin
+  on_user_pin:
+    enabled: true                                 # session.trace 出现 user_action.pin_to_wiki
+
+# 2. 输入抽取 / Input extraction
+extract:
+  from_session: "<session_id>"
+  capture:
+    - "final_response_content"                    # session.trace[type=response, last]
+    - "all_kb_search_results"                     # session.trace[type=tool_result, tool=kb.search]
+    - "all_user_action_edits"                     # 含 payload_diff，体现用户最终改写
+  redaction:
+    enforce: true
+    rules_ref: "session/templates/redaction-rules.template.yaml"
+
+# 3. Page kind 判定 / Kind decision
+kind_decision:
+  rules:
+    # 综合性 thesis（≥2 KB sources 共同支撑一个论点）→ synthesis
+    - when:
+        kb_sources_count: ">= 2"
+        response_has_thesis: true                 # LLM 静态分析 final_response 是否含 thesis 句
+      kind: "synthesis"
+    # 对比类问题（response 含 |...|...| markdown table 或显式 vs/对比 关键词）→ comparison
+    - when:
+        response_has_comparison_table: true
+      kind: "comparison"
+    # 单源摘要（仅 1 KB source；通常 ingest 阶段已生成，少见走这条）→ summary
+    - when:
+        kb_sources_count: 1
+      kind: "summary"
+    # 默认 fallback
+    - default: "synthesis"
+
+# 4. 草稿生成 / Drafting
+drafting:
+  llm:
+    model_ref: "anthropic-claude/claude-sonnet-4-6@2026-04"
+    temperature: 0.2
+  template_ref_by_kind:
+    synthesis: "wiki/templates/synthesis-page.template.md"
+    comparison: "wiki/templates/comparison-page.template.md"
+    summary: "wiki/templates/summary-page.template.md"
+  must_emit:
+    - "frontmatter passing wiki-page.schema.json"
+    - "Sources section listing all referenced KB chunks"
+    - "Cross-links section connecting to existing pages"
+    - "For synthesis: explicit Thesis + Counter-evidence + Gaps sections"
+  budget_usd: 0.20
+
+# 5. Review（更严，因为来源是单 session，未必经多源校验）/ Review
+review:
+  mode: "auto_then_human"                         # 永远要人工审；query→page 不允许 fully-auto
+  auto_checks:
+    - "schema_valid"
+    - "pii_check"
+    - "no_prompt_injection"
+    - "links_resolvable"
+    - "no_existing_page_with_same_thesis"         # 防止 duplicate；如有则建议 update 旧页而非新建
+  duplicate_check:
+    method: "embedding_similarity"
+    threshold: 0.90
+    on_match: "propose_update_instead"            # 命中 → 不新建，建议在原页 update
+  reviewers:
+    default: ["<session.owner>"]
+  approval_timeout_hours: 72
+  on_timeout: "discard"                           # 没人审就丢；不 defer，因为 query 时效性
+
+# 6. 安全约束 / Safety
+safety:
+  block_classifications:
+    - "restricted"                                # restricted 内容不允许从 query 自动生成 page
+  block_when_session_has_redaction_warning: true  # 有 redaction warning 的 session 不允许回写
+  block_when_judge_hard_fail: true                # judge.llm 标 hard_fail 的 session 不允许
+
+# 7. Apply / 应用
+apply:
+  default_lifecycle_state: "draft"                # 始终先入 draft；owner approve 才进 live
+  link_back_to_session: true                      # page 的 derived_from.sources 加 session 引用
+  trigger_kb_re_register: true                    # 入 live 后注册到 KB
+  emit_log_entry: true
+
+# 8. 报告 / Reporting
+reporting:
+  emit_summary_to_session: true
+  metrics:
+    - "page_created"
+    - "would_have_duplicated"                     # 防 duplicate 的检查命中数
+    - "review_outcome"
+
+# 9. 与 skills iteration 的关系 / Relation to iteration
+# query→page 失败（review reject / duplicate / safety block）的事件会作为
+# feedback_signal type=wiki_lint_issue 进入 skills iteration —— 让 wiki-maintainer
+# skill 自我改进。

@@ -1,0 +1,152 @@
+# Wiki Lint Recipe — 周期性 wiki 健康检查
+# 关键约束：lint NEVER applies changes — 只输出 issues + 候选 patch 进 review queue
+
+version: "1.0.0"
+recipe_kind: "wiki_lint"
+
+# 1. 调度 / Schedule
+schedule:
+  cron: "0 0 * * 1"                               # 每周一 00:00
+  on_demand: true                                 # CLI: opspilot wiki lint
+  on_ingest_completed: true                       # 每次 ingest 后跑 incremental lint
+  incremental_window_pages: 30                    # 增量模式只看最近 touched 30 页
+
+# 2. 范围 / Scope
+scope:
+  wiki_root: "wiki/"
+  namespaces:
+    - "opspilot:public-kb"
+  include_kinds: ["entity", "concept", "summary", "comparison", "synthesis"]
+  exclude_meta_pages: false                       # index/log 默认不被 orphan 检测；其他 lint 仍跑
+  exclude_lifecycle_states: ["archived"]          # archived 页不参与 lint
+
+# 3. 检查项 / Checks
+checks:
+
+  # 3.1 Contradiction（高严重度）
+  - id: "contradiction"
+    enabled: true
+    severity_default: "high"
+    method: "llm_pairwise"                        # 对每对相关 page 跑 LLM 一致性检查
+    llm:
+      model_ref: "anthropic-claude/claude-haiku-4-5@2025-10"   # judge 模型，必锁版本
+      temperature: 0.0
+    pair_selection:
+      strategy: "embedding_similarity_top_pairs"
+      top_pairs: 50                               # 全网相似度最高的 50 对优先扫
+      min_similarity: 0.70
+    output_relation_on_match: "contradicts"       # 命中 → 自动建议 link relation=contradicts
+
+  # 3.2 Stale claim
+  - id: "stale_claim"
+    enabled: true
+    severity_default: "high"
+    method: "llm_against_recent_sources"
+    recent_window_days: 30
+    llm:
+      model_ref: "anthropic-claude/claude-haiku-4-5@2025-10"
+      temperature: 0.0
+
+  # 3.3 Orphan
+  - id: "orphan"
+    enabled: true
+    severity_default: "medium"
+    method: "graph_inbound_count"
+    threshold: 0                                  # inbound_link_count == 0 即报
+    exempt_pages: ["index", "log"]                # meta 页不参与
+    exempt_kinds_when_recently_created: []        # 新 page 也参与；要求建出立即互链
+
+  # 3.4 Missing concept page
+  - id: "missing_concept_page"
+    enabled: true
+    severity_default: "medium"
+    method: "term_frequency_without_page"
+    min_mention_pages: 3                          # 至少 3 页提及但无独立 page → 报
+    nlp:
+      strategy: "named_entity_recognition + manual_term_list"
+      term_list_ref: "wiki/_lint/terms-watchlist.yaml"
+
+  # 3.5 Missing cross-ref
+  - id: "missing_cross_ref"
+    enabled: true
+    severity_default: "low"
+    method: "embedding_similarity_no_link"
+    min_similarity: 0.85                          # 强相关但没互链 → 报
+
+  # 3.6 Duplicate concept
+  - id: "duplicate_concept"
+    enabled: true
+    severity_default: "high"
+    method: "embedding_similarity_high"
+    min_similarity: 0.92                          # 内容高度重叠 → 报合并候选
+
+  # 3.7 Broken link
+  - id: "broken_link"
+    enabled: true
+    severity_default: "medium"
+    method: "slug_resolution"
+
+  # 3.8 Data gap（来自 unanswered queries）
+  - id: "data_gap"
+    enabled: true
+    severity_default: "medium"
+    method: "trace_failure_pattern"
+    sources:
+      - "session.trace where kb.search returned 0 hits"
+      - "session.user_action where action == 'reject' && reason includes 'insufficient context'"
+    min_occurrences: 3
+
+  # 3.9 Redaction warning
+  - id: "redaction_warning"
+    enabled: true
+    severity_default: "critical"                  # PII 残留是合规事件
+    method: "rule_based_pii_scan"
+    rules_ref: "session/templates/redaction-rules.template.yaml"
+
+  # 3.10 Schema invalid
+  - id: "schema_invalid"
+    enabled: true
+    severity_default: "high"
+    method: "jsonschema_validate"
+    schema_ref: "wiki/schemas/wiki-page.schema.json"
+
+# 4. 输出 / Output
+output:
+  issues_path: "wiki/_lint/issues.jsonl"          # 每次 lint append；ID 唯一
+  patches_dir: "wiki/_lint/patches/"              # 候选 patch 文件（不 apply）
+  report_md: "wiki/_lint/report-<run_id>.md"      # 人类可读报告
+  schema_ref: "wiki/schemas/lint-issue.schema.json"
+
+# 5. 信号注入 / Feedback signal injection
+feedback_signal:
+  enabled: true
+  signal_type: "wiki_lint_issue"                  # 与 skills/schemas/feedback-signal.schema.json 对齐
+  weight_by_severity:
+    low: 0.5
+    medium: 1.5
+    high: 3.0
+    critical: 5.0
+  target_skill: "wiki-maintainer@<latest>"        # 路由到哪个 skill 的 iteration
+  redaction:
+    enforce: true                                 # signals 必经脱敏（复用 session 规则）
+
+# 6. 强约束 / Hard requirements
+hard_requirements:
+  - "Lint NEVER applies changes; only emits issues + candidate patches"
+  - "Critical issues (redaction_warning) must page owner immediately"
+  - "Issue id is content-addressed (lnt_<sha8> derived from issue_type + scope)"
+  - "Resolved/dismissed issues stay in record (append-only); never delete"
+
+# 7. 预算 / Budget
+budget:
+  total_usd_per_run: 1.50
+  max_pages_scanned_per_run: 500
+
+# 8. 可观测 / Observability
+metrics:
+  - "issues_emitted_by_type"
+  - "issues_emitted_by_severity"
+  - "pages_scanned"
+  - "cost_usd"
+  - "latency_ms"
+  - "feedback_signals_created"

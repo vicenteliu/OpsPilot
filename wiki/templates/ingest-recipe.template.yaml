@@ -1,0 +1,117 @@
+# Wiki Ingest Recipe — 把一份 raw source 摄入到 wiki 的流程
+# 上层调用：先在 memory.ingestion 把 source 入 KB 拿到 doc_id，再触发本 recipe
+
+version: "1.0.0"
+recipe_kind: "wiki_ingest"
+
+# 1. 引用：本次 ingest 关联的 wiki 实例
+wiki_root: "wiki/"
+namespace: "opspilot:public-kb"
+
+# 2. 输入源 / Input
+source:
+  doc_id: "doc_88a277cf"                          # 必须已在 memory KB 中
+  language: "zh-CN"
+  classification: "internal"
+  ingested_to_kb_at: "2026-05-01T10:00:00Z"
+
+# 3. 上下文检索（先看 wiki 里已有什么）/ Context retrieval
+context_retrieval:
+  # 用 source 的 chunks 作为 query，命中既有 wiki page
+  mode: "hybrid"
+  scopes:
+    - "opspilot:public-kb"
+  filters:
+    "extensions.wiki.page_kind":
+      in: ["entity", "concept", "synthesis"]      # 只关心可能被影响的页
+  top_k: 12
+  rerank:
+    enabled: true
+    type: "cross_encoder"
+    model_ref: "ollama-local/bge-reranker-v2-m3@2024-08"
+
+# 4. LLM 提议阶段 / Proposal
+proposal:
+  llm:
+    model_ref: "anthropic-claude/claude-sonnet-4-6@2026-04"
+    temperature: 0.2
+  budget_usd: 0.30
+  max_pages_touched: 15                           # 与 LLM Wiki 原 idea 对齐：单源 ingest 触发 ≤15 页
+  must_consider:
+    - "Are there contradictions with existing claims? → emit relation=contradicts links + lint signal"
+    - "Are new entities/concepts introduced? → propose new pages"
+    - "Are there ≥2 sources now supporting a thesis? → propose synthesis page"
+    - "What page summary fits this source best? → propose 1 summary page"
+  outputs_required:
+    - "page_patches.json"                         # 每页的 unified diff
+    - "new_pages/*.md"                            # 候选新 page
+    - "lint_candidates.jsonl"                     # 发现的潜在 lint issue（不立即写）
+
+# 5. 静态校验 / Static checks
+static_checks:
+  - "schema_valid"                                # 全部 frontmatter 通过 wiki-page.schema.json
+  - "pii_check"                                   # body + frontmatter 通过 redaction
+  - "no_prompt_injection"                         # static patterns 同 skills/lifecycle-policy
+  - "no_orphan_creation"                          # 新 page 必须至少有 1 inbound 候选 link
+  - "links_resolvable"                            # 所有 [[<slug>]] 在 wiki 中能找到（或本次同时创建）
+  - "redaction_rules_version_match"               # 全 ≥ 当前规则版本
+
+# 6. Review 模式 / Review mode（按 classification + source trust 决定）
+review:
+  matrix:
+    - when:
+        classification: "public"
+        source_trust: ["self_authored", "imported_trusted"]
+      mode: "auto"
+    - when:
+        classification: "internal"
+        source_trust: ["self_authored", "imported_trusted", "distilled"]
+      mode: "auto_then_human"                     # 自动检查通过即写；人工事后审
+    - when:
+        classification_in: ["confidential", "restricted"]
+      mode: "human"                               # 强制人工 approve
+    - when:
+        source_trust: ["imported_community", "imported_unknown"]
+      mode: "human"
+  reviewers:
+    default: ["vicente@example.com"]
+  approval_timeout_hours: 48
+  on_timeout: "defer"                             # defer | reject
+
+# 7. Apply 阶段 / Apply
+apply:
+  transactional: true                             # 任何子任务失败 → 全回滚
+  steps:
+    - "write_page_files"                          # 先写 page md 文件
+    - "compute_page_ids"                          # 计算 wpg_<sha8>
+    - "rebuild_outbound_links"                    # 解析 [[<slug>]] 填 outbound_links
+    - "update_index_md"
+    - "append_log_md"
+    - "register_back_to_kb"                       # 见 §8
+
+# 8. 回灌到 memory KB / Bi-directional with KB
+register_back_to_kb:
+  enabled: true                                   # wiki page 自动注册为 kind=wiki_synthesis 的 KB doc
+  conditions:
+    only_if_lifecycle_state: "live"               # draft / reviewed 不入 KB
+    skip_classifications: ["restricted"]          # restricted 不入向量库
+  doc_kind: "wiki_synthesis"
+  embedding_model: "ollama-local/nomic-embed-text@2024-02"
+  chunk_strategy: "headings_then_size"
+
+# 9. 报告 / Reporting
+reporting:
+  emit_summary_to_session: true                   # session.trace 中加一条 system event "wiki_ingest_done"
+  archive_run_to: "case-studies/wiki-ingests/"
+  metrics:
+    - "pages_created"
+    - "pages_updated"
+    - "lint_candidates_emitted"
+    - "cost_usd"
+    - "latency_ms"
+
+# 10. 失败处理 / Failure
+on_failure:
+  rollback_files: true                            # 已写 page 文件全部回滚
+  notify_owner: true
+  emit_feedback_signal: true                      # 失败本身也作为 wiki_lint_issue 信号
