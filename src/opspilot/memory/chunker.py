@@ -117,14 +117,14 @@ def _slug(text: str) -> str:
 class _Block:
     """One section of the body: a heading + all lines until the next heading."""
 
-    line_start: int        # 1-based, in original text
-    line_end: int          # 1-based, inclusive
-    char_start: int        # 0-based, in original text
-    char_end: int          # 0-based, exclusive in original text
-    content: str           # the section text (heading line included)
-    heading_level: int     # 0 if no heading (preamble); 1..6 otherwise
-    heading_text: str      # "" if no heading
-    has_content: bool      # at least one non-blank, non-heading line
+    line_start: int  # 1-based, in original text
+    line_end: int  # 1-based, inclusive
+    char_start: int  # 0-based, in original text
+    char_end: int  # 0-based, exclusive in original text
+    content: str  # the section text (heading line included)
+    heading_level: int  # 0 if no heading (preamble); 1..6 otherwise
+    heading_text: str  # "" if no heading
+    has_content: bool  # at least one non-blank, non-heading line
     heading_path: tuple[str, ...] = field(default_factory=tuple)
 
 
@@ -293,9 +293,7 @@ def chunk_markdown(text: str, *, config: ChunkConfig | None = None) -> list[Chun
                 if t not in seen:
                     unique_tails.append(t)
                     seen.add(t)
-            heading_path = tuple(common) + (
-                (" / ".join(unique_tails),) if unique_tails else ()
-            )
+            heading_path = tuple(common) + ((" / ".join(unique_tails),) if unique_tails else ())
 
         anchor = "#" + _slug(first.heading_text) if first.heading_text else None
         token_count = _estimate_tokens(content)

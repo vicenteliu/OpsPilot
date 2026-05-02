@@ -23,7 +23,7 @@ import re
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 
 import yaml
 
@@ -47,7 +47,7 @@ class RedactionRule:
     exceptions: tuple[str, ...] = ()
 
     @classmethod
-    def from_dict(cls, d: dict) -> "RedactionRule":
+    def from_dict(cls, d: dict[str, Any]) -> RedactionRule:
         # The yaml patterns embed ``(?i)`` inline where needed; we compile
         # WITHOUT extra flags. Multi-line patterns (e.g. PEM private keys)
         # use ``[\s\S]+?`` explicitly so they don't depend on DOTALL.
@@ -118,7 +118,7 @@ class Redactor:
         path: Path | None = None,
         *,
         secret: bytes = b"",
-    ) -> "Redactor":
+    ) -> Redactor:
         """Load rules from a yaml file matching the spec template format."""
         path = path or DEFAULT_RULES_PATH
         if not path.is_file():
@@ -161,9 +161,7 @@ class Redactor:
         #    match wins at the same offset — e.g. an 18-digit national ID beats
         #    a 16-digit prefix-only phone-number match), then by rule priority
         #    as final tiebreaker (earlier-defined rule wins on exact ties).
-        candidates.sort(
-            key=lambda c: (c[0], -(c[1] - c[0]), rule_priority[c[2].id])
-        )
+        candidates.sort(key=lambda c: (c[0], -(c[1] - c[0]), rule_priority[c[2].id]))
 
         # 3) Filter overlaps with first_match_wins semantics.
         accepted: list[tuple[int, int, RedactionRule, str]] = []

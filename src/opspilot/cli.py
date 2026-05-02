@@ -68,7 +68,7 @@ def _root(
 
 @app.command()
 def init(
-    home: Path | None = typer.Option(
+    home: Path | None = typer.Option(  # noqa: B008
         None,
         "--home",
         help="Override OPSPILOT_HOME. Default: ~/.opspilot",
@@ -98,7 +98,7 @@ def _list_target_files(path: Path, *, recursive: bool) -> list[Path]:
 
 @app.command()
 def validate(
-    path: Path = typer.Argument(..., exists=True, help="File or directory to validate."),
+    path: Path = typer.Argument(..., exists=True, help="File or directory to validate."),  # noqa: B008
     schema: str | None = typer.Option(
         None,
         "--schema",
@@ -152,8 +152,7 @@ def validate(
         _console.print(table)
     _console.print()
     _console.print(
-        f"Total: {passed} passed · {len(failures)} failed · "
-        f"{skipped} skipped (no schema inferred)"
+        f"Total: {passed} passed · {len(failures)} failed · {skipped} skipped (no schema inferred)"
     )
 
     if failures:

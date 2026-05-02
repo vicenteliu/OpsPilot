@@ -30,7 +30,6 @@ from opspilot.providers import (
 from opspilot.providers.base import ProviderProtocol
 from opspilot.providers.ollama import _normalize_finish_reason
 
-
 # ──────────────────────────────────────────────────────────────────────────
 #  Type-level checks
 # ──────────────────────────────────────────────────────────────────────────
@@ -377,9 +376,9 @@ class TestFactory:
 class TestIntegration:
     """Real Ollama. Requires::
 
-        make ollama-up
-        make ollama-pull
-        make test-ollama
+    make ollama-up
+    make ollama-pull
+    make test-ollama
     """
 
     @pytest.fixture(scope="class")

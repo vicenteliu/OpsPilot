@@ -77,8 +77,14 @@ class TestInferSchemaName:
             ("examples/itr_ticket_summary_zh_v1_3_0/iteration/recipe.yaml", "iteration"),
             ("examples/itr_ticket_summary_zh_v1_3_0/iteration/record.yaml", "iteration"),
             ("examples/itr_ticket_summary_zh_v1_3_0/feedback/signals.jsonl", "feedback-signal"),
-            ("examples/itr_ticket_summary_zh_v1_3_0/variants/var_9930d615/meta.yaml", "skill-variant"),
-            ("examples/itr_ticket_summary_zh_v1_3_0/eval/var_9930d615-results.jsonl", "eval-result"),
+            (
+                "examples/itr_ticket_summary_zh_v1_3_0/variants/var_9930d615/meta.yaml",
+                "skill-variant",
+            ),
+            (
+                "examples/itr_ticket_summary_zh_v1_3_0/eval/var_9930d615-results.jsonl",
+                "eval-result",
+            ),
         ],
     )
     def test_inference_table(self, rel_path: str, expected: str) -> None:

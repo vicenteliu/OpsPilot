@@ -13,7 +13,6 @@ from opspilot.redaction import (
     Redactor,
 )
 
-
 # ──────────────────────────────────────────────────────────────────────────
 #  Loading
 # ──────────────────────────────────────────────────────────────────────────
@@ -93,7 +92,9 @@ class TestRules:
         # Use a context that won't trigger the generic_secret_assignment rule
         # ("token=…" matches the latter by design — generic catches arbitrary
         # secret-shaped assignments). Plain context = jwt rule fires.
-        token = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+        token = (
+            "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+        )
         result = redactor.redact(f"signed payload: {token}")
         assert any(h.placeholder_type == "jwt" for h in result.hits)
 
@@ -189,10 +190,7 @@ class TestExampleTicket:
         # Mirrors the original (pre-redaction) shape of the zh ticket sample
         # from examples/scn_ticket_summary_zh/session/inputs/ticket.json.
         # We test that internal hostnames + emails would be caught.
-        ticket_body = (
-            "今天上午 10 点开始连不上 VPN，"
-            "联系 alice@corp.local，主机 vpn-prod01.corp"
-        )
+        ticket_body = "今天上午 10 点开始连不上 VPN，联系 alice@corp.local，主机 vpn-prod01.corp"
         result = redactor.redact(ticket_body)
         types = {h.placeholder_type for h in result.hits}
         # alice@corp.local -> email; vpn-prod01.corp -> hostname (matches .corp)

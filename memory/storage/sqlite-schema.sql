@@ -1,8 +1,17 @@
 -- OpsPilot Memory · SQLite Schema
 -- 适用：mid-term memory + KB 元数据/关键字索引（FTS5）
--- 版本：1.0.0
+-- 版本：1.1.0
 -- 信息日期：2026-05-01
 -- 强约束：所有进入此 DB 的内容必须已脱敏（redacted=1）。
+--
+-- 变更日志 / Changelog:
+--   1.1.0 (PR-4): FTS5 tokenizer unicode61 → trigram，对 CJK 友好；
+--                 unicode61 把整段中文当一个 token，召回率太低
+--                 (例：query "认证失败" 无法命中 "...认证失败基本指向..."
+--                  这种嵌入式 substring；trigram 按 3-gram 切片可命中)。
+--                 副作用：失去 porter 词干提取，对纯英文索引影响轻微，
+--                 logs/技术词没有词干变化诉求。
+--   1.0.0:        initial spec.
 --
 -- 推荐 PRAGMA：
 --   PRAGMA journal_mode=WAL;
@@ -23,7 +32,7 @@ CREATE TABLE IF NOT EXISTS schema_meta (
 ) STRICT;
 
 INSERT OR REPLACE INTO schema_meta(key, value) VALUES
-  ('schema_version', '1.0.0'),
+  ('schema_version', '1.1.0'),
   ('created_at',     strftime('%Y-%m-%dT%H:%M:%fZ','now'));
 
 ------------------------------------------------------------
@@ -60,13 +69,14 @@ CREATE INDEX IF NOT EXISTS idx_mem_valid_until ON memory_records(valid_until);
 CREATE INDEX IF NOT EXISTS idx_mem_session     ON memory_records(source_session_id);
 
 -- FTS5 全文索引（contentless 外部内容；BM25 默认）
+-- tokenize='trigram': 对中英文混合内容均能命中 substring 查询
 CREATE VIRTUAL TABLE IF NOT EXISTS memory_records_fts USING fts5 (
   title,
   body,
   tags,
   content='memory_records',
   content_rowid='rowid',
-  tokenize='porter unicode61 remove_diacritics 2'
+  tokenize='trigram'
 );
 
 -- FTS 与主表的同步触发器
@@ -160,13 +170,14 @@ CREATE INDEX        IF NOT EXISTS idx_chk_class      ON kb_chunks(classification
 CREATE INDEX        IF NOT EXISTS idx_chk_emb_model  ON kb_chunks(embedding_model);
 
 -- KB Chunk 的 FTS5 索引（用于 hybrid 检索的 keyword 路径）
+-- tokenize='trigram': 对中英文混合内容均能命中 substring 查询
 CREATE VIRTUAL TABLE IF NOT EXISTS kb_chunks_fts USING fts5 (
   content,
   heading_path,
   tags,
   content='kb_chunks',
   content_rowid='rowid',
-  tokenize='porter unicode61 remove_diacritics 2'
+  tokenize='trigram'
 );
 
 CREATE TRIGGER IF NOT EXISTS kb_chunks_ai AFTER INSERT ON kb_chunks BEGIN

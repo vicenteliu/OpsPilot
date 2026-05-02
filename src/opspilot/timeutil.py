@@ -9,7 +9,9 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-UTC = timezone.utc  # alias for readability; equivalent to ``datetime.UTC`` on 3.11+
+# 3.10/3.11-compat alias for ``datetime.UTC`` (added in 3.11). Project targets
+# 3.12 in production but the dev sandbox runs 3.10, so we keep the alias.
+UTC = timezone.utc  # noqa: UP017
 
 
 def now_rfc3339() -> str:

@@ -10,7 +10,9 @@ import pytest
 from opspilot.timeutil import UTC, now_rfc3339, now_rfc3339_seconds, parse_rfc3339
 
 # Sanity check: our re-exported UTC matches the stdlib timezone.utc.
-assert UTC is timezone.utc
+# Use timezone.utc explicitly to verify identity with the legacy alias —
+# `datetime.UTC` (3.11+) and `timezone.utc` are the same singleton.
+assert UTC is timezone.utc  # noqa: UP017
 
 
 def test_now_rfc3339_format() -> None:

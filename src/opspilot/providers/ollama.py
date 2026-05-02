@@ -79,7 +79,7 @@ class OllamaProvider:
         if self._owns_client:
             self._client.close()
 
-    def __enter__(self) -> "OllamaProvider":
+    def __enter__(self) -> OllamaProvider:
         return self
 
     def __exit__(self, *exc: object) -> None:
@@ -145,7 +145,9 @@ class OllamaProvider:
         except httpx.TimeoutException as e:
             raise ProviderError("Ollama chat timeout", error_code="timeout_read") from e
         except httpx.RequestError as e:
-            raise ProviderError(f"Ollama chat network error: {e}", error_code="network_error") from e
+            raise ProviderError(
+                f"Ollama chat network error: {e}", error_code="network_error"
+            ) from e
 
         data = r.json()
         try:
@@ -181,9 +183,7 @@ class OllamaProvider:
                     error_code=f"http_{e.response.status_code}",
                 ) from e
             except httpx.TimeoutException as e:
-                raise ProviderError(
-                    "Ollama embed timeout", error_code="timeout_read"
-                ) from e
+                raise ProviderError("Ollama embed timeout", error_code="timeout_read") from e
             except httpx.RequestError as e:
                 raise ProviderError(
                     f"Ollama embed network error: {e}", error_code="network_error"
