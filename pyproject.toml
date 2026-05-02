@@ -32,6 +32,7 @@ dependencies = [
     "httpx >= 0.27",          # PR-3: Ollama HTTP client
     "lancedb >= 0.5, < 0.6",  # PR-4: long-term vector store
     "pyarrow >= 15",          # PR-4: lancedb table schemas (PyArrow types)
+    "markitdown >= 0.1, < 0.2",  # PR-5: PDF/DOCX/XLSX/HTML → markdown adapter
 ]
 
 [project.optional-dependencies]
@@ -42,6 +43,7 @@ dev = [
     "mypy >= 1.10",
     "types-pyyaml",
     "types-jsonschema",
+    "reportlab >= 4",          # PR-5: generate tests/fixtures/sample.pdf
 ]
 
 [project.scripts]
@@ -85,8 +87,17 @@ disallow_untyped_defs = true
 files = ["src/opspilot"]
 
 [[tool.mypy.overrides]]
-# lancedb / pyarrow ship without py.typed; ignore missing stubs.
-module = ["lancedb", "lancedb.*", "pyarrow", "pyarrow.*"]
+# Third-party libs without py.typed markers; ignore missing stubs.
+module = [
+    "lancedb",
+    "lancedb.*",
+    "pyarrow",
+    "pyarrow.*",
+    "markitdown",
+    "markitdown.*",
+    "reportlab",
+    "reportlab.*",
+]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

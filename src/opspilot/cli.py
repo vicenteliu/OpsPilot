@@ -1,12 +1,12 @@
 """OpsPilot CLI entry point.
 
-Stage 1 PR-1 implements:
-
 * ``opspilot init``       — create ``~/.opspilot/`` subtree
 * ``opspilot validate``   — JSON-schema-validate one file or a directory
 * ``opspilot schemas``    — list registered schemas (debug)
+* ``opspilot ingest``     — run KB ingestion pipeline (PR-5)
+* ``opspilot kb-search``  — hybrid retrieval over KB (PR-5)
 
-Subsequent PRs add ``ingest``, ``run``, ``harness``, ``inspect``.
+Subsequent PRs add ``run``, ``harness``, ``inspect``.
 """
 
 from __future__ import annotations
@@ -20,6 +20,14 @@ from rich.table import Table
 from . import __version__
 from .config import ensure_home, load_config
 from .errors import OpsPilotError, SchemaError
+from .memory.ingestion import IngestConfig
+from .memory.ingestion import ingest as run_ingest
+from .memory.lance_store import LanceStore
+from .memory.retrieval import kb_search
+from .memory.sqlite_store import SqliteStore
+from .memory.storage_init import init_sqlite
+from .providers import make_provider
+from .redaction import Redactor
 from .schemas import (
     infer_schema_name,
     iter_items,
@@ -175,6 +183,186 @@ def list_schemas() -> None:
     table.add_column("Title")
     for name, schema in sorted(reg.items()):
         table.add_row(name, schema.get("$id", ""), schema.get("title", ""))
+    _console.print(table)
+
+
+# ──────────────────────────────────────────────────────────────────────────
+#  ingest (PR-5)
+# ──────────────────────────────────────────────────────────────────────────
+
+
+def _open_kb_stores(
+    *, home: Path, embedding_dim: int, embedding_model: str
+) -> tuple[SqliteStore, LanceStore]:
+    """Open the SQLite + LanceDB stores under ``<home>/kb/``."""
+    kb_dir = home / "kb"
+    kb_dir.mkdir(parents=True, exist_ok=True)
+    sqlite = SqliteStore(init_sqlite(kb_dir / "sqlite.db"))
+    lance = LanceStore.open_or_create(
+        kb_dir / "lancedb",
+        dim=embedding_dim,
+        embedding_model=embedding_model,
+    )
+    return sqlite, lance
+
+
+@app.command()
+def ingest(
+    paths: list[Path] = typer.Argument(  # noqa: B008
+        ..., exists=True, help="One or more files / dirs to ingest."
+    ),
+    kb_id: str = typer.Option(
+        "opspilot:public-kb",
+        "--kb-id",
+        help="KB namespace identifier (also used as namespace if --namespace omitted).",
+    ),
+    namespace: str | None = typer.Option(
+        None,
+        "--namespace",
+        help="Override namespace (default: same as --kb-id).",
+    ),
+    classification: str = typer.Option(
+        "internal",
+        "--classification",
+        help="public | internal | confidential | restricted (restricted skips vector path).",
+    ),
+    embedding_model: str = typer.Option(
+        "ollama-local/nomic-embed-text-v2-moe@2026-04",
+        "--embedding-model",
+        help="Provider/model@date pinned reference.",
+    ),
+    embedding_dim: int = typer.Option(
+        768, "--embedding-dim", help="Vector dim; must match the embedding model."
+    ),
+    embed_model_short: str = typer.Option(
+        "nomic-embed-text-v2-moe",
+        "--ollama-embed-model",
+        help="Short Ollama tag (without provider prefix) used at the wire.",
+    ),
+) -> None:
+    """Ingest one or more files into the KB."""
+    cfg = load_config()
+    sqlite, lance = _open_kb_stores(
+        home=cfg.home,
+        embedding_dim=embedding_dim,
+        embedding_model=embedding_model,
+    )
+    redactor = Redactor.from_yaml()
+    provider = make_provider("ollama-local")
+
+    def embed_fn(text: str) -> list[float]:
+        return provider.embed([text], model=embed_model_short)[0]
+
+    ic = IngestConfig(
+        kb_id=kb_id,
+        namespace=namespace,
+        classification=classification,
+        embedding_model=embedding_model,
+        embedding_dim=embedding_dim,
+    )
+    stats = run_ingest(
+        paths,
+        sqlite=sqlite,
+        lance=lance,
+        redactor=redactor,
+        embed_fn=embed_fn,
+        config=ic,
+    )
+
+    table = Table(title=f"Ingest run {stats.run_id}")
+    table.add_column("File", overflow="fold")
+    table.add_column("Doc ID")
+    table.add_column("Chunks", justify="right")
+    table.add_column("Status", justify="right")
+
+    for fr in stats.files:
+        if fr.error:
+            status = f"[red]ERROR[/red] {fr.error[:60]}"
+        elif fr.chunks_skipped_unchanged:
+            status = "[yellow]unchanged[/yellow]"
+        else:
+            status = "[green]ingested[/green]"
+        table.add_row(
+            str(fr.source_path),
+            fr.document_id or "-",
+            str(fr.chunks_written),
+            status,
+        )
+    _console.print(table)
+    _console.print(
+        f"\n{stats.docs_succeeded} succeeded · {stats.docs_failed} failed · "
+        f"{stats.chunks_total} chunks · {stats.duration_ms} ms"
+    )
+
+    if stats.docs_failed > 0:
+        raise typer.Exit(code=2)
+
+
+# ──────────────────────────────────────────────────────────────────────────
+#  kb-search (PR-5)
+# ──────────────────────────────────────────────────────────────────────────
+
+
+@app.command(name="kb-search")
+def kb_search_cmd(
+    query: str = typer.Argument(..., help="Search query."),  # noqa: B008
+    top_k: int = typer.Option(5, "--top-k", "-k", help="Max number of hits."),
+    namespace: str | None = typer.Option(None, "--namespace", help="Filter to a single namespace."),
+    classification: str | None = typer.Option(
+        None, "--classification", help="Filter to one classification level."
+    ),
+    embedding_model: str = typer.Option(
+        "ollama-local/nomic-embed-text-v2-moe@2026-04",
+        "--embedding-model",
+    ),
+    embedding_dim: int = typer.Option(768, "--embedding-dim"),
+    embed_model_short: str = typer.Option("nomic-embed-text-v2-moe", "--ollama-embed-model"),
+) -> None:
+    """Hybrid (FTS5 + ANN) search over the KB; returns top-k chunks."""
+    cfg = load_config()
+    sqlite, lance = _open_kb_stores(
+        home=cfg.home,
+        embedding_dim=embedding_dim,
+        embedding_model=embedding_model,
+    )
+    provider = make_provider("ollama-local")
+
+    def embed_fn(text: str) -> list[float]:
+        return provider.embed([text], model=embed_model_short)[0]
+
+    hits = kb_search(
+        query,
+        sqlite=sqlite,
+        lance=lance,
+        embed_fn=embed_fn,
+        top_k=top_k,
+        namespace=namespace,
+        classification=classification,
+    )
+
+    if not hits:
+        _console.print("[yellow]No matches.[/yellow]")
+        return
+
+    table = Table(title=f"Top {len(hits)} hits for: {query}")
+    table.add_column("#", justify="right")
+    table.add_column("Chunk")
+    table.add_column("Doc")
+    table.add_column("RRF", justify="right")
+    table.add_column("Ranks (V/F)", justify="right")
+    table.add_column("Snippet", overflow="fold")
+
+    for i, h in enumerate(hits, start=1):
+        snippet = (h.content or "").strip().replace("\n", " ")[:80]
+        ranks = f"{h.rank_vector or '-'}/{h.rank_fts or '-'}"
+        table.add_row(
+            str(i),
+            h.chunk_id,
+            h.document_id,
+            f"{h.score:.4f}",
+            ranks,
+            snippet,
+        )
     _console.print(table)
 
 
