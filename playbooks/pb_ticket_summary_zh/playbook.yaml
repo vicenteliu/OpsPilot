@@ -39,7 +39,11 @@ model:
   params:
     temperature: 0.2
     top_p: 0.9
-    max_tokens: 1500
+    # Bumped to 3000 (was 1500) for retrieval.mode=prefetch: with up to 5 KB
+    # chunks folded into the system prompt the response routinely exceeds
+    # the previous 1500-token budget — observed on host gemma4:e4b runs the
+    # final '}' was being truncated, leaving an unparseable JSON tail.
+    max_tokens: 3000
 
 # Loop bounds.
 limits:
