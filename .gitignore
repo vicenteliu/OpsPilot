@@ -247,3 +247,7 @@ sessions/
 # + venv activation); allow it explicitly. The Python "Environments" block above
 # still ignores .envrc anywhere else.
 !/.envrc
+
+# harness run outputs
+golden-results.jsonl
+harness-results-*.jsonl
