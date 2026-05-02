@@ -742,11 +742,17 @@ volumes:
 - 测试：`tests/test_sqlite_store.py`、`tests/test_lance_store.py`、`tests/test_retrieval.py`
 - **退出标准**：把样例 `chunks.jsonl` 灌入两个 store；`kb_search("VPN 认证失败")` top-1 返回 `chk_0cf89826`
 
-### PR-5 — Ingestion pipeline + `opspilot ingest`
-- `memory/ingestion.py`：全流程（discover → redact → chunk → embed → upsert）
-- CLI `ingest` 子命令
-- 测试：跑 `examples/scn_ticket_summary_zh/kb/sop_vpn_zh.md` → 与样例 `doc-meta.json` + `chunks.jsonl` 字段对齐
-- **退出标准**：`opspilot ingest examples/.../sop_vpn_zh.md` 后 `kb_search` 仍命中样例 chunk
+### PR-5 — Ingestion pipeline + markitdown adapter + `opspilot ingest`
+- `memory/ingestion.py`：全流程（discover → **markitdown 转换** → redact → chunk → embed → upsert）
+- `memory/markitdown_adapter.py`：检测扩展名 + magic bytes，把 PDF/DOCX/PPTX/XLSX/HTML/EPUB 等转 markdown；`.md` 直通；详见 [STAGES.md §3](STAGES.md)
+- CLI `ingest` 子命令（自动调度：根据文件类型决定是否走 markitdown）
+- 测试：
+  - 跑 `examples/scn_ticket_summary_zh/kb/sop_vpn_zh.md` → 与样例 `doc-meta.json` + `chunks.jsonl` 字段对齐
+  - 准备 1 份 `tests/fixtures/sample.pdf`（小 PDF）→ markitdown 转出 markdown → 走 ingestion → KB 中能 search
+- **退出标准**：
+  - `opspilot ingest examples/.../sop_vpn_zh.md` 后 `kb_search` 仍命中样例 chunk
+  - **新增**：`opspilot ingest tests/fixtures/sample.pdf` 跑通；KB 中产生新 doc + chunks
+- **依赖**：`markitdown >= 0.0.1a3`（信息日期 2026-05-01；以官方 PyPI 为准）
 
 ### PR-6 — Session manager + trace + artifact
 - `session/{manager,trace,artifact,audit,types}.py`
