@@ -242,3 +242,8 @@ sessions/
 .env.*
 !.env.example
 .git-commit-msg*
+
+# OpsPilot ships its own .envrc at repo root with no secrets (just dotenv loader
+# + venv activation); allow it explicitly. The Python "Environments" block above
+# still ignores .envrc anywhere else.
+!/.envrc

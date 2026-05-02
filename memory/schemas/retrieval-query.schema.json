@@ -38,6 +38,7 @@
       "additionalProperties": false,
       "required": ["query", "mode", "scopes", "top_k"],
       "properties": {
+        "_comment": { "type": "string" },
         "kind": { "const": "request" },
         "query": { "type": "string", "minLength": 1 },
         "mode": {
@@ -100,6 +101,7 @@
       "additionalProperties": false,
       "required": ["kind", "query_id", "results", "metadata"],
       "properties": {
+        "_comment": { "type": "string" },
         "kind": { "const": "response" },
         "query_id": { "type": "string", "pattern": "^q_[0-9A-HJKMNP-TV-Z]{26}$" },
         "results": {

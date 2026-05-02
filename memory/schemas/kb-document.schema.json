@@ -20,6 +20,10 @@
     "redaction_passed"
   ],
   "properties": {
+    "_comment": {
+      "type": "string",
+      "description": "Optional human-readable comment; ignored by tooling."
+    },
     "id": {
       "type": "string",
       "pattern": "^doc_[a-f0-9]{8}$",

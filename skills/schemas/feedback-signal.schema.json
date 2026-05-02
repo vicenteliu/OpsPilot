@@ -14,6 +14,10 @@
     "redacted"
   ],
   "properties": {
+    "_comment": {
+      "type": "string",
+      "description": "Optional human-readable comment; ignored by tooling."
+    },
     "id": {
       "type": "string",
       "pattern": "^fb_[0-9A-HJKMNP-TV-Z]{26}$"

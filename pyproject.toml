@@ -1,0 +1,90 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "opspilot"
+version = "0.1.0"
+description = "AI-augmented IT ops workbench: spec-driven, multi-stack, multi-UI"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "Vicente Liu", email = "vicenteliuca@gmail.com" }]
+keywords = ["llm", "rag", "agent", "ops", "ai"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Systems Administration",
+]
+
+# Stage 1 PR-1 dependencies — minimal, schema validation + CLI only.
+# Subsequent PRs append (lancedb, httpx, fastapi, ...).
+dependencies = [
+    "typer >= 0.12",
+    "pydantic >= 2.7",
+    "pyyaml >= 6.0",
+    "jsonschema >= 4.22",
+    "python-ulid >= 2.2",
+    "rich >= 13",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest >= 8",
+    "pytest-cov >= 5",
+    "ruff >= 0.5",
+    "mypy >= 1.10",
+    "types-pyyaml",
+    "types-jsonschema",
+]
+
+[project.scripts]
+opspilot = "opspilot.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/vicenteliu/OpsPilot"
+Source = "https://github.com/vicenteliu/OpsPilot"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/opspilot"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "W",   # pycodestyle warnings
+    "I",   # isort
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "B",   # bugbear
+    "C4",  # comprehensions
+    "RET", # return
+    "SIM", # simplify
+]
+ignore = ["E501"] # line-too-long handled by formatter
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["B011"] # allow plain assert in tests
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+disallow_untyped_defs = true
+files = ["src/opspilot"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "slow: slow tests (deselect with '-m \"not slow\"')",
+    "requires_ollama: requires running Ollama instance",
+]
+addopts = "-v --strict-markers"

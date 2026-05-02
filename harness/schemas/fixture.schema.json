@@ -7,6 +7,10 @@
   "additionalProperties": false,
   "required": ["id", "scenario_id", "version", "content_hash", "input", "redacted"],
   "properties": {
+    "_comment": {
+      "type": "string",
+      "description": "Optional human-readable comment; ignored by tooling."
+    },
     "id": {
       "type": "string",
       "pattern": "^fix_[a-f0-9]{8}$",

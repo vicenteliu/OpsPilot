@@ -17,6 +17,7 @@
     "evaluators"
   ],
   "properties": {
+    "_comment": { "type": "string" },
     "run_id": { "type": "string", "pattern": "^run_[0-9A-HJKMNP-TV-Z]{26}$" },
     "fixture_id": { "type": "string", "pattern": "^fix_[a-f0-9]{8}$" },
     "fixture_version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
@@ -66,6 +67,9 @@
               "semantic.embedding",
               "judge.llm",
               "sandbox.exec",
+              "rag.recall_at_k",
+              "rag.precision_at_k",
+              "rag.citation_validity",
               "human.review"
             ]
           },
@@ -117,10 +121,23 @@
       "type": "array",
       "items": {
         "type": "string",
-        "enum": ["nondeterministic", "redaction_warning", "judge_low_confidence", "manual_review_pending"]
+        "enum": ["nondeterministic", "redaction_warning", "judge_low_confidence", "manual_review_pending", "cost_gate_failed"]
       }
     },
 
-    "extensions": { "type": "object", "default": {} }
+    "extensions": { "type": "object", "default": {} },
+
+    "iteration_meta": {
+      "type": "object",
+      "description": "Optional cross-link to a skills iteration when this result is a variant evaluation. See skills/ITERATION.md.",
+      "additionalProperties": true,
+      "properties": {
+        "iteration_id": { "type": "string", "pattern": "^itr_[0-9A-HJKMNP-TV-Z]{26}$" },
+        "variant_id": { "type": "string", "pattern": "^var_[a-f0-9]{8}$" },
+        "baseline_run_id": { "type": "string", "pattern": "^run_[0-9A-HJKMNP-TV-Z]{26}$" },
+        "delta_vs_baseline": { "type": "object" },
+        "promotion_gate_result": { "type": "object" }
+      }
+    }
   }
 }

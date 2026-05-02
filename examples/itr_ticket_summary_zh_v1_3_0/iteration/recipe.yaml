@@ -10,12 +10,12 @@ trigger:
   type: "feedback_signal"
   source_run: null
   feedback_window_signals:
-    - "fb_01K2B0BRYN8P8R5H2YJ7M9E7F1A"
-    - "fb_01K2B0BRYN8P8R5H2YJ7M9E7F2B"
-    - "fb_01K2B0BRYN8P8R5H2YJ7M9E7F3C"
-    - "fb_01K2B0BRYN8P8R5H2YJ7M9E7F4D"
-    - "fb_01K2B0BRYN8P8R5H2YJ7M9E7F5E"
-  distillation_run: "run_dist_01K2B0BRYN8P8R5H2YJ7M9D"
+    - "fb_01K2B0BRYN8P8R5H2YJ7M9E7FA"
+    - "fb_01K2B0BRYN8P8R5H2YJ7M9E7FB"
+    - "fb_01K2B0BRYN8P8R5H2YJ7M9E7FC"
+    - "fb_01K2B0BRYN8P8R5H2YJ7M9E7FD"
+    - "fb_01K2B0BRYN8P8R5H2YJ7M9E7FE"
+  distillation_run: "run_dist_01K2B0BRYN8P8R5H2YJ7"
   model_upgrade: null
   manual_actor: null
 
