@@ -4,8 +4,9 @@ Talks to a local Ollama server (default ``http://localhost:11434``). Uses:
 
 * ``POST /v1/chat/completions`` (OpenAI-compatible) for chat — convenient for
   reusing the same response shape as the cloud providers we'll add later.
-* ``POST /api/embeddings`` (Ollama native) for embeddings — single-prompt
-  endpoint; we loop over texts client-side.
+* ``POST /api/embed`` (Ollama native) for embeddings — batch endpoint
+  ({"input": list, "embeddings": [[...], ...]}); supersedes the legacy
+  ``/api/embeddings`` route which silently truncated context windows.
 * ``GET /api/tags`` for ``health_probe()``.
 
 No auth headers; Ollama defaults to no API key. If you front it with a
@@ -166,37 +167,40 @@ class OllamaProvider:
     # ── Embeddings ────────────────────────────────────────────────────
 
     def embed(self, texts: list[str], *, model: str) -> list[list[float]]:
-        # Ollama's `/api/embeddings` takes a single ``prompt`` per request.
-        # Loop client-side; PR-5 may switch to the newer `/api/embed` batch
-        # endpoint when we benchmark KB ingest.
-        out: list[list[float]] = []
-        for text in texts:
-            try:
-                r = self._client.post(
-                    "/api/embeddings",
-                    json={"model": model, "prompt": text},
-                )
-                r.raise_for_status()
-            except httpx.HTTPStatusError as e:
-                raise ProviderError(
-                    f"Ollama embed HTTP {e.response.status_code}: {e.response.text[:200]}",
-                    error_code=f"http_{e.response.status_code}",
-                ) from e
-            except httpx.TimeoutException as e:
-                raise ProviderError("Ollama embed timeout", error_code="timeout_read") from e
-            except httpx.RequestError as e:
-                raise ProviderError(
-                    f"Ollama embed network error: {e}", error_code="network_error"
-                ) from e
+        # Use Ollama's batch ``/api/embed`` endpoint. The legacy
+        # ``/api/embeddings`` route is deprecated and (observed in real
+        # ingest with nomic-embed-text-v2-moe on a 1.1 KB Chinese chunk)
+        # silently truncates the model context, returning HTTP 500
+        # ``the input length exceeds the context length``. ``/api/embed``
+        # uses the model's max_position_embeddings and accepts a list of
+        # inputs in one round-trip.
+        if not texts:
+            return []
+        try:
+            r = self._client.post(
+                "/api/embed",
+                json={"model": model, "input": texts},
+            )
+            r.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            raise ProviderError(
+                f"Ollama embed HTTP {e.response.status_code}: {e.response.text[:200]}",
+                error_code=f"http_{e.response.status_code}",
+            ) from e
+        except httpx.TimeoutException as e:
+            raise ProviderError("Ollama embed timeout", error_code="timeout_read") from e
+        except httpx.RequestError as e:
+            raise ProviderError(
+                f"Ollama embed network error: {e}", error_code="network_error"
+            ) from e
 
-            data = r.json()
-            emb = data.get("embedding")
-            if not isinstance(emb, list):
-                raise ProviderError(
-                    f"Ollama embed: malformed response (no 'embedding' field): {data!r}"
-                )
-            out.append(emb)
-        return out
+        data = r.json()
+        embs = data.get("embeddings")
+        if not isinstance(embs, list) or len(embs) != len(texts):
+            raise ProviderError(
+                f"Ollama embed: malformed response (expected {len(texts)} embeddings, got {data!r})"
+            )
+        return [list(e) for e in embs]
 
     # ── Helpers ───────────────────────────────────────────────────────
 

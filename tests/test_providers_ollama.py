@@ -299,34 +299,52 @@ class TestChat:
 class TestEmbed:
     def test_single(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
-            assert request.url.path == "/api/embeddings"
+            assert request.url.path == "/api/embed"
             body = json.loads(request.content)
-            assert body == {"model": "nomic-embed-text", "prompt": "hello"}
-            return httpx.Response(200, json={"embedding": [0.1, 0.2, 0.3]})
+            assert body == {"model": "nomic-embed-text", "input": ["hello"]}
+            return httpx.Response(200, json={"embeddings": [[0.1, 0.2, 0.3]]})
 
         p = _make_provider_with_handler(handler)
         out = p.embed(["hello"], model="nomic-embed-text")
         assert out == [[0.1, 0.2, 0.3]]
 
-    def test_batch_via_loop(self) -> None:
-        seen_prompts: list[str] = []
+    def test_batch(self) -> None:
+        """Multiple inputs are sent in a single round-trip (PR-8.5 hotfix)."""
+        seen_inputs: list[list[str]] = []
 
         def handler(request: httpx.Request) -> httpx.Response:
             body = json.loads(request.content)
-            seen_prompts.append(body["prompt"])
-            return httpx.Response(200, json={"embedding": [float(len(body["prompt"]))]})
+            seen_inputs.append(body["input"])
+            return httpx.Response(
+                200,
+                json={"embeddings": [[float(len(t))] for t in body["input"]]},
+            )
 
         p = _make_provider_with_handler(handler)
         out = p.embed(["a", "bb", "ccc"], model="m")
-        assert seen_prompts == ["a", "bb", "ccc"]
+        assert seen_inputs == [["a", "bb", "ccc"]]  # one batched call, not three
         assert out == [[1.0], [2.0], [3.0]]
+
+    def test_empty_inputs_short_circuits(self) -> None:
+        """Empty list must not hit the network — saves a 400."""
+        called = False
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal called
+            called = True
+            return httpx.Response(200, json={"embeddings": []})
+
+        p = _make_provider_with_handler(handler)
+        out = p.embed([], model="m")
+        assert out == []
+        assert not called
 
     def test_malformed(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(200, json={"oops": []})
 
         p = _make_provider_with_handler(handler)
-        with pytest.raises(ProviderError, match="no 'embedding' field"):
+        with pytest.raises(ProviderError, match="malformed response"):
             p.embed(["x"], model="m")
 
 
