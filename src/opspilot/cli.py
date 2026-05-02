@@ -26,6 +26,7 @@ from .harness import load_fixture, load_golden, run_harness
 from .harness.reporter import render_result_table
 from .memory.ingestion import IngestConfig
 from .memory.ingestion import ingest as run_ingest
+from .memory.kb_loader import load_kb_fixture
 from .memory.lance_store import LanceStore
 from .memory.retrieval import kb_search
 from .memory.sqlite_store import SqliteStore
@@ -474,6 +475,68 @@ def run(
 # ──────────────────────────────────────────────────────────────────────────
 #  harness (PR-8)
 # ──────────────────────────────────────────────────────────────────────────
+
+
+kb_app = typer.Typer(
+    name="kb",
+    help="Knowledge-base utilities (frozen-fixture loaders, future: stats / purge).",
+    no_args_is_help=True,
+)
+app.add_typer(kb_app)
+
+
+@kb_app.command("load-fixture")
+def kb_load_fixture(
+    doc_meta: Path = typer.Option(  # noqa: B008
+        ..., "--doc-meta", "-d", exists=True, help="Path to doc-meta.json."
+    ),
+    chunks: Path = typer.Option(  # noqa: B008
+        ..., "--chunks", "-c", exists=True, help="Path to chunks.jsonl."
+    ),
+    embedding_model: str = typer.Option(
+        "ollama-local/nomic-embed-text-v2-moe@2026-04", "--embedding-model"
+    ),
+    embedding_dim: int = typer.Option(768, "--embedding-dim"),
+    embed_model_short: str = typer.Option("nomic-embed-text-v2-moe", "--ollama-embed-model"),
+) -> None:
+    """Upsert a frozen KB fixture (doc-meta + chunks.jsonl) into ~/.opspilot/kb/.
+
+    Bypasses the chunker / redactor / markitdown so spec-example fixtures
+    keep their hand-authored chunk_id / document_id verbatim. The
+    embedding for each chunk is produced live via the configured Ollama
+    model so the live LanceDB table is consistent with retrieval.
+    """
+    cfg = load_config()
+    sqlite, lance = _open_kb_stores(
+        home=cfg.home,
+        embedding_dim=embedding_dim,
+        embedding_model=embedding_model,
+    )
+    provider = make_provider("ollama-local")
+
+    def embed_fn(text: str) -> list[float]:
+        return provider.embed([text], model=embed_model_short)[0]
+
+    stats = load_kb_fixture(
+        sqlite=sqlite,
+        lance=lance,
+        doc_meta_path=doc_meta,
+        chunks_jsonl_path=chunks,
+        embed_fn=embed_fn,
+    )
+
+    table = Table(title=f"KB fixture loaded · {stats.document_id}", show_lines=False)
+    table.add_column("File", overflow="fold")
+    table.add_column("Doc ID", overflow="fold")
+    table.add_column("Chunks", justify="right")
+    table.add_column("Vectors", justify="right")
+    table.add_row(
+        str(chunks.relative_to(REPO_ROOT) if chunks.is_relative_to(REPO_ROOT) else chunks),
+        stats.document_id,
+        str(stats.chunk_count),
+        str(stats.vector_count),
+    )
+    _console.print(table)
 
 
 harness_app = typer.Typer(

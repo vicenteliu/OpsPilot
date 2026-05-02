@@ -105,9 +105,10 @@ endif
 harness: ensure-venv ## Run a single fixture through the harness (pass --fixture/--golden/--playbook).
 	$(OPSPL) harness run --fixture $(FIXTURE) --golden $(GOLDEN) --playbook $(PLAYBOOK) --output $(or $(OUTPUT),results.jsonl)
 
-golden-kb: ensure-venv ## Ingest the Stage 1 spec example KB (idempotent).
-	$(OPSPL) ingest examples/scn_ticket_summary_zh/kb/sop_vpn_zh.md \
-	    --kb-id "opspilot:public-kb"
+golden-kb: ensure-venv ## Load the Stage 1 spec example KB (frozen fixture, deterministic ids).
+	$(OPSPL) kb load-fixture \
+	    --doc-meta examples/scn_ticket_summary_zh/kb/doc-meta.json \
+	    --chunks   examples/scn_ticket_summary_zh/kb/chunks.jsonl
 
 golden: ensure-venv golden-kb ## Run the Stage 1 golden test (auto-ingests KB; needs Ollama running).
 	$(OPSPL) harness golden --output golden-results.jsonl
