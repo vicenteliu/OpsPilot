@@ -745,6 +745,7 @@ volumes:
 ### PR-5 — Ingestion pipeline + markitdown adapter + `opspilot ingest`
 - `memory/ingestion.py`：全流程（discover → **markitdown 转换** → redact → chunk → embed → upsert）
 - `memory/markitdown_adapter.py`：检测扩展名 + magic bytes，把 PDF/DOCX/PPTX/XLSX/HTML/EPUB 等转 markdown；`.md` 直通；详见 [STAGES.md §3](STAGES.md)
+  - **图片 LLM vision 描述功能 OFF**（用户决策 #1，[STAGES.md §1.2](STAGES.md)）：图片在 markitdown 输出中保留为占位（alt text / placeholder）；不引入 vision provider 调用；future stage 视需求开
 - CLI `ingest` 子命令（自动调度：根据文件类型决定是否走 markitdown）
 - 测试：
   - 跑 `examples/scn_ticket_summary_zh/kb/sop_vpn_zh.md` → 与样例 `doc-meta.json` + `chunks.jsonl` 字段对齐

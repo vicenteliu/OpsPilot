@@ -27,6 +27,19 @@
 
 **核心保持不变**：spec 阶段的 7 目录契约、20 个 schema、48 个模板、4 份 e2e 样例都是**多语言共享的"事实来源"**。任何语言的实现都从这里读 schema、对齐字段。
 
+### 1.2 用户决策记录（2026-05-01）/ Decision log
+
+本节固化用户对 4 个 open question 的答复，作为后续 stage 取舍依据：
+
+| # | Question | 决定 | 影响 |
+|---|---|---|---|
+| 1 | markitdown 是否启用 image LLM vision 描述？ | **关闭** | Stage 1 不引入 vision provider；图片在 markitdown 输出中保留为占位（alt text / placeholder）；future stage 视需求开 |
+| 2 | 前端框架 Svelte vs Vue vs React？ | **Svelte** | Stage 2 起锁定 Svelte 5 + SvelteKit；不再讨论 |
+| 3 | GUI（Tauri 桌面）优先级？ | **推到 Stage 5 + 标 optional**；**条件**：若 WebUI 体验足够好，GUI 可以**不开发** | Stage 4 移除 GUI；Stage 5 GUI 是"如果需要才做"；CLI / TUI / WebUI 才是必做三 UI |
+| 4 | Rust 引入时机？ | **保守，Stage 3 才引入** | Stage 1-2 纯 Python + TS；Stage 3 才出现 PyO3/maturin/Cargo |
+
+直接结果：**Stage 顺序与内容下面 §7 已据此调整**。
+
 ---
 
 ## 2. 多语言栈分工 / Multi-language stack
@@ -346,11 +359,13 @@ OpsPilot/
 
 | Stage | 时长 | 核心 capability 增量 | 新增语言 | 新增 UI | 关键依赖（新）|
 |---|---|---|---|---|---|
-| **1** | 1.5–2w | providers (Ollama) + memory + session + harness + orchestrator (1 playbook) + **markitdown** | Python | CLI | typer / pydantic / lancedb / sqlite + fts5 / httpx / **markitdown** |
-| **2** | 2w | + skills 框架 + 第二 provider (Anthropic) + REST API | + TS / Svelte | + WebUI | fastapi / uvicorn / svelte / vite / pnpm / shadcn-svelte / openapi-ts |
-| **3** | 2–3w | + wiki ingest + 长期 KB 全功能 + Rust hot path | + Rust (PyO3) | + TUI (Textual) | textual / cargo / maturin / pyo3 |
-| **4** | 2w | + iteration + feedback loop + GUI 桌面集成 | + Rust (Tauri) | + GUI | tauri / rust-webview |
-| **5** | open | + 剩余 4 provider + sandbox L2/L3 + MCP integration + Linux 服务器部署 | — | + Browser ext (可选) | docker SDK / mcp client / k8s（视需求）|
+| **1** | 1.5–2w | providers (Ollama) + memory + session + harness + orchestrator (1 playbook) + **markitdown**（vision OFF） | Python | CLI | typer / pydantic / lancedb / sqlite + fts5 / httpx / **markitdown** |
+| **2** | 2w | + skills 框架 + 第二 provider (Anthropic) + REST API | + TS / **Svelte** | + WebUI | fastapi / uvicorn / svelte / vite / pnpm / shadcn-svelte / openapi-ts |
+| **3** | 2–3w | + wiki ingest + 长期 KB 全功能 + Rust hot path | + **Rust (PyO3)** | + TUI (Textual) | textual / cargo / maturin / pyo3 |
+| **4** | 2w | + iteration + feedback loop + wiki lint + 第二批 provider（OpenRouter / OpenAI） | — | — | （只新增 capability，不新栈/新 UI） |
+| **5** | open | + 剩余 provider (Gemini / Grok) + sandbox L2/L3 + MCP integration + 部署；**GUI (Tauri) 可选** | + Rust (Tauri) **可选** | + **GUI 可选** | docker SDK / mcp client / tauri 2 / k8s（视需求）|
+
+> **GUI 条件性决定**：Stage 5 的 GUI（Tauri）**只有在 Stage 2 完成后 WebUI 体验不足以满足桌面集成需求时才启动**。如果 WebUI 体验好，GUI 不开发——节省 ~2 周 + 跨平台分发成本。决定时机：Stage 4 末做 WebUI vs GUI 评审。
 
 ### 7.1 Stage 1 — Python core + CLI + markitdown（详细见 [IMPLEMENTATION_STAGE_1.md](IMPLEMENTATION_STAGE_1.md)）
 
@@ -410,33 +425,62 @@ OpsPilot/
 - TUI 能完成 95% CLI 操作；Plus 看 wiki tree（CLI 没有）
 - 第三个 e2e 样例（wiki ingest）跑得过
 
-### 7.4 Stage 4 — Tauri GUI + iteration + lint
+### 7.4 Stage 4 — iteration + wiki lint + 第二批 provider（**无新 UI / 无新语言**）
+
+> 用户决策 #3：GUI 推到 Stage 5；本 stage 专注后端能力 + 用现有三 UI（CLI / TUI / WebUI）暴露。
 
 **新增能力**：
-- skills/iteration 全实现（feedback collector + iteration runner + lineage）
-- wiki/lint + query→page
-- Tauri 2 桌面应用：复用 Stage 2 的 Svelte 代码 + Rust 系统集成（拖拽 / 通知 / 文件关联）
+- `skills/iteration` 全实现（feedback collector + iteration runner + lineage + variant 管理）
+- `wiki/lint` + `wiki/query→page`（compounding insight loop）
+- 第二批 provider：**OpenRouter** + **OpenAI** （Gemini / Grok 推到 Stage 5；先把 OpenRouter 做出来作"一把 key 接百家"的降级链）
+- WebUI 加 iteration 仪表板 + lint issues 列表 + lineage 可视化（复用 Stage 2 的 Svelte 代码）
+- TUI 加同等屏幕（复用 Stage 3 的 Textual）
 
 **新增 PR**：
-- PR-22 / iteration-engine
-- PR-23 / wiki-lint
+- PR-22 / iteration-engine（Python）
+- PR-23 / wiki-lint（Python；10 类 issue 检测器）
 - PR-24 / wiki-query-to-page
-- PR-25 / tauri-shell：Tauri 2 项目 skeleton + 复用 frontend/web
-- PR-26 / tauri-system-integration：file drag-drop / Sparkle 自动更新 / system tray
-- PR-27 / build-matrix：macOS / Linux 桌面 .app + .deb
+- PR-25 / providers-openrouter
+- PR-26 / providers-openai
+- PR-27 / web-iteration-dashboard（Svelte）
+- PR-28 / tui-iteration-screens（Textual）
 
 **退出标准**：
-- 第四个 e2e 样例（iteration）跑得过
-- Tauri 桌面应用包大小 ≤ 30 MB
-- macOS 自签名（Developer ID）+ 公证可选
+- 第四个 e2e 样例（`examples/itr_ticket_summary_zh_v1_3_0/`）跑得过：feedback signals → trigger → variants → eval → promote 全链路
+- WebUI 能完整看到 iteration 历史 + lineage 树
+- OpenRouter 能跑 golden test，与 Anthropic / Ollama 在同 fixture 上 delta < 0.1
+- Stage 4 末做 **WebUI vs GUI 评审**：决定是否在 Stage 5 启动 GUI
 
-### 7.5 Stage 5 — 生产化
+### 7.5 Stage 5 — 生产化（GUI 可选 / Optional）
 
-- 剩余 4 provider（OpenRouter / OpenAI / Gemini / Grok）
-- sandbox L2（hardened Docker）+ L3（gVisor / Firecracker）实装
-- MCP client（filesystem / git / Notion / Slack）
-- Linux 服务器部署：k8s manifests / Helm chart
-- 浏览器扩展（可选）：Obsidian Web Clipper 风格的"clip web → ingest"
+> 用户决策 #3：GUI 仅在 Stage 4 末评审决定要做时启动；不必做。
+
+**核心生产化（必做）**：
+- 剩余 provider：**Gemini API** + **Grok API**（Stage 4 已含 OpenRouter + OpenAI；至此 6 provider 齐全）
+- sandbox L2（hardened Docker：seccomp + AppArmor + cap-drop + RO rootfs）
+- sandbox L3（gVisor / Firecracker / Kata 之一；视需求）
+- MCP client（fs-readonly / git-readonly / Notion / Slack 等；与 mcp-config schema 对齐）
+- Linux 服务器部署：systemd unit + docker-compose prod + 可选 Helm chart
+- 监控接入：Prometheus metrics + 结构化日志（OTel 兼容）
+- macOS 桌面 packaging（CLI binary + GUI 如启动）
+
+**条件性（仅 Stage 4 末评审通过才做）**：
+- **GUI（Tauri 2）**：复用 Stage 2 的 Svelte 代码 + Rust 系统集成（文件拖拽 / 系统通知 / 文件关联 / 系统托盘）
+  - 触发条件示例（Stage 4 末判断）：
+    - WebUI 在跨设备 / 离线场景体验不足（如内网无 server）
+    - 用户需要原生集成（macOS Spotlight / Finder 右键菜单等）
+    - 团队接受多 OS 分发与签名复杂度
+  - 不触发示例：WebUI + 浏览器扩展（如 Obsidian Web Clipper）已足够
+
+**条件性 PR（GUI 启动时）**：
+- PR-G1 / tauri-shell：Tauri 2 项目 skeleton + 复用 frontend/web
+- PR-G2 / tauri-system-integration：file drag-drop / system tray / 自动更新
+- PR-G3 / tauri-build-matrix：macOS .app + Linux .AppImage + .deb
+
+**退出标准（必做部分）**：
+- `make harness` 在 6 个 provider 上分别跑通
+- sandbox L2 在生产环境跑过 1 个月无逃逸事件
+- MCP integration：至少 fs-readonly + 1 个 SaaS（Notion 或 Slack）跑通
 
 ---
 
