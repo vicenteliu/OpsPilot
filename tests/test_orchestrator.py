@@ -687,6 +687,40 @@ def test_prefetch_query_fallback_when_fields_missing(
     assert tool_calls[0]["args"]["query"]  # non-empty
 
 
+def test_parse_summary_json_balances_dropped_outer_brace() -> None:
+    """gemma4:e4b reliably forgets the outermost `}` after closing all
+    nested arrays/objects. _try_balance_brackets must salvage it.
+    See: PR-8.5 hotfix-4 — host run sess_01KQKYQVKVZFPPQ24S6RBXFDHR
+    finished with finish_reason=stop but ended `...]}]\\n` (1 missing `}`)."""
+    from opspilot.orchestrator.ticket_summary import _parse_summary_json
+
+    # Mirror the actual broken shape: well-formed JSON minus the final `}`.
+    truncated = (
+        '{"schema_version":"ticket_summary_v1","ticket_ref":"T-1",'
+        '"summary":"x","symptoms":["a"],"scope":"single_user",'
+        '"tried_steps":[],"missing_fields":[],'
+        '"next_actions":[{"action":"a","rationale":"r","citations":[]}],'
+        '"severity_suggested":"P3",'
+        '"citations":[{"id":"kb-1","chunk_id":"chk_x","document_id":"doc_x",'
+        '"source_path":"x","line_start":1,"line_end":2}]'
+    )  # ← outermost `}` deliberately missing
+
+    parsed, err = _parse_summary_json(truncated)
+    assert err is None
+    assert parsed["schema_version"] == "ticket_summary_v1"
+    assert parsed["ticket_ref"] == "T-1"
+
+
+def test_parse_summary_json_does_not_pad_grossly_broken_output() -> None:
+    """If the deficit is > 3 closers we leave it broken — autopadding
+    arbitrary tokens would mask genuine model failures."""
+    from opspilot.orchestrator.ticket_summary import _parse_summary_json
+
+    parsed, err = _parse_summary_json('{{{{ "a": 1')  # 4-deep, never balances
+    assert parsed == {}
+    assert err is not None and "JSON parse error" in err
+
+
 def test_strip_redaction_placeholders_removes_nested() -> None:
     """The prefetch query must not carry [REDACTED:...] placeholder noise
     into FTS5 — those tokens crater implicit-AND recall (PR-8.5 hotfix)."""

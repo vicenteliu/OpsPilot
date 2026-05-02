@@ -463,6 +463,41 @@ def _format_ticket(ticket: dict[str, Any]) -> str:
 _JSON_FENCE_RE = re.compile(r"^```(?:json)?\s*\n?|\n?```\s*$", re.MULTILINE)
 
 
+def _try_balance_brackets(text: str, *, max_pad: int = 3) -> str:
+    """Append missing ``}`` / ``]`` if the model dropped trailing closers.
+
+    Weak open models (gemma4:e4b in our host runs) reliably finish writing
+    every nested object/array and then *forget the outermost* ``}``. Walk
+    the string with a stack ignoring quoted-string contents; if 1..max_pad
+    closers are missing, tack them on. ``max_pad`` keeps this from
+    silently masking genuinely broken output.
+    """
+    stack: list[str] = []
+    in_str = False
+    esc = False
+    for ch in text:
+        if esc:
+            esc = False
+            continue
+        if ch == "\\":
+            esc = True
+            continue
+        if ch == '"':
+            in_str = not in_str
+            continue
+        if in_str:
+            continue
+        if ch == "{":
+            stack.append("}")
+        elif ch == "[":
+            stack.append("]")
+        elif ch in ("}", "]") and stack and stack[-1] == ch:
+            stack.pop()
+    if 0 < len(stack) <= max_pad:
+        return text + "".join(reversed(stack))
+    return text
+
+
 def _parse_summary_json(content: str) -> tuple[dict[str, Any], str | None]:
     """Extract the model's JSON object even if it's accidentally fenced.
 
@@ -478,6 +513,8 @@ def _parse_summary_json(content: str) -> tuple[dict[str, Any], str | None]:
         m = re.search(r"\{[\s\S]*\}", text)
         if m:
             text = m.group(0)
+    # Graceful-degrade for weak-model outputs that drop trailing closers.
+    text = _try_balance_brackets(text)
     try:
         d = json.loads(text)
     except json.JSONDecodeError as e:
