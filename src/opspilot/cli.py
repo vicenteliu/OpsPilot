@@ -5,8 +5,9 @@
 * ``opspilot schemas``    — list registered schemas (debug)
 * ``opspilot ingest``     — run KB ingestion pipeline (PR-5)
 * ``opspilot kb-search``  — hybrid retrieval over KB (PR-5)
+* ``opspilot run``        — run a playbook end-to-end (PR-7)
 
-Subsequent PRs add ``run``, ``harness``, ``inspect``.
+Subsequent PRs add ``harness``, ``inspect``.
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ from .memory.lance_store import LanceStore
 from .memory.retrieval import kb_search
 from .memory.sqlite_store import SqliteStore
 from .memory.storage_init import init_sqlite
+from .orchestrator import RunRequest, load_playbook, run_ticket_summary
 from .providers import make_provider
 from .redaction import Redactor
 from .schemas import (
@@ -37,6 +39,7 @@ from .schemas import (
 from .schemas import (
     validate as schema_validate,
 )
+from .session import SessionManager
 
 app = typer.Typer(
     name="opspilot",
@@ -364,6 +367,105 @@ def kb_search_cmd(
             snippet,
         )
     _console.print(table)
+
+
+# ──────────────────────────────────────────────────────────────────────────
+#  run (PR-7)
+# ──────────────────────────────────────────────────────────────────────────
+
+
+@app.command()
+def run(
+    playbook: Path = typer.Option(  # noqa: B008
+        ...,
+        "--playbook",
+        "-p",
+        exists=True,
+        help="Path to the playbook directory (contains playbook.yaml + prompt.md).",
+    ),
+    input: Path = typer.Option(  # noqa: A002, B008
+        ...,
+        "--input",
+        "-i",
+        exists=True,
+        help="Path to the input ticket JSON.",
+    ),
+    owner: str = typer.Option(
+        "vicente@example.com",
+        "--owner",
+        help="Session owner (email/user id).",
+    ),
+    kb_id: str | None = typer.Option(
+        None,
+        "--kb-id",
+        help="KB id; defaults to playbook.defaults.kb_id.",
+    ),
+    namespace: str | None = typer.Option(
+        None,
+        "--namespace",
+        help="Override namespace; defaults to --kb-id.",
+    ),
+    embedding_model: str = typer.Option(
+        "ollama-local/nomic-embed-text-v2-moe@2026-04",
+        "--embedding-model",
+    ),
+    embedding_dim: int = typer.Option(768, "--embedding-dim"),
+    embed_model_short: str = typer.Option("nomic-embed-text-v2-moe", "--ollama-embed-model"),
+) -> None:
+    """Run a playbook end-to-end against a ticket and emit a structured artifact."""
+    cfg = load_config()
+    pb = load_playbook(playbook)
+    sqlite, lance = _open_kb_stores(
+        home=cfg.home,
+        embedding_dim=embedding_dim,
+        embedding_model=embedding_model,
+    )
+    redactor = Redactor.from_yaml()
+    provider = make_provider("ollama-local")
+
+    def embed_fn(text: str) -> list[float]:
+        return provider.embed([text], model=embed_model_short)[0]
+
+    sm = SessionManager(home=cfg.home)
+    request = RunRequest(
+        playbook=pb,
+        input_path=input,
+        owner=owner,
+        kb_id=kb_id,
+        namespace=namespace,
+    )
+    result = run_ticket_summary(
+        request,
+        session_manager=sm,
+        provider=provider,
+        redactor=redactor,
+        embed_fn=embed_fn,
+        sqlite_store=sqlite,
+        lance_store=lance,
+    )
+
+    table = Table(title=f"Run result · session {result.session_id}")
+    table.add_column("Field")
+    table.add_column("Value", overflow="fold")
+    table.add_row("playbook", f"{pb.id}@{pb.version}")
+    table.add_row("session_id", result.session_id)
+    table.add_row("artifact_id", result.artifact_id or "-")
+    table.add_row(
+        "schema_valid",
+        "[green]yes[/green]" if result.schema_valid else "[red]no[/red]",
+    )
+    if result.summary:
+        table.add_row("ticket_ref", str(result.summary.get("ticket_ref", "?")))
+        table.add_row(
+            "summary",
+            (result.summary.get("summary") or "")[:200],
+        )
+    if result.error:
+        table.add_row("error", f"[red]{result.error}[/red]")
+    _console.print(table)
+
+    if not result.schema_valid:
+        raise typer.Exit(code=2)
 
 
 # ──────────────────────────────────────────────────────────────────────────

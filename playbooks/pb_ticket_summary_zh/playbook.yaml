@@ -1,0 +1,47 @@
+# Playbook: pb_ticket_summary_zh
+# 中文工单摘要；产物 schema = ticket_summary_v1
+# 路径约定：playbooks/<id>/{playbook.yaml, prompt.md}
+
+id: "pb_ticket_summary_zh"
+version: "1.2.0"
+
+description: |
+  Given a redacted IT ticket (JSON), produce a structured summary
+  conforming to ticket_summary_v1, with citations traceable to KB
+  chunks via kb.search.
+
+# Path is resolved relative to this file.
+system_prompt: "prompt.md"
+
+# Output artifact schema (registered in opspilot.schemas registry).
+output_schema: "ticket_summary_v1"
+
+# Tools the orchestrator exposes to the LLM.
+# `kb_search` = retrieval over the configured KB; results returned as
+# JSON {hits: [{chunk_id, document_id, content, citation}]}.
+tools:
+  - name: "kb_search"
+    description: "Hybrid (vector + FTS5) retrieval over the OpsPilot KB. Use it when the ticket mentions any system / error / SOP-eligible topic. Returns chunks with citation handles you can reference in your final JSON."
+
+# Default model; CLI --model can override at runtime.
+# Note: nomic-embed-text-v2-moe is the embedding side; chat side is the gemma family.
+model:
+  provider_id: "ollama-local"
+  kind: "ollama"
+  name: "gemma4:e4b"
+  version: "2026-04"
+  params:
+    temperature: 0.2
+    top_p: 0.9
+    max_tokens: 1500
+
+# Loop bounds.
+limits:
+  max_turns: 8           # tool-call rounds before giving up
+  max_kb_search_results: 5
+
+# Sensitivity defaults; CLI may override.
+defaults:
+  retention_class: "medium"
+  sensitivity: "internal"
+  kb_id: "opspilot:public-kb"
