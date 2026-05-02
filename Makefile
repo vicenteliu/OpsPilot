@@ -1,5 +1,5 @@
 .PHONY: install dev ensure-venv test test-cov test-ollama lint format typecheck validate \
-        ollama-up ollama-down ollama-pull ollama-logs harness golden docker-build clean ci help
+        ollama-up ollama-down ollama-pull ollama-logs harness golden golden-kb docker-build clean ci help
 
 # Use python3.12 explicitly; on macOS this resolves to brew's installation.
 PYTHON ?= python3.12
@@ -105,7 +105,11 @@ endif
 harness: ensure-venv ## Run a single fixture through the harness (pass --fixture/--golden/--playbook).
 	$(OPSPL) harness run --fixture $(FIXTURE) --golden $(GOLDEN) --playbook $(PLAYBOOK) --output $(or $(OUTPUT),results.jsonl)
 
-golden: ensure-venv ## Run the Stage 1 golden test (requires running Ollama + ingested KB).
+golden-kb: ensure-venv ## Ingest the Stage 1 spec example KB (idempotent).
+	$(OPSPL) ingest examples/scn_ticket_summary_zh/kb/sop_vpn_zh.md \
+	    --kb-id "opspilot:public-kb"
+
+golden: ensure-venv golden-kb ## Run the Stage 1 golden test (auto-ingests KB; needs Ollama running).
 	$(OPSPL) harness golden --output golden-results.jsonl
 
 docker-build: ## Build the multi-stage docker image (opspilot:latest).
