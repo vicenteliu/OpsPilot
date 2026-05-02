@@ -3,12 +3,18 @@
 # 路径约定：playbooks/<id>/{playbook.yaml, prompt.md}
 
 id: "pb_ticket_summary_zh"
-version: "1.2.0"
+version: "1.4.0"
 
 description: |
   Given a redacted IT ticket (JSON), produce a structured summary
   conforming to ticket_summary_v1, with citations traceable to KB
   chunks via kb.search.
+
+  v1.4.0 (PR-8.5): retrieval.mode=prefetch — orchestrator runs
+  kb_search once before the chat loop and folds the hits into the
+  system prompt, so weak tool-calling models (e.g. gemma4:e4b) can
+  still cite real KB chunks. Flip retrieval.mode=tool to fall back to
+  the classic ReAct loop for stronger models.
 
 # Path is resolved relative to this file.
 system_prompt: "prompt.md"
@@ -37,7 +43,7 @@ model:
 
 # Loop bounds.
 limits:
-  max_turns: 8           # tool-call rounds before giving up
+  max_turns: 8           # tool-call rounds before giving up (mode=tool only)
   max_kb_search_results: 5
 
 # Sensitivity defaults; CLI may override.
@@ -45,3 +51,13 @@ defaults:
   retention_class: "medium"
   sensitivity: "internal"
   kb_id: "opspilot:public-kb"
+
+# Retrieval strategy (PR-8.5).
+#   mode=tool     — model decides when to call kb_search (classic ReAct)
+#   mode=prefetch — orchestrator pre-runs kb_search and folds hits into
+#                   system prompt; chat runs once with tools=[]
+retrieval:
+  mode: "prefetch"
+  prefetch:
+    # top_k omitted ⇒ falls back to limits.max_kb_search_results (D5)
+    query_fields: ["subject", "body"]

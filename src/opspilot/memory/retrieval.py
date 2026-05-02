@@ -22,12 +22,32 @@ PR-4 tests use a deterministic mock ``embed_fn``.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Any, Final
 
 from .lance_store import LanceStore
 from .sqlite_store import SqliteStore
+
+# FTS5 treats ``:``, ``[``, ``]``, ``"``, ``^``, ``*``, ``NEAR``, parens as
+# syntax. A natural-language query containing redaction placeholders
+# (e.g. ``[REDACTED:role:11111111]``) crashes with
+# ``OperationalError: no such column: role`` when handed verbatim. We
+# tokenise on word chars + CJK ideographs and feed each token as a quoted
+# phrase, preserving FTS5's implicit-AND semantics.
+_FTS_TOKEN_RE = re.compile(r"[\w一-鿿]+", re.UNICODE)
+
+
+def _safe_fts_query(q: str) -> str:
+    """Sanitise an arbitrary string for FTS5 ``MATCH``.
+
+    Returns a phrase-AND expression of the form ``"tok1" "tok2" ...``.
+    Empty input → ``""`` (which fts_search short-circuits via its NULL guard).
+    """
+    tokens = _FTS_TOKEN_RE.findall(q)
+    return " ".join(f'"{t}"' for t in tokens)
+
 
 # RRF constant — Cormack et al. (2009). Higher k = flatter weighting.
 RRF_K: Final[int] = 60
@@ -105,7 +125,7 @@ def kb_search(
 
     # ── FTS5 (keyword) path ──────────────────────────────────────────
     fts_hits = sqlite.fts_search(
-        q,
+        _safe_fts_query(q),
         top_k=candidate_k,
         namespace=namespace,
         classification=classification,

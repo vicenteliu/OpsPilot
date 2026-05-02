@@ -41,6 +41,14 @@ versions:
     rollback_window_until: "2026-05-31T13:20:00Z"
     rolled_back: false
 
+  - version: "1.4.0"
+    parent: "1.3.0"
+    iteration: null
+    promoted_at: "2026-05-02T08:00:00Z"
+    promoted_by: "vicente@example.com"
+    summary: "PR-8.5 — added retrieval.mode=prefetch (orchestrator pre-runs kb_search and folds hits into the system prompt; chat loop runs with tools=[] and max_turns=1). Unblocks weak tool-calling models (gemma4:e4b) — closes Issue B. mode=tool retained as escape hatch for stronger models."
+    rolled_back: false
+
 # 元数据 / Metadata
 maintenance:
   preserve_previous_n_versions: 3

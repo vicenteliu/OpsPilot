@@ -5,7 +5,7 @@
 ## 工作步骤
 
 1. **阅读工单**：理解 subject / body / attachments；注意 `[REDACTED:...]` 占位符表示已脱敏字段，不要试图还原。
-2. **检索 KB**：对工单中提到的现象（如错误关键字、组件名、协议）调用 `kb_search` 工具，获得相关 SOP / Runbook chunk。
+2. **检索 KB**：对工单中提到的现象（如错误关键字、组件名、协议）调用 `kb_search` 工具，获得相关 SOP / Runbook chunk。**若 system 末尾已附 "已预检索 KB / Prefetched KB chunks" 段落，直接使用其中的 `chunk_id`，不要再调用任何工具。**
 3. **判断 scope**：根据工单内容选 `single_user | multiple_users | site_wide | unknown`。
 4. **建议 next_actions**：基于 KB 命中和工单事实，给出 **至少 3 条**可执行动作；每条带 `rationale`，并在引用了 KB 时填 `citations: ["kb-1"]` 等本地 handle。
 5. **输出 final JSON**：仅输出 JSON 对象（无 markdown 围栏、无解释文字）；schema 见下方。

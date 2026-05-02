@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 
@@ -45,6 +45,33 @@ class PlaybookDefaults:
 
 
 @dataclass(frozen=True)
+class PlaybookRetrievalPrefetch:
+    """Config for `retrieval.mode = prefetch` (PR-8.5).
+
+    The orchestrator runs ``kb_search`` once before the chat loop and
+    injects the resulting chunks into the system prompt, so weak
+    tool-calling models (e.g. gemma4:e4b) can still cite real chunks.
+    """
+
+    top_k: int | None = None  # None ⇒ fall back to PlaybookLimits.max_kb_search_results
+    query_fields: list[str] = field(default_factory=lambda: ["subject", "body"])
+
+
+@dataclass(frozen=True)
+class PlaybookRetrieval:
+    """Retrieval-mode toggle.
+
+    ``tool`` (default, backward-compatible) — the model decides when to
+    call ``kb_search`` via the tool-call protocol.
+    ``prefetch`` — the orchestrator pre-runs ``kb_search`` and injects
+    chunks into the system prompt; the chat loop runs once with no tools.
+    """
+
+    mode: Literal["tool", "prefetch"] = "tool"
+    prefetch: PlaybookRetrievalPrefetch = field(default_factory=PlaybookRetrievalPrefetch)
+
+
+@dataclass(frozen=True)
 class PlaybookSpec:
     """Resolved playbook with the system prompt loaded into memory."""
 
@@ -57,6 +84,7 @@ class PlaybookSpec:
     model: Model
     limits: PlaybookLimits
     defaults: PlaybookDefaults
+    retrieval: PlaybookRetrieval
     source_dir: Path
 
     @property
@@ -109,6 +137,20 @@ def load_playbook(playbook_dir: Path) -> PlaybookSpec:
         kb_id=str(defaults_d.get("kb_id", "opspilot:public-kb")),
     )
 
+    retrieval_d = data.get("retrieval") or {}
+    mode = retrieval_d.get("mode", "tool")
+    if mode not in ("tool", "prefetch"):
+        raise PlaybookError(f"retrieval.mode must be 'tool' or 'prefetch', got {mode!r}")
+    prefetch_d = retrieval_d.get("prefetch") or {}
+    top_k_raw = prefetch_d.get("top_k")
+    retrieval = PlaybookRetrieval(
+        mode=mode,
+        prefetch=PlaybookRetrievalPrefetch(
+            top_k=int(top_k_raw) if top_k_raw is not None else None,
+            query_fields=list(prefetch_d.get("query_fields") or ["subject", "body"]),
+        ),
+    )
+
     return PlaybookSpec(
         id=data["id"],
         version=data["version"],
@@ -119,6 +161,7 @@ def load_playbook(playbook_dir: Path) -> PlaybookSpec:
         model=model,
         limits=limits,
         defaults=defaults,
+        retrieval=retrieval,
         source_dir=playbook_dir,
     )
 

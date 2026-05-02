@@ -36,14 +36,14 @@ from collections.abc import Callable
 from typing import Any, Literal
 
 from ..providers.base import ProviderProtocol
-from ..providers.types import Message, SamplingParams
+from ..providers.types import Message, SamplingParams, ToolDef
 from ..redaction import Redactor
 from ..schemas import validate as schema_validate
 from ..session.manager import SessionManager
 from ..session.types import TraceEvent
 from .errors import OrchestratorError
 from .tools import make_kb_search_tool, render_tool_result
-from .types import RunRequest, RunResult
+from .types import PlaybookSpec, RunRequest, RunResult
 
 # ── Public API ───────────────────────────────────────────────────────
 
@@ -103,11 +103,32 @@ def run_ticket_summary(
                 )
             )
 
-            # 3b. system + user prompts.
+            # 3b. Optional prefetch retrieval (PR-8.5).
+            #     For weak tool-call models we run kb_search ONCE here and
+            #     fold the hits into the system prompt; the chat loop then
+            #     runs with tools=[] and max_turns=1.
+            #     The trace still gets a tool_call + tool_result pair so the
+            #     harness's _retrieved_chunks() walker can find the chunks.
+            effective_system_prompt = pb.system_prompt
+            effective_tools: list[ToolDef] = [tool_def]
+            effective_max_turns = pb.limits.max_turns
+            if pb.retrieval.mode == "prefetch":
+                effective_system_prompt = _do_prefetch(
+                    pb=pb,
+                    ticket=ticket,
+                    redactor=redactor,
+                    tool_handler=tool_handler,
+                    tw=tw,
+                )
+                effective_tools = []
+                effective_max_turns = 1
+
+            # 3c. system + user prompts (post-prefetch so trace mirrors the
+            #     content actually fed to the model).
             tw.write(
                 TraceEvent.prompt(
                     role="system",
-                    content=pb.system_prompt,
+                    content=effective_system_prompt,
                     actor="system",
                 )
             )
@@ -130,11 +151,11 @@ def run_ticket_summary(
 
             # ── 4. Chat loop ─────────────────────────────────────────
             messages: list[Message] = [
-                Message(role="system", content=pb.system_prompt),
+                Message(role="system", content=effective_system_prompt),
                 Message(role="user", content=user_msg),
             ]
 
-            for _ in range(pb.limits.max_turns):
+            for _ in range(effective_max_turns):
                 resp = provider.chat(
                     messages,
                     model=pb.model.name,
@@ -143,7 +164,7 @@ def run_ticket_summary(
                         top_p=pb.model.params.get("top_p", 0.9),
                         max_tokens=pb.model.params.get("max_tokens", 1500),
                     ),
-                    tools=[tool_def],
+                    tools=effective_tools,
                 )
 
                 # tool_call branch
@@ -287,6 +308,97 @@ def run_ticket_summary(
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
+
+
+def _do_prefetch(
+    *,
+    pb: PlaybookSpec,
+    ticket: dict[str, Any],
+    redactor: Redactor,
+    tool_handler: Callable[[dict[str, Any]], dict[str, Any]],
+    tw: Any,  # TraceWriter — typed Any to avoid import cycle
+) -> str:
+    """Run kb_search once before the chat loop; return augmented system prompt.
+
+    Side effects:
+      * writes one ``tool_call`` and one ``tool_result`` event to ``tw``
+        (actor=``system`` / ``tool:kb`` respectively)
+
+    The query is built from ``pb.retrieval.prefetch.query_fields`` and run
+    through the redactor so the trace never carries pre-redaction PII.
+    """
+    fields = pb.retrieval.prefetch.query_fields or ["subject", "body"]
+    raw_parts: list[str] = []
+    for f in fields:
+        v = ticket.get(f)
+        if v:
+            raw_parts.append(str(v))
+    query_raw = "\n".join(raw_parts).strip()
+    if not query_raw:
+        # Fall back to the rendered ticket so we always have *something*.
+        query_raw = _format_ticket(ticket)
+    query = redactor.redact(query_raw).text
+
+    top_k = pb.retrieval.prefetch.top_k or pb.limits.max_kb_search_results
+    args = {"query": query, "top_k": top_k}
+
+    tw.write(
+        TraceEvent.tool_call(
+            tool="kb_search",
+            args=args,
+            action_id=None,
+            actor="system",
+        )
+    )
+
+    payload = tool_handler(args)
+    rendered = render_tool_result(payload)
+    tw.write(
+        TraceEvent.tool_result(
+            tool="kb_search",
+            status="ok",
+            action_id=None,
+            stdout_ref=rendered[:8000],
+            actor="tool:kb",
+        )
+    )
+
+    return pb.system_prompt + "\n\n" + _render_prefetch_addendum(payload)
+
+
+def _render_prefetch_addendum(payload: dict[str, Any]) -> str:
+    """Format kb_search hits as a Markdown block to append to system_prompt.
+
+    Uses one ``### chunk_id: chk_xxx`` heading per hit (D4) so the model
+    sees both the citation key and the chunk content side-by-side, and
+    is more likely to copy the chunk_id verbatim into ``citations[]``.
+    """
+    hits = payload.get("hits") or []
+    if not hits:
+        return (
+            "## 已预检索 KB / Prefetched KB chunks\n\n"
+            "（本次 kb_search 未返回结果；请基于工单事实回答，并在 citations 字段写空数组）"
+        )
+    parts: list[str] = ["## 已预检索 KB / Prefetched KB chunks", ""]
+    for h in hits:
+        cid = h.get("chunk_id", "?")
+        cit = h.get("citation") or {}
+        src = cit.get("source_path") or "?"
+        ls, le = cit.get("line_start"), cit.get("line_end")
+        parts.append(f"### chunk_id: {cid}")
+        parts.append(f"- source_path: `{src}`")
+        if ls is not None and le is not None:
+            parts.append(f"- lines: {ls}-{le}")
+        if cit.get("heading_path"):
+            parts.append(f"- heading_path: {' > '.join(cit['heading_path'])}")
+        parts.append("")
+        parts.append(str(h.get("content") or "").strip())
+        parts.append("")
+    parts.append(
+        "请直接基于以上 chunks 引用，**不要调用任何工具**；"
+        "在 `citations[]` 中只能使用上面出现过的真实 `chunk_id`。"
+    )
+    return "\n".join(parts)
 
 
 def _load_ticket(path: Any) -> dict[str, Any]:

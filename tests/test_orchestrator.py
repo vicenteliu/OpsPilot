@@ -12,6 +12,7 @@ against ``ticket_summary_v1``.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import math
 from pathlib import Path
@@ -23,6 +24,7 @@ from opspilot.memory.lance_store import LanceStore, VectorRecord
 from opspilot.memory.sqlite_store import SqliteStore
 from opspilot.memory.storage_init import init_sqlite
 from opspilot.orchestrator import RunRequest, load_playbook, run_ticket_summary
+from opspilot.orchestrator.types import PlaybookRetrieval, PlaybookRetrievalPrefetch
 from opspilot.providers.types import (
     ChatResponse,
     Message,
@@ -220,8 +222,22 @@ def _scripted_two_round() -> list[ChatResponse]:
     ]
 
 
-def _request(input_path: Path) -> RunRequest:
+def _request(input_path: Path, *, mode: str = "tool") -> RunRequest:
+    """Load the playbook and pin retrieval.mode for the test.
+
+    Default ``mode='tool'`` keeps the legacy PR-7 tests deterministic
+    even though the on-disk playbook now ships ``mode=prefetch`` (PR-8.5).
+    Prefetch tests pass ``mode='prefetch'`` explicitly.
+    """
     pb = load_playbook(PLAYBOOK_DIR)
+    if pb.retrieval.mode != mode:
+        pb = dataclasses.replace(
+            pb,
+            retrieval=PlaybookRetrieval(
+                mode=mode,
+                prefetch=pb.retrieval.prefetch,
+            ),
+        )
     return RunRequest(
         playbook=pb,
         input_path=input_path,
@@ -560,3 +576,112 @@ def test_load_playbook_missing_required_field(tmp_path: Path) -> None:
     bad.write_text("id: pb_x\nversion: 1.0.0\n", encoding="utf-8")  # missing model etc.
     with pytest.raises(PlaybookError, match="missing required field"):
         load_playbook(tmp_path)
+
+
+# ── PR-8.5: retrieval.mode = prefetch ───────────────────────────────
+
+
+def _scripted_prefetch_one_round() -> list[ChatResponse]:
+    """Single chat response: model returns final JSON directly.
+
+    In prefetch mode the orchestrator runs kb_search BEFORE the chat
+    loop and folds chunks into the system prompt, so the model has
+    everything it needs in one round and never emits a tool_call.
+    """
+    return [
+        ChatResponse(
+            content=json.dumps(_good_summary_json(), ensure_ascii=False),
+            finish_reason="stop",
+            tool_calls=None,
+            usage=Usage(input_tokens=900, output_tokens=400, cost_usd=0.0),
+        ),
+    ]
+
+
+def test_prefetch_happy_path_runs_kb_search_before_chat(
+    session_manager: SessionManager,
+    populated_kb: tuple[SqliteStore, LanceStore],
+    redactor: Redactor,
+) -> None:
+    """PR-8.5 exit criterion: prefetch mode produces a valid artifact in one round."""
+    sqlite, lance = populated_kb
+    provider = _ScriptedProvider(_scripted_prefetch_one_round())
+
+    result = run_ticket_summary(
+        _request(SAMPLE_TICKET, mode="prefetch"),
+        session_manager=session_manager,
+        provider=provider,
+        redactor=redactor,
+        embed_fn=_topic_embed,
+        sqlite_store=sqlite,
+        lance_store=lance,
+    )
+
+    # Artifact validates and the chat ran exactly once.
+    assert result.schema_valid is True
+    assert result.error is None
+    assert result.artifact_id is not None
+    assert len(provider.calls) == 1, "prefetch mode must NOT loop tool-calls"
+    # tools=[] was actually handed to the provider (otherwise gemma4 would
+    # be tempted to ignore the prefetched chunks and call kb_search again).
+    assert provider.calls[0]["tools"] == []
+
+    # Trace shows the orchestrator-driven tool_call/tool_result pair
+    # (so harness's _retrieved_chunks() walker continues to work).
+    sdir = session_manager.session_dir(result.session_id)
+    rows = [
+        json.loads(line) for line in (sdir / "trace.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    tool_calls = [r for r in rows if r["type"] == "tool_call"]
+    tool_results = [r for r in rows if r["type"] == "tool_result"]
+    assert len(tool_calls) == 1
+    assert tool_calls[0]["tool"] == "kb_search"
+    assert tool_calls[0]["actor"] == "system"  # orchestrator-driven, not model
+    assert len(tool_results) == 1
+    assert tool_results[0]["status"] == "ok"
+
+    # System prompt fed to the model must contain the prefetch addendum.
+    sys_prompts = [r for r in rows if r["type"] == "prompt" and r["role"] == "system"]
+    assert sys_prompts and "Prefetched KB chunks" in sys_prompts[0]["content"]
+
+
+def test_prefetch_query_fallback_when_fields_missing(
+    session_manager: SessionManager,
+    populated_kb: tuple[SqliteStore, LanceStore],
+    redactor: Redactor,
+) -> None:
+    """If query_fields point at fields the ticket doesn't have, fall back to
+    the rendered ticket so prefetch still issues a non-empty kb_search."""
+    sqlite, lance = populated_kb
+    provider = _ScriptedProvider(_scripted_prefetch_one_round())
+
+    pb = load_playbook(PLAYBOOK_DIR)
+    pb = dataclasses.replace(
+        pb,
+        retrieval=PlaybookRetrieval(
+            mode="prefetch",
+            prefetch=PlaybookRetrievalPrefetch(query_fields=["zzz_nonexistent"]),
+        ),
+    )
+    request = RunRequest(playbook=pb, input_path=SAMPLE_TICKET, owner="vicente@example.com")
+    result = run_ticket_summary(
+        request,
+        session_manager=session_manager,
+        provider=provider,
+        redactor=redactor,
+        embed_fn=_topic_embed,
+        sqlite_store=sqlite,
+        lance_store=lance,
+    )
+
+    # Run still succeeds; query was the rendered-ticket fallback (non-empty),
+    # not a literal "" that would have errored in the kb_search handler.
+    assert result.error is None
+    assert result.schema_valid is True
+    sdir = session_manager.session_dir(result.session_id)
+    rows = [
+        json.loads(line) for line in (sdir / "trace.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    tool_calls = [r for r in rows if r["type"] == "tool_call"]
+    assert len(tool_calls) == 1
+    assert tool_calls[0]["args"]["query"]  # non-empty

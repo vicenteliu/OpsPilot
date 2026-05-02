@@ -13,6 +13,7 @@ when the orchestrator emits the canonical ``ticket_summary_v1`` JSON.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import math
 from pathlib import Path
@@ -40,6 +41,7 @@ from opspilot.memory.lance_store import LanceStore, VectorRecord
 from opspilot.memory.sqlite_store import SqliteStore
 from opspilot.memory.storage_init import init_sqlite
 from opspilot.orchestrator import load_playbook
+from opspilot.orchestrator.types import PlaybookRetrieval, PlaybookSpec
 from opspilot.providers.types import (
     ChatResponse,
     Message,
@@ -237,6 +239,22 @@ def _scripted_two_round() -> list[ChatResponse]:
     ]
 
 
+def _load_pb_tool_mode() -> PlaybookSpec:
+    """Load the playbook and pin retrieval.mode='tool' for legacy harness tests.
+
+    The on-disk playbook ships ``mode=prefetch`` (PR-8.5). The integration
+    fixtures below script a 2-round tool-call loop, which only makes sense
+    in tool mode, so we override.
+    """
+    pb = load_playbook(PLAYBOOK_DIR)
+    if pb.retrieval.mode != "tool":
+        pb = dataclasses.replace(
+            pb,
+            retrieval=PlaybookRetrieval(mode="tool", prefetch=pb.retrieval.prefetch),
+        )
+    return pb
+
+
 # ── Evaluator unit tests ─────────────────────────────────────────────
 
 
@@ -356,7 +374,7 @@ def test_run_harness_full_pass(
     tmp_path: Path,
 ) -> None:
     sqlite, lance = populated_kb
-    pb = load_playbook(PLAYBOOK_DIR)
+    pb = _load_pb_tool_mode()
     provider = _ScriptedProvider(_scripted_two_round())
 
     result = run_harness(
@@ -391,7 +409,7 @@ def test_run_harness_emits_eval_result_schema_valid(
     from opspilot.schemas import validate as schema_validate
 
     sqlite, lance = populated_kb
-    pb = load_playbook(PLAYBOOK_DIR)
+    pb = _load_pb_tool_mode()
     provider = _ScriptedProvider(_scripted_two_round())
 
     result = run_harness(
@@ -419,7 +437,7 @@ def test_run_harness_aborts_pass_when_artifact_invalid(
 ) -> None:
     """Orchestrator returns malformed JSON → schema_check fails → not passed."""
     sqlite, lance = populated_kb
-    pb = load_playbook(PLAYBOOK_DIR)
+    pb = _load_pb_tool_mode()
     provider = _ScriptedProvider(
         [
             ChatResponse(
