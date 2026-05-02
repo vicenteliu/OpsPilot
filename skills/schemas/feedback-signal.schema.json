@@ -30,7 +30,8 @@
         "harness_score",
         "distillation_pattern",
         "model_drift",
-        "trace_failure"
+        "trace_failure",
+        "wiki_lint_issue"
       ]
     },
 

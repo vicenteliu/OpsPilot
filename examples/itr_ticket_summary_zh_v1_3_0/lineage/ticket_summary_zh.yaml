@@ -1,0 +1,48 @@
+# Lineage — ticket_summary_zh skill 演化谱系
+# Append-only 历史；回滚不删条目，只追加新条目
+
+skill_name: "ticket_summary_zh"
+
+versions:
+
+  - version: "1.0.0"
+    parent: null
+    iteration: null
+    promoted_at: "2026-01-15T10:00:00Z"
+    promoted_by: "vicente@example.com"
+    summary: "Initial release. Basic ticket summarization with required structured output and KB citation."
+    rolled_back: false
+
+  - version: "1.1.0"
+    parent: "1.0.0"
+    iteration: "itr_01J0Z9ZQXK7M6P3F0XK5K7AAAA"
+    promoted_at: "2026-02-20T10:00:00Z"
+    promoted_by: "vicente@example.com"
+    summary: "Added missing_fields detection (passive list; not yet actionable)."
+    rolled_back: false
+
+  - version: "1.2.0"
+    parent: "1.1.0"
+    iteration: "itr_01J0Z9ZQXK7M6P3F0XK5K7BBBB"
+    promoted_at: "2026-04-12T10:00:00Z"
+    promoted_by: "vicente@example.com"
+    summary: "Tightened citation validity rules; mandated chunk_id-must-be-from-retrieval-response."
+    rolled_back: false
+
+  - version: "1.3.0"
+    parent: "1.2.0"
+    iteration: "itr_01K2B0BRYN8P8R5H2YJ7M9E7N0"
+    promoted_at: "2026-05-01T13:20:00Z"
+    promoted_by: "vicente@example.com"
+    summary: "Added 'missing-field handling' branch in body — actionable ask-for-X steps when key diagnostic fields absent. Driven by 4 user_action.edit feedback signals + 1 distillation_pattern (aggregate weight 5.5)."
+    promoted_variant_id: "var_9930d615"
+    losing_variant_ids:
+      - "var_d373c759"
+    rollback_window_until: "2026-05-31T13:20:00Z"
+    rolled_back: false
+
+# 元数据 / Metadata
+maintenance:
+  preserve_previous_n_versions: 3
+  oldest_kept_version: "1.0.0"      # 当前保留全部历史；待 N>3 时按 policy 归档
+  audit_log_path: "skills/lineage/_audit/ticket_summary_zh.audit.log"

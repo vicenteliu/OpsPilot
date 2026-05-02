@@ -1,0 +1,67 @@
+# Iteration recipe — input config that triggered run itr_01K2B0BRYN8P8R5H2YJ7M9E7N0
+# Conforms to schemas/iteration.schema.json (recipe-stage; evaluation/decision filled post-run)
+# This file is the "before" snapshot; iteration/record.yaml is the "after" snapshot.
+
+id: "itr_01K2B0BRYN8P8R5H2YJ7M9E7N0"
+skill_ref: "ticket_summary_zh@1.2.0"
+ts: "2026-05-01T13:00:00Z"
+
+trigger:
+  type: "feedback_signal"
+  source_run: null
+  feedback_window_signals:
+    - "fb_01K2B0BRYN8P8R5H2YJ7M9E7F1A"
+    - "fb_01K2B0BRYN8P8R5H2YJ7M9E7F2B"
+    - "fb_01K2B0BRYN8P8R5H2YJ7M9E7F3C"
+    - "fb_01K2B0BRYN8P8R5H2YJ7M9E7F4D"
+    - "fb_01K2B0BRYN8P8R5H2YJ7M9E7F5E"
+  distillation_run: "run_dist_01K2B0BRYN8P8R5H2YJ7M9D"
+  model_upgrade: null
+  manual_actor: null
+
+hypothesis: |
+  Aggregated feedback weight 5.5 (4× user_action.edit at -1.0 each
+  with full freshness + 1 distillation_pattern at +1.5 reinforcement,
+  signed sum). Users repeatedly rewrite next_actions to add explicit
+  "ask user for X" steps when log fields are absent. Adding a
+  missing-field handling branch to body should reduce edit rate
+  while preserving trigger recall and citation validity.
+
+proposed_changes:
+  - field: "body"
+    kind: "append"
+    diff_ref: "iterations/itr_01K2B0BRYN8P8R5H2YJ7M9E7N0/var_alpha.body.patch"
+    rationale: "Append a 'missing-field handling' section; do NOT touch description"
+
+  # var_beta also adds outputs.schema_ref change — declared as a separate proposal block
+  # to be tested against the same baseline. Iteration policy `forbid_simultaneous` is
+  # NOT triggered because each variant changes only one *combination* (alpha=body only;
+  # beta=body+outputs.schema_ref). That said, beta sits closer to the policy edge.
+
+variants_created:
+  - "var_9930d615"
+  - "var_d373c759"
+
+evaluation:
+  fixtures:
+    - "fix_a1b2c3d4"
+  anchor_fixtures:
+    - "fix_a1b2c3d4"
+  baseline_run: "run_01J0Z9ZQXK7M6P3F0XK5K7C5RR"   # reuse zh sample's run; baseline weighted=0.968
+  variant_runs: []   # filled in record.yaml after run
+
+decision:
+  outcome: null
+  promoted_variant_id: null
+  merged_variant_ids: []
+  next_iteration_hypothesis: null
+  decided_by: null
+  decided_at: null
+  approval_chain: []
+  notes: null
+
+applied:
+  new_skill_version: null
+  registry_updated_at: null
+  lineage_entry_added: false
+  rollback_window_until: null

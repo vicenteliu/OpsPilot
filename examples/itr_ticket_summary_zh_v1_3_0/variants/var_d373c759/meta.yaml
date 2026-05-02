@@ -1,0 +1,34 @@
+# Variant metadata; conforms to skills/schemas/skill-variant.schema.json
+
+variant_id: "var_d373c759"
+parent_skill_ref: "ticket_summary_zh@1.2.0"
+parent_variant_id: null
+variant_label: "1.3.0-beta"
+
+created_from_iteration: "itr_01K2B0BRYN8P8R5H2YJ7M9E7N0"
+created_at: "2026-05-01T13:02:14Z"
+
+status: "losing"
+status_changed_at: "2026-05-01T13:18:32Z"
+
+diff_summary: |
+  Append the same missing-field section AND change outputs.schema_ref
+  to a v2 schema with structured missing_fields[] (each item carrying
+  field_name + reason + priority + suggested_phrasing + depends_on +
+  blocks_severity_decision). Two simultaneous field changes — see
+  iteration record for promotion-gate breakdown.
+
+diff_ref: "iterations/itr_01K2B0BRYN8P8R5H2YJ7M9E7N0/var_beta.body+schema.patch"
+
+checksum: "sha256:d373c759c92c64278a7e8b552d46f23d5111b1923f2310123a705589290e8bb5"
+
+eval_runs:
+  - "run_01K2B0BRYN8P8R5H2YJ7M9E7VB"
+
+merged_into_variant: null
+merged_from_variants: []
+
+expires_at: "2026-05-15T13:02:14Z"
+
+notes: "Rejected: cost gate failed (+18% > policy.max_cost_increase_pct=10). Output verbosity inflated token cost without proportional quality gain."
+extensions: {}

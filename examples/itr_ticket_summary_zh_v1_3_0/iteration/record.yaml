@@ -1,0 +1,102 @@
+# Iteration record — full filled record after run completed
+# Conforms to schemas/iteration.schema.json
+# Post-run version of recipe.yaml; same id, all fields populated.
+
+id: "itr_01K2B0BRYN8P8R5H2YJ7M9E7N0"
+skill_ref: "ticket_summary_zh@1.2.0"
+ts: "2026-05-01T13:00:00Z"
+
+trigger:
+  type: "feedback_signal"
+  source_run: null
+  feedback_window_signals:
+    - "fb_01K2B0BRYN8P8R5H2YJ7M9E7F1A"
+    - "fb_01K2B0BRYN8P8R5H2YJ7M9E7F2B"
+    - "fb_01K2B0BRYN8P8R5H2YJ7M9E7F3C"
+    - "fb_01K2B0BRYN8P8R5H2YJ7M9E7F4D"
+    - "fb_01K2B0BRYN8P8R5H2YJ7M9E7F5E"
+  distillation_run: "run_dist_01K2B0BRYN8P8R5H2YJ7M9D"
+  model_upgrade: null
+  manual_actor: null
+
+hypothesis: |
+  Aggregated feedback weight 5.5 over 30-day window. Users rewrite
+  next_actions to add explicit "ask user for X" steps. Adding a
+  missing-field handling branch should reduce edit rate while
+  preserving trigger recall and citation validity.
+
+proposed_changes:
+  - field: "body"
+    kind: "append"
+    diff_ref: "iterations/itr_01K2B0BRYN8P8R5H2YJ7M9E7N0/var_alpha.body.patch"
+    rationale: "Append a 'missing-field handling' section"
+
+variants_created:
+  - "var_9930d615"
+  - "var_d373c759"
+
+evaluation:
+  fixtures:
+    - "fix_a1b2c3d4"
+  anchor_fixtures:
+    - "fix_a1b2c3d4"
+  baseline_run: "run_01J0Z9ZQXK7M6P3F0XK5K7C5RR"
+
+  variant_runs:
+
+    - variant_id: "var_9930d615"
+      run_id: "run_01K2B0BRYN8P8R5H2YJ7M9E7VA"
+      delta:
+        weighted: 0.014                            # +0.014 vs baseline 0.968 → 0.982
+        pass_rate: 0.0                             # both 1/1 pass; no change
+        cost_pct: 4.5                              # +4.5% (well within 10% gate)
+        latency_p95_pct: 2.0
+        trigger_recall: 0.0                        # eval recall stayed at 0.94 (was 0.94)
+        trigger_false_positive: 0.0                # FP stayed at 0.03
+      verdict: "winning"
+      verdict_reasons:
+        - "no_regression_on_anchor: pass_rate unchanged at 1.0"
+        - "delta_weighted=0.014 ≥ min_delta_weighted=0.01"
+        - "cost growth +4.5% ≤ max_cost_increase_pct=10"
+        - "trigger_eval still passing (recall 0.94 ≥ 0.9, FP 0.03 ≤ 0.05)"
+        - "static_checks: PII clean, no prompt injection, all tools resolvable"
+
+    - variant_id: "var_d373c759"
+      run_id: "run_01K2B0BRYN8P8R5H2YJ7M9E7VB"
+      delta:
+        weighted: 0.008                            # +0.008 vs baseline → 0.976; below min_delta
+        pass_rate: 0.0
+        cost_pct: 18.3                             # ❌ 超过 10% 阈值
+        latency_p95_pct: 12.0
+        trigger_recall: 0.0
+        trigger_false_positive: 0.0
+      verdict: "losing"
+      verdict_reasons:
+        - "delta_weighted=0.008 < min_delta_weighted=0.01"
+        - "cost growth +18.3% > max_cost_increase_pct=10"
+        - "verbose structured missing_fields[] inflated output_tokens 38% without proportional quality gain"
+        - "no_regression_on_anchor satisfied but cost gate dominates"
+
+decision:
+  outcome: "promote"
+  promoted_variant_id: "var_9930d615"
+  merged_variant_ids: []
+  next_iteration_hypothesis: null
+  decided_by: "vicente@example.com"
+  decided_at: "2026-05-01T13:18:32Z"
+  approval_chain:
+    - approver: "vicente@example.com"
+      ts: "2026-05-01T13:18:32Z"
+      verdict: "approve"
+      comment: "var_alpha 改动小、归因清晰、cost 在闸内；var_beta 想法对但太重，留作后续 iteration 候选"
+  notes: |
+    var_d373c759 (var_beta) 的"结构化 missing_fields"思路有价值，但单次迭代不应同时改 body
+    + outputs.schema_ref（违反 max_changes_per_iteration=2 的精神，且 schema 改动需独立的
+    consumer 迁移评估）。建议下一轮 iteration 单独提议 schema_v2 升级；与 var_alpha 已落地
+    的 body 改动是正交的，可叠加测试。
+
+applied:
+  new_skill_version: "1.3.0"
+  registry_updated_at: "2026-05-01T13:20:00Z"
+  lineage_entry_added: true
+  rollback_window_until: "2026-05-31T13:20:00Z"
