@@ -1,17 +1,18 @@
 """OpsPilot CLI entry point.
 
-* ``opspilot init``       — create ``~/.opspilot/`` subtree
-* ``opspilot validate``   — JSON-schema-validate one file or a directory
-* ``opspilot schemas``    — list registered schemas (debug)
-* ``opspilot ingest``     — run KB ingestion pipeline (PR-5)
-* ``opspilot kb-search``  — hybrid retrieval over KB (PR-5)
-* ``opspilot run``        — run a playbook end-to-end (PR-7)
-
-Subsequent PRs add ``harness``, ``inspect``.
+* ``opspilot init``         — create ``~/.opspilot/`` subtree
+* ``opspilot validate``     — JSON-schema-validate one file or a directory
+* ``opspilot schemas``      — list registered schemas (debug)
+* ``opspilot ingest``       — run KB ingestion pipeline (PR-5)
+* ``opspilot kb-search``    — hybrid retrieval over KB (PR-5)
+* ``opspilot run``          — run a playbook end-to-end (PR-7)
+* ``opspilot harness run``  — run a single fixture through harness (PR-8)
+* ``opspilot harness golden`` — run the Stage 1 golden test (PR-8)
 """
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import typer
@@ -21,6 +22,8 @@ from rich.table import Table
 from . import __version__
 from .config import ensure_home, load_config
 from .errors import OpsPilotError, SchemaError
+from .harness import load_fixture, load_golden, run_harness
+from .harness.reporter import render_result_table
 from .memory.ingestion import IngestConfig
 from .memory.ingestion import ingest as run_ingest
 from .memory.lance_store import LanceStore
@@ -466,6 +469,164 @@ def run(
 
     if not result.schema_valid:
         raise typer.Exit(code=2)
+
+
+# ──────────────────────────────────────────────────────────────────────────
+#  harness (PR-8)
+# ──────────────────────────────────────────────────────────────────────────
+
+
+harness_app = typer.Typer(
+    name="harness",
+    help="Evaluation harness: run fixtures, compute scores, emit results.jsonl.",
+    no_args_is_help=True,
+)
+app.add_typer(harness_app)
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+GOLDEN_FIXTURE_PATH = REPO_ROOT / "examples" / "scn_ticket_summary_zh" / "harness" / "fixture.json"
+GOLDEN_GOLDEN_PATH = REPO_ROOT / "examples" / "scn_ticket_summary_zh" / "harness" / "golden.json"
+GOLDEN_PLAYBOOK_DIR = REPO_ROOT / "playbooks" / "pb_ticket_summary_zh"
+
+
+def _harness_dispatch(
+    *,
+    fixture_path: Path,
+    golden_path: Path,
+    playbook_dir: Path,
+    owner: str,
+    embedding_model: str,
+    embedding_dim: int,
+    embed_model_short: str,
+    output: Path | None,
+) -> int:
+    """Shared entrypoint for both ``run`` and ``golden`` subcommands.
+
+    Returns the desired CLI exit code.
+    """
+    cfg = load_config()
+    fixture = load_fixture(fixture_path)
+    golden = load_golden(golden_path)
+    playbook = load_playbook(playbook_dir)
+
+    sqlite, lance = _open_kb_stores(
+        home=cfg.home,
+        embedding_dim=embedding_dim,
+        embedding_model=embedding_model,
+    )
+    redactor = Redactor.from_yaml()
+    provider = make_provider("ollama-local")
+    sm = __import__("opspilot.session", fromlist=["SessionManager"]).SessionManager(home=cfg.home)
+
+    def embed_fn(text: str) -> list[float]:
+        return provider.embed([text], model=embed_model_short)[0]
+
+    result = run_harness(
+        fixture=fixture,
+        golden=golden,
+        playbook=playbook,
+        session_manager=sm,
+        provider=provider,
+        redactor=redactor,
+        embed_fn=embed_fn,
+        sqlite_store=sqlite,
+        lance_store=lance,
+        owner=owner,
+    )
+
+    render_result_table(result, console=_console)
+
+    # Emit results.jsonl row.
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with output.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(result.to_dict(), ensure_ascii=False))
+            f.write("\n")
+        _console.print(f"\n[dim]appended result to {output}[/dim]")
+
+    # Validate against eval-result.schema.json so the harness output is
+    # always introspectable by `opspilot validate`.
+    try:
+        schema_validate("eval-result", result.to_dict())
+    except Exception as e:  # noqa: BLE001
+        _err.print(f"[red]eval-result schema invalid:[/red] {e}")
+        return 3
+
+    if not result.passed:
+        return 2
+    return 0
+
+
+@harness_app.command("run")
+def harness_run(
+    fixture: Path = typer.Option(  # noqa: B008
+        ..., "--fixture", "-f", exists=True, help="Path to fixture.json."
+    ),
+    golden: Path = typer.Option(  # noqa: B008
+        ..., "--golden", "-g", exists=True, help="Path to golden.json."
+    ),
+    playbook: Path = typer.Option(  # noqa: B008
+        ..., "--playbook", "-p", exists=True, help="Path to playbook directory."
+    ),
+    owner: str = typer.Option("harness@opspilot", "--owner"),
+    embedding_model: str = typer.Option(
+        "ollama-local/nomic-embed-text-v2-moe@2026-04", "--embedding-model"
+    ),
+    embedding_dim: int = typer.Option(768, "--embedding-dim"),
+    embed_model_short: str = typer.Option("nomic-embed-text-v2-moe", "--ollama-embed-model"),
+    output: Path | None = typer.Option(  # noqa: B008
+        None,
+        "--output",
+        "-o",
+        help="Append result row to this results.jsonl path.",
+    ),
+) -> None:
+    """Run a single fixture and report scores."""
+    code = _harness_dispatch(
+        fixture_path=fixture,
+        golden_path=golden,
+        playbook_dir=playbook,
+        owner=owner,
+        embedding_model=embedding_model,
+        embedding_dim=embedding_dim,
+        embed_model_short=embed_model_short,
+        output=output,
+    )
+    if code != 0:
+        raise typer.Exit(code=code)
+
+
+@harness_app.command("golden")
+def harness_golden(
+    embedding_model: str = typer.Option(
+        "ollama-local/nomic-embed-text-v2-moe@2026-04", "--embedding-model"
+    ),
+    embedding_dim: int = typer.Option(768, "--embedding-dim"),
+    embed_model_short: str = typer.Option("nomic-embed-text-v2-moe", "--ollama-embed-model"),
+    output: Path | None = typer.Option(  # noqa: B008
+        None,
+        "--output",
+        "-o",
+        help="Append result row to this results.jsonl path.",
+    ),
+) -> None:
+    """Run the Stage 1 golden test (scn_ticket_summary_zh)."""
+    if not GOLDEN_FIXTURE_PATH.is_file():
+        _err.print(f"[red]golden fixture not found:[/red] {GOLDEN_FIXTURE_PATH}")
+        raise typer.Exit(code=1)
+    code = _harness_dispatch(
+        fixture_path=GOLDEN_FIXTURE_PATH,
+        golden_path=GOLDEN_GOLDEN_PATH,
+        playbook_dir=GOLDEN_PLAYBOOK_DIR,
+        owner="harness@opspilot",
+        embedding_model=embedding_model,
+        embedding_dim=embedding_dim,
+        embed_model_short=embed_model_short,
+        output=output,
+    )
+    if code != 0:
+        raise typer.Exit(code=code)
 
 
 # ──────────────────────────────────────────────────────────────────────────

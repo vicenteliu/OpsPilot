@@ -1,5 +1,5 @@
 .PHONY: install dev ensure-venv test test-cov test-ollama lint format typecheck validate \
-        ollama-up ollama-down ollama-pull ollama-logs clean ci help
+        ollama-up ollama-down ollama-pull ollama-logs harness golden docker-build clean ci help
 
 # Use python3.12 explicitly; on macOS this resolves to brew's installation.
 PYTHON ?= python3.12
@@ -99,6 +99,18 @@ else
 	@echo "  tail -f ~/.ollama/logs/server.log         # macOS"
 	@echo "  log stream --predicate 'process == \"ollama\"'   # macOS Console"
 endif
+
+# ── PR-8: Harness + Docker ──────────────────────────────────────────────
+
+harness: ensure-venv ## Run a single fixture through the harness (pass --fixture/--golden/--playbook).
+	$(OPSPL) harness run --fixture $(FIXTURE) --golden $(GOLDEN) --playbook $(PLAYBOOK) --output $(or $(OUTPUT),results.jsonl)
+
+golden: ensure-venv ## Run the Stage 1 golden test (requires running Ollama + ingested KB).
+	$(OPSPL) harness golden --output golden-results.jsonl
+
+docker-build: ## Build the multi-stage docker image (opspilot:latest).
+	docker build -t opspilot:latest .
+	docker run --rm opspilot:latest opspilot --version
 
 clean: ## Remove venv + caches.
 	rm -rf $(VENV) .pytest_cache .ruff_cache .mypy_cache

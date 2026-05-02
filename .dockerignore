@@ -1,0 +1,48 @@
+# Keep the docker context small + reproducible.
+
+# VCS / IDE
+.git
+.gitignore
+.github
+.idea
+.vscode
+.envrc
+
+# Local virtualenvs / caches
+.venv
+venv
+env
+.python-version
+.pytest_cache
+.mypy_cache
+.ruff_cache
+__pycache__
+*.pyc
+*.pyo
+
+# Local OpsPilot state — never bake into the image
+.opspilot
+sessions
+**/sessions
+**/.lance
+**/lancedb
+*.db
+*.db-wal
+*.db-shm
+
+# Build artifacts
+build
+dist
+*.egg-info
+
+# Notes / scratch
+.git-pr*-msg.txt
+*.swp
+*.swo
+.DS_Store
+
+# Large fixtures we don't need at runtime
+tests
+docs
+*.md
+!README.md
