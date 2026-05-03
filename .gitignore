@@ -257,3 +257,7 @@ harness-results-*.jsonl
 .claude/
 skills/
 skills-lock.json
+
+# Svelte / Node
+web/node_modules/
+web/.svelte-kit/
