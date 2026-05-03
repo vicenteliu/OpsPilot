@@ -27,7 +27,7 @@ class Config:
     anthropic_api_key: str | None = None
     embed_model: str = "nomic-embed-text-v2-moe"
     playbooks_dir: Path | None = None  # defaults to ./playbooks at runtime
-    ui_modules: dict[str, bool] = field(default_factory=lambda: {"run": True})
+    ui_modules: dict[str, bool] = field(default_factory=lambda: {"run": True, "history": True})
 
 
 def load_config() -> Config:

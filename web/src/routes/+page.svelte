@@ -1,10 +1,11 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import '../app.css';
-  import { getConfig, runTicket, type RunResponse, type NextAction } from '$lib/api';
+  import { getConfig, runTicket, listSessions, getSession, type RunResponse, type NextAction, type SessionSummary } from '$lib/api';
 
   // --- State ---
   let modelRef = $state<string>('');
+  let modules = $state<Record<string, boolean>>({ run: true, history: true });
   let ticketInput = $state<string>(JSON.stringify(
     {
       "ticket_id": "TKT-DEMO-001",
@@ -20,6 +21,8 @@
   let loading = $state<boolean>(false);
   let result = $state<RunResponse | null>(null);
   let fetchError = $state<string | null>(null);
+  let sessions = $state<SessionSummary[]>([]);
+  let historyLoading = $state<boolean>(false);
 
   // --- Derived ---
   let summary = $derived(result?.result ?? null);
@@ -30,12 +33,38 @@
     try {
       const cfg = await getConfig();
       modelRef = cfg.active_model_ref;
+      modules = cfg.modules;
     } catch (e) {
       modelRef = 'unknown';
     }
+    if (modules.history) await refreshHistory();
   });
 
   // --- Handlers ---
+  async function refreshHistory() {
+    historyLoading = true;
+    try {
+      sessions = await listSessions();
+    } catch {
+      sessions = [];
+    } finally {
+      historyLoading = false;
+    }
+  }
+
+  async function viewSession(sessionId: string) {
+    fetchError = null;
+    loading = true;
+    try {
+      result = await getSession(sessionId);
+    } catch (e) {
+      fetchError = e instanceof Error ? e.message : String(e);
+    } finally {
+      loading = false;
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
   async function handleRun() {
     fetchError = null;
     result = null;
@@ -49,6 +78,7 @@
     loading = true;
     try {
       result = await runTicket(input);
+      if (modules.history) await refreshHistory();
     } catch (e) {
       fetchError = e instanceof Error ? e.message : String(e);
     } finally {
@@ -180,6 +210,45 @@
           {/if}
         </div>
 
+      </section>
+    {/if}
+    <!-- History module -->
+    {#if modules.history}
+      <section class="history-section">
+        <div class="history-header">
+          <h2>History</h2>
+          <button class="btn-refresh" onclick={refreshHistory} disabled={historyLoading}>
+            {historyLoading ? '...' : '↻'}
+          </button>
+        </div>
+        {#if sessions.length === 0}
+          <p class="history-empty">No sessions yet.</p>
+        {:else}
+          <table class="history-table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Status</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each sessions as s}
+                <tr>
+                  <td class="col-time">{new Date(s.created_at).toLocaleString()}</td>
+                  <td>
+                    <span class="status-badge status-{s.status}">{s.status}</span>
+                  </td>
+                  <td>
+                    <button class="btn-view" onclick={() => viewSession(s.session_id)}>
+                      View
+                    </button>
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        {/if}
       </section>
     {/if}
   </main>
@@ -357,5 +426,104 @@
     margin-top: 0.5rem;
     font-size: 0.9rem;
     color: #b45309;
+  }
+
+  .history-section {
+    margin-top: 2rem;
+    border-top: 1px solid #e2e8f0;
+    padding-top: 1.5rem;
+  }
+
+  .history-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
+
+  .history-header h2 {
+    font-size: 1.1rem;
+    color: #444;
+    margin: 0;
+  }
+
+  .btn-refresh {
+    background: none;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    padding: 0.15rem 0.5rem;
+    font-size: 1rem;
+    color: #64748b;
+    line-height: 1;
+  }
+
+  .btn-refresh:hover {
+    background: #f1f5f9;
+  }
+
+  .history-empty {
+    color: #94a3b8;
+    font-size: 0.9rem;
+  }
+
+  .history-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+  }
+
+  .history-table th {
+    text-align: left;
+    padding: 0.4rem 0.75rem;
+    color: #64748b;
+    font-weight: 600;
+    border-bottom: 1px solid #e2e8f0;
+  }
+
+  .history-table td {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: middle;
+  }
+
+  .col-time {
+    color: #475569;
+    white-space: nowrap;
+  }
+
+  .status-badge {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+
+  .status-archived {
+    background: #dcfce7;
+    color: #15803d;
+  }
+
+  .status-aborted {
+    background: #fee2e2;
+    color: #b91c1c;
+  }
+
+  .status-active {
+    background: #fef9c3;
+    color: #854d0e;
+  }
+
+  .btn-view {
+    font-size: 0.8rem;
+    padding: 0.2rem 0.6rem;
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    color: #1a56db;
+  }
+
+  .btn-view:hover {
+    background: #e2e8f0;
   }
 </style>

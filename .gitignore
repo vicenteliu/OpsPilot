@@ -261,3 +261,4 @@ skills-lock.json
 # Svelte / Node
 web/node_modules/
 web/.svelte-kit/
+!web/src/lib/

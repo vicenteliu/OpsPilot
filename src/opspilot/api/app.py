@@ -25,6 +25,7 @@ from ..redaction import Redactor
 from ..session.manager import SessionManager
 from .routes.config import router as config_router
 from .routes.run import router as run_router
+from .routes.sessions import router as sessions_router
 
 
 @asynccontextmanager
@@ -99,3 +100,4 @@ app.add_middleware(
 
 app.include_router(config_router, prefix="/api")
 app.include_router(run_router, prefix="/api")
+app.include_router(sessions_router, prefix="/api")

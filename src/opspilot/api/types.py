@@ -29,3 +29,18 @@ class ApiConfigResponse(BaseModel):
 
     active_model_ref: str
     modules: dict[str, bool]
+
+
+class ApiSessionSummary(BaseModel):
+    """One row in GET /api/sessions."""
+
+    session_id: str
+    created_at: str
+    status: str
+    artifact_id: str | None
+
+
+class ApiSessionListResponse(BaseModel):
+    """Response body for GET /api/sessions."""
+
+    sessions: list[ApiSessionSummary]
