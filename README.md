@@ -130,6 +130,43 @@ playbooks/      YAML playbook specs + system prompts
 kb/             Source documents for KB ingestion
 ```
 
+### Full system design (Providers × Skills × Memory × Session × Sandbox × Harness)
+
+The six layers form a closed AI task loop:
+
+```
+   ┌───────────┐  ┌─────────────────┐  ┌───────────────────────────┐
+   │ providers/│  │    skills/      │  │  memory/                  │
+   │  models   │  │  registry +     │  │  short / mid / long-term  │
+   │           │  │  distillation   │  │  SQLite + LanceDB + md    │
+   │           │  │  + tool/MCP     │  │  RAG (kb.search /         │
+   │           │  │  bindings       │  │       memory.search)      │
+   └─────┬─────┘  └────────┬────────┘  └──────────┬────────────────┘
+         │ model_ref        │ skill_ref +           │ kb.search results
+         ▼                  ▼ tool/mcp bindings     ▼ + memory recall
+    playbooks/  ──▶  Session(create) ◀─────────────┘
+                            │
+                            ▼
+                      proposed_action ──▶ sandbox/ ──▶ artifact
+                            │                              │
+                            ▼                              ▼
+                      Session.trace  ◀────────────  recording
+                            │   (on archive: distilled → mid-term memory
+                            │    + usable as skill distillation source)
+                            ▼
+                      harness/ (eval) ──▶ case-studies/
+```
+
+- **providers/** — pluggable LLM backends (Ollama / OpenRouter / OpenAI / Anthropic / Gemini); unified auth, capability declarations, cost and fallback
+- **skills/** — skill registry + authoring + distillation + iteration + tool/MCP bindings; distil new skills from traces, docs, or other skills; evolve via lineage, variants, and feedback signals
+- **memory/** — three-tier memory: short-term (in-trace summaries) / mid-term (SQLite + markdown) / long-term (LanceDB + markdown); RAG retrieval and reranking
+- **wiki/** — LLM-maintained synthesis layer on top of the long-term KB: 5 page kinds + cross-links + lint; query answers can be written back as new pages, forming a compounding insight loop
+- **session/** — "context + trace + artifact + audit" bundle for every AI task; the carrier for compliance
+- **sandbox/** — isolated execution layer for AI-proposed actions ("show me before committing"); default deny-all
+- **harness/** — unit tests and regression gates for prompts and playbooks; required before model upgrades
+
+> The spec-only directories (`providers/`, `skills/`, `wiki/`, `session/`, `sandbox/`, `harness/` at repo root) define these contracts and templates. The working implementation lives under `src/opspilot/`.
+
 ### Provider routing
 
 The active playbook declares a primary model and an optional fallback:
