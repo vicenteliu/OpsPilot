@@ -251,3 +251,9 @@ sessions/
 # harness run outputs
 golden-results.jsonl
 harness-results-*.jsonl
+
+# Claude Code tooling (machine-local; not shared)
+.agents/
+.claude/
+skills/
+skills-lock.json
