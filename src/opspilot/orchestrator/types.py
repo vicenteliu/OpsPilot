@@ -86,6 +86,7 @@ class PlaybookSpec:
     defaults: PlaybookDefaults
     retrieval: PlaybookRetrieval
     source_dir: Path
+    fallback_model: Model | None = None  # optional fallback provider + model
 
     @property
     def ref(self) -> Playbook:
@@ -118,6 +119,17 @@ def load_playbook(playbook_dir: Path) -> PlaybookSpec:
         version=model_d["version"],
         params=dict(model_d.get("params") or {}),
     )
+
+    fallback_model: Model | None = None
+    fallback_d = model_d.get("fallback")
+    if fallback_d:
+        fallback_model = Model(
+            provider_id=fallback_d["provider_id"],
+            kind=fallback_d["kind"],
+            name=fallback_d["name"],
+            version=fallback_d.get("version", model_d["version"]),
+            params=dict(fallback_d.get("params") or model_d.get("params") or {}),
+        )
 
     tools = [
         PlaybookToolSpec(name=t["name"], description=t.get("description", ""))
@@ -159,6 +171,7 @@ def load_playbook(playbook_dir: Path) -> PlaybookSpec:
         output_schema=data["output_schema"],
         tools=tools,
         model=model,
+        fallback_model=fallback_model,
         limits=limits,
         defaults=defaults,
         retrieval=retrieval,

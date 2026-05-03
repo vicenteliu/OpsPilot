@@ -1,14 +1,14 @@
 """LLM provider abstraction.
 
-PR-3 ships Ollama; Stage 2 adds Anthropic. Both satisfy the same
-:class:`ProviderProtocol` so orchestrators are provider-agnostic.
+Providers: Ollama (local), Anthropic, OpenAI-compatible (OpenAI /
+OpenRouter / Gemini). All satisfy :class:`ProviderProtocol`.
 
 Public API::
 
     from opspilot.providers import (
         Message, SamplingParams, ToolCall, ToolDef, Usage, ChatResponse,
         ProviderProtocol,
-        AnthropicProvider,
+        AnthropicProvider, OpenAIProvider,
         OllamaProvider,
         make_provider,
     )
@@ -17,6 +17,7 @@ Public API::
 from .anthropic import AnthropicProvider
 from .base import ProviderProtocol
 from .ollama import OllamaProvider
+from .openai_compat import OpenAIProvider
 from .registry import make_provider
 from .types import (
     ChatResponse,
@@ -29,6 +30,7 @@ from .types import (
 
 __all__ = [
     "AnthropicProvider",
+    "OpenAIProvider",
     "ChatResponse",
     "Message",
     "OllamaProvider",

@@ -35,7 +35,9 @@ import re
 from collections.abc import Callable
 from typing import Any, Literal
 
+from ..errors import ProviderError
 from ..providers.base import ProviderProtocol
+from ..providers.registry import make_provider
 from ..providers.types import Message, SamplingParams, ToolDef
 from ..redaction import Redactor
 from ..schemas import validate as schema_validate
@@ -157,17 +159,42 @@ def run_ticket_summary(
                 Message(role="user", content=user_msg),
             ]
 
+            # Build fallback provider lazily — only if the playbook declares one.
+            fallback_provider: ProviderProtocol | None = None
+            if pb.fallback_model is not None:
+                try:
+                    fallback_provider = make_provider(
+                        pb.fallback_model.provider_id,
+                        kind=pb.fallback_model.kind,
+                    )
+                except Exception:  # noqa: BLE001 — unavailable fallback is non-fatal
+                    pass
+
             for _ in range(effective_max_turns):
-                resp = provider.chat(
-                    messages,
-                    model=pb.model.name,
-                    params=SamplingParams(
-                        temperature=pb.model.params.get("temperature", 0.2),
-                        top_p=pb.model.params.get("top_p", 0.9),
-                        max_tokens=pb.model.params.get("max_tokens", 1500),
-                    ),
-                    tools=effective_tools,
-                )
+                try:
+                    resp = provider.chat(
+                        messages,
+                        model=pb.model.name,
+                        params=SamplingParams(
+                            temperature=pb.model.params.get("temperature", 0.2),
+                            top_p=pb.model.params.get("top_p", 0.9),
+                            max_tokens=pb.model.params.get("max_tokens", 1500),
+                        ),
+                        tools=effective_tools,
+                    )
+                except ProviderError:
+                    if fallback_provider is None or pb.fallback_model is None:
+                        raise
+                    resp = fallback_provider.chat(
+                        messages,
+                        model=pb.fallback_model.name,
+                        params=SamplingParams(
+                            temperature=pb.fallback_model.params.get("temperature", 0.2),
+                            top_p=pb.fallback_model.params.get("top_p", 0.9),
+                            max_tokens=pb.fallback_model.params.get("max_tokens", 1500),
+                        ),
+                        tools=effective_tools,
+                    )
 
                 # tool_call branch
                 if resp.finish_reason == "tool_call" and resp.tool_calls:

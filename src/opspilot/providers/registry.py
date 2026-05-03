@@ -2,15 +2,16 @@
 
 Dispatches by ``provider_id`` prefix or explicit ``kind`` kwarg.
 Supported kinds:
-  * ``ollama`` / ``ollama-local`` — local Ollama daemon
-  * ``anthropic`` / ``anthropic-claude`` — Anthropic cloud API (Stage 2)
+  * ``ollama``      — local Ollama daemon (default fallback)
+  * ``anthropic``   — Anthropic cloud API
+  * ``openai``      — OpenAI API
+  * ``openrouter``  — OpenRouter (OpenAI-compatible)
+  * ``gemini``      — Google Gemini (OpenAI-compatible endpoint)
 
-Keeping the factory here means caller code can write::
+Caller code stays stable as new providers arrive::
 
     from opspilot.providers import make_provider
-    p = make_provider("ollama-local")
-
-and not be rewritten when new providers arrive.
+    p = make_provider("openrouter", api_key="sk-or-...")
 """
 
 from __future__ import annotations
@@ -20,12 +21,17 @@ from ..errors import ConfigError
 from .anthropic import AnthropicProvider
 from .base import ProviderProtocol
 from .ollama import OllamaProvider
+from .openai_compat import OpenAIProvider
+
+_OPENAI_COMPATIBLE_PREFIXES = ("openai", "openrouter", "gemini")
 
 
 def _infer_kind(provider_id: str) -> str:
-    """Infer provider kind from provider_id prefix."""
     if provider_id.startswith("anthropic"):
         return "anthropic"
+    for prefix in _OPENAI_COMPATIBLE_PREFIXES:
+        if provider_id.startswith(prefix):
+            return "openai"
     return "ollama"
 
 
@@ -38,13 +44,17 @@ def make_provider(
 ) -> ProviderProtocol:
     """Build a provider instance by id.
 
-    ``kind`` overrides the inferred kind. Pass ``kind="anthropic"`` to
-    explicitly select the Anthropic provider regardless of provider_id.
+    ``kind`` overrides the inferred kind.
+    For openai-compatible providers the api_key env var is derived from
+    the provider_id (e.g. ``OPENROUTER_API_KEY`` for ``openrouter``).
     """
     resolved_kind = kind if kind is not None else _infer_kind(provider_id)
 
     if resolved_kind == "anthropic":
         return AnthropicProvider(api_key=api_key)
+
+    if resolved_kind == "openai":
+        return OpenAIProvider(provider_id=provider_id, api_key=api_key, base_url=base_url)
 
     if resolved_kind in ("ollama", "ollama-local"):
         cfg = load_config()
@@ -55,5 +65,5 @@ def make_provider(
 
     raise ConfigError(
         f"Provider kind '{resolved_kind}' (from provider_id='{provider_id}') is not supported. "
-        "Supported kinds: ollama, anthropic."
+        "Supported kinds: ollama, anthropic, openai, openrouter, gemini."
     )
