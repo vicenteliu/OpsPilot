@@ -38,10 +38,9 @@ def get_models(request: Request) -> ApiModelsResponse:
     primary_mode = playbook.retrieval.mode
     options: list[ApiModelOption] = [_model_option(playbook.model, primary_mode)]
 
-    if playbook.fallback_model:
-        # Fallback is typically a weak local model → prefetch mode.
-        fallback_mode = "prefetch" if playbook.fallback_model.kind == "ollama" else primary_mode
-        options.append(_model_option(playbook.fallback_model, fallback_mode))
+    for m in playbook.extra_models:
+        mode = "prefetch" if m.kind == "ollama" else primary_mode
+        options.append(_model_option(m, mode))
 
     return ApiModelsResponse(
         models=options,

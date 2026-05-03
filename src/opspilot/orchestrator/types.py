@@ -86,7 +86,7 @@ class PlaybookSpec:
     defaults: PlaybookDefaults
     retrieval: PlaybookRetrieval
     source_dir: Path
-    fallback_model: Model | None = None  # optional fallback provider + model
+    extra_models: list[Model] = field(default_factory=list)  # additional selectable models
 
     @property
     def ref(self) -> Playbook:
@@ -120,16 +120,23 @@ def load_playbook(playbook_dir: Path) -> PlaybookSpec:
         params=dict(model_d.get("params") or {}),
     )
 
-    fallback_model: Model | None = None
-    fallback_d = model_d.get("fallback")
-    if fallback_d:
-        fallback_model = Model(
-            provider_id=fallback_d["provider_id"],
-            kind=fallback_d["kind"],
-            name=fallback_d["name"],
-            version=fallback_d.get("version", model_d["version"]),
-            params=dict(fallback_d.get("params") or model_d.get("params") or {}),
+    def _parse_model(d: dict[str, Any], default_version: str, default_params: dict[str, Any]) -> Model:
+        return Model(
+            provider_id=d["provider_id"],
+            kind=d["kind"],
+            name=d["name"],
+            version=d.get("version", default_version),
+            params=dict(d.get("params") or default_params),
         )
+
+    extra_models: list[Model] = []
+    # Support new top-level `extra_models` list.
+    for em_d in data.get("extra_models") or []:
+        extra_models.append(_parse_model(em_d, model_d["version"], model_d.get("params") or {}))
+    # Backward compat: promote old `model.fallback` to extra_models if list is empty.
+    fallback_d = model_d.get("fallback")
+    if fallback_d and not extra_models:
+        extra_models.append(_parse_model(fallback_d, model_d["version"], model_d.get("params") or {}))
 
     tools = [
         PlaybookToolSpec(name=t["name"], description=t.get("description", ""))
@@ -171,7 +178,7 @@ def load_playbook(playbook_dir: Path) -> PlaybookSpec:
         output_schema=data["output_schema"],
         tools=tools,
         model=model,
-        fallback_model=fallback_model,
+        extra_models=extra_models,
         limits=limits,
         defaults=defaults,
         retrieval=retrieval,

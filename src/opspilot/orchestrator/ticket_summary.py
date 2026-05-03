@@ -162,13 +162,14 @@ def run_ticket_summary(
                 Message(role="user", content=user_msg),
             ]
 
-            # Build fallback provider lazily — only if the playbook declares one.
+            # Build fallback provider lazily — uses the first extra_model if available.
+            auto_fallback_model = pb.extra_models[0] if pb.extra_models else None
             fallback_provider: ProviderProtocol | None = None
-            if pb.fallback_model is not None:
+            if auto_fallback_model is not None:
                 try:
                     fallback_provider = make_provider(
-                        pb.fallback_model.provider_id,
-                        kind=pb.fallback_model.kind,
+                        auto_fallback_model.provider_id,
+                        kind=auto_fallback_model.kind,
                     )
                 except Exception:  # noqa: BLE001 — unavailable fallback is non-fatal
                     pass
@@ -186,15 +187,15 @@ def run_ticket_summary(
                         tools=effective_tools,
                     )
                 except ProviderError:
-                    if fallback_provider is None or pb.fallback_model is None:
+                    if fallback_provider is None or auto_fallback_model is None:
                         raise
                     resp = fallback_provider.chat(
                         messages,
-                        model=pb.fallback_model.name,
+                        model=auto_fallback_model.name,
                         params=SamplingParams(
-                            temperature=pb.fallback_model.params.get("temperature", 0.2),
-                            top_p=pb.fallback_model.params.get("top_p", 0.9),
-                            max_tokens=pb.fallback_model.params.get("max_tokens", 1500),
+                            temperature=auto_fallback_model.params.get("temperature", 0.2),
+                            top_p=auto_fallback_model.params.get("top_p", 0.9),
+                            max_tokens=auto_fallback_model.params.get("max_tokens", 1500),
                         ),
                         tools=effective_tools,
                     )

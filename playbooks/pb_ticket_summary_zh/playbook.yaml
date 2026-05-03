@@ -29,7 +29,7 @@ tools:
   - name: "kb_search"
     description: "Hybrid (vector + FTS5) retrieval over the OpsPilot KB. Use it when the ticket mentions any system / error / SOP-eligible topic. Returns chunks with citation handles you can reference in your final JSON."
 
-# Primary: Anthropic Claude (cloud). Fallback: local Ollama for offline use.
+# Primary model.
 model:
   provider_id: "anthropic"
   kind: "anthropic"
@@ -39,8 +39,35 @@ model:
     temperature: 0.2
     top_p: 0.9
     max_tokens: 4096
-  fallback:
-    provider_id: "ollama-local"
+
+# Additional selectable models (shown in the UI dropdown alongside the primary).
+# Weak local models (kind=ollama) automatically switch retrieval.mode to prefetch.
+extra_models:
+  - provider_id: "anthropic"
+    kind: "anthropic"
+    name: "claude-sonnet-4-5"
+    version: "2025-01"
+    params:
+      temperature: 0.2
+      top_p: 0.9
+      max_tokens: 8192
+  - provider_id: "anthropic"
+    kind: "anthropic"
+    name: "claude-opus-4-5"
+    version: "2025-01"
+    params:
+      temperature: 0.2
+      top_p: 0.9
+      max_tokens: 8192
+  - provider_id: "openrouter"
+    kind: "openai"
+    name: "google/gemini-2.0-flash-001"
+    version: "2025-01"
+    params:
+      temperature: 0.2
+      top_p: 0.9
+      max_tokens: 4096
+  - provider_id: "ollama-local"
     kind: "ollama"
     name: "gemma4:e4b"
     version: "2026-04"

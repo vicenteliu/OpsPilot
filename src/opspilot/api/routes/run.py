@@ -27,15 +27,15 @@ async def run_ticket(body: ApiRunRequest, request: Request) -> ApiRunResponse:
 
     # Resolve which provider + playbook spec to use.
     # model_id = None or matching the primary → use startup provider as-is.
-    # model_id matching the fallback → promote fallback to primary for this run.
-    fallback_id = (
-        f"{pb.fallback_model.provider_id}/{pb.fallback_model.name}"
-        if pb.fallback_model else None
-    )
+    # model_id matching any extra_model → promote that model to primary for this run.
+    primary_id = f"{pb.model.provider_id}/{pb.model.name}"
+    override_model = next(
+        (m for m in pb.extra_models if f"{m.provider_id}/{m.name}" == body.model_id),
+        None,
+    ) if body.model_id and body.model_id != primary_id else None
 
-    if body.model_id and body.model_id == fallback_id and pb.fallback_model:
+    if override_model is not None:
         cfg = state.cfg
-        override_model = pb.fallback_model
         override_provider = make_provider(
             override_model.provider_id,
             kind=override_model.kind,
@@ -46,12 +46,12 @@ async def run_ticket(body: ApiRunRequest, request: Request) -> ApiRunResponse:
         effective_playbook = dataclasses.replace(
             pb,
             model=override_model,
-            fallback_model=None,
+            extra_models=[],
             retrieval=dataclasses.replace(pb.retrieval, mode=override_retrieval_mode),
         )
         chat_provider = override_provider
     else:
-        # Default: use the primary model (body.model_id == None or == primary_id).
+        # Default: use the primary model.
         effective_playbook = pb
         chat_provider = state.chat_provider
 
