@@ -33,6 +33,12 @@ class ApiModelsResponse(BaseModel):
     default_id: str
 
 
+class ApiTokenUsage(BaseModel):
+    input_tokens: int
+    output_tokens: int
+    cost_usd: float
+
+
 class ApiRunResponse(BaseModel):
     """Response body for POST /api/run."""
 
@@ -41,6 +47,7 @@ class ApiRunResponse(BaseModel):
     schema_valid: bool
     result: dict[str, Any]  # the ticket_summary_v1 artifact, or {} on error
     error: str | None
+    usage: ApiTokenUsage | None = None
 
 
 class ApiConfigResponse(BaseModel):

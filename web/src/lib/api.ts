@@ -2,12 +2,19 @@ export interface RunRequest {
   input: Record<string, unknown>;
 }
 
+export interface TokenUsage {
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+}
+
 export interface RunResponse {
   session_id: string;
   artifact_id: string | null;
   schema_valid: boolean;
   result: TicketSummary;
   error: string | null;
+  usage: TokenUsage | null;
 }
 
 export interface TicketSummary {

@@ -14,7 +14,7 @@ from fastapi import APIRouter, Request
 from ...orchestrator.ticket_summary import run_ticket_summary
 from ...orchestrator.types import RunRequest as OrchestratorRunRequest
 from ...providers.registry import make_provider
-from ..types import ApiRunRequest, ApiRunResponse
+from ..types import ApiRunRequest, ApiRunResponse, ApiTokenUsage
 
 router = APIRouter()
 
@@ -89,4 +89,9 @@ async def run_ticket(body: ApiRunRequest, request: Request) -> ApiRunResponse:
         schema_valid=result.schema_valid,
         result=result.summary,
         error=result.error,
+        usage=ApiTokenUsage(
+            input_tokens=result.usage.input_tokens,
+            output_tokens=result.usage.output_tokens,
+            cost_usd=result.usage.cost_usd,
+        ),
     )

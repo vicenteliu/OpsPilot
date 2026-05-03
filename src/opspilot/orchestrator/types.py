@@ -195,6 +195,13 @@ class RunRequest:
 
 
 @dataclass(frozen=True)
+class TokenUsage:
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cost_usd: float = 0.0
+
+
+@dataclass(frozen=True)
 class RunResult:
     """Output of :func:`run_ticket_summary`."""
 
@@ -203,3 +210,4 @@ class RunResult:
     summary: dict[str, Any] = field(default_factory=dict)
     schema_valid: bool = False
     error: str | None = None
+    usage: TokenUsage = field(default_factory=TokenUsage)

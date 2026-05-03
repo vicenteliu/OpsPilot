@@ -145,13 +145,23 @@
         placeholder="Paste ticket JSON here..."
         disabled={loading}
       ></textarea>
-      <button class="btn-run" onclick={handleRun} disabled={loading}>
-        {#if loading}
-          <span class="spinner"></span> Running...
-        {:else}
-          Run
+      <div class="run-row">
+        <button class="btn-run" onclick={handleRun} disabled={loading}>
+          {#if loading}
+            <span class="spinner"></span> Running...
+          {:else}
+            Run
+          {/if}
+        </button>
+        {#if result?.usage}
+          <span class="usage-badge">
+            ↑ {result.usage.input_tokens.toLocaleString()} / ↓ {result.usage.output_tokens.toLocaleString()} tokens
+            {#if result.usage.cost_usd > 0}
+              · ${result.usage.cost_usd.toFixed(4)}
+            {/if}
+          </span>
         {/if}
-      </button>
+      </div>
     </section>
 
     <!-- Error display -->
@@ -333,6 +343,12 @@
     margin-bottom: 0.75rem;
   }
 
+  .run-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+
   .btn-run {
     padding: 0.6rem 1.5rem;
     background: #1a56db;
@@ -349,6 +365,17 @@
   .btn-run:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+  }
+
+  .usage-badge {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.78rem;
+    color: #64748b;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    border-radius: 4px;
+    padding: 0.2rem 0.6rem;
+    white-space: nowrap;
   }
 
   .spinner {

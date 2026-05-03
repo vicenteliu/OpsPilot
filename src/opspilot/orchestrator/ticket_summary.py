@@ -45,7 +45,7 @@ from ..session.manager import SessionManager
 from ..session.types import TraceEvent
 from .errors import OrchestratorError
 from .tools import make_kb_search_tool, render_tool_result
-from .types import PlaybookSpec, RunRequest, RunResult
+from .types import PlaybookSpec, RunRequest, RunResult, TokenUsage
 
 # ── Public API ───────────────────────────────────────────────────────
 
@@ -93,6 +93,9 @@ def run_ticket_summary(
     summary: dict[str, Any] = {}
     schema_valid = False
     error: str | None = None
+    total_input_tokens = 0
+    total_output_tokens = 0
+    total_cost_usd = 0.0
 
     try:
         with session_manager.trace(sess.id) as tw:
@@ -195,6 +198,11 @@ def run_ticket_summary(
                         ),
                         tools=effective_tools,
                     )
+
+                # accumulate tokens for every round (tool_call and final)
+                total_input_tokens += resp.usage.input_tokens
+                total_output_tokens += resp.usage.output_tokens
+                total_cost_usd += resp.usage.cost_usd
 
                 # tool_call branch
                 if resp.finish_reason == "tool_call" and resp.tool_calls:
@@ -349,6 +357,11 @@ def run_ticket_summary(
         summary=summary,
         schema_valid=schema_valid,
         error=error,
+        usage=TokenUsage(
+            input_tokens=total_input_tokens,
+            output_tokens=total_output_tokens,
+            cost_usd=total_cost_usd,
+        ),
     )
 
 
