@@ -68,7 +68,7 @@ def load_config() -> Config:
     ui_modules: dict[str, bool] = (
         {str(k): bool(v) for k, v in ui_modules_raw.items()}
         if isinstance(ui_modules_raw, dict)
-        else {"run": True}
+        else {"run": True, "history": True}
     )
 
     return Config(

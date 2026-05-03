@@ -286,6 +286,11 @@ def run_ticket_summary(
                     if not summary.get("citations") and prefetch_hits:
                         summary["citations"] = _citations_from_hits(prefetch_hits)
 
+                # Drop any top-level fields the schema doesn't declare.
+                # Strong models (Claude) sometimes add helpful extras
+                # (e.g. kb_handles_used) that fail additionalProperties: false.
+                summary = _drop_extra_fields(summary, pb.output_schema)
+
                 try:
                     schema_validate(pb.output_schema, summary)
                     schema_valid = True
@@ -348,6 +353,20 @@ def run_ticket_summary(
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
+
+
+def _drop_extra_fields(summary: dict[str, Any], schema_name: str) -> dict[str, Any]:
+    """Remove top-level keys not declared in the schema's properties.
+
+    Strong models sometimes add undeclared fields (e.g. kb_handles_used).
+    Stripping them before validation avoids additionalProperties failures
+    without weakening the schema itself.
+    """
+    from ..schemas import get_schema
+    allowed = set(get_schema(schema_name).get("properties", {}).keys())
+    if not allowed:
+        return summary
+    return {k: v for k, v in summary.items() if k in allowed}
 
 
 def _do_prefetch(

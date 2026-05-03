@@ -29,21 +29,25 @@ tools:
   - name: "kb_search"
     description: "Hybrid (vector + FTS5) retrieval over the OpsPilot KB. Use it when the ticket mentions any system / error / SOP-eligible topic. Returns chunks with citation handles you can reference in your final JSON."
 
-# Default model; CLI --model can override at runtime.
-# Note: nomic-embed-text-v2-moe is the embedding side; chat side is the gemma family.
+# Primary: Anthropic Claude (cloud). Fallback: local Ollama for offline use.
 model:
-  provider_id: "ollama-local"
-  kind: "ollama"
-  name: "gemma4:e4b"
-  version: "2026-04"
+  provider_id: "anthropic"
+  kind: "anthropic"
+  name: "claude-haiku-4-5-20251001"
+  version: "2025-01"
   params:
     temperature: 0.2
     top_p: 0.9
-    # Bumped to 3000 (was 1500) for retrieval.mode=prefetch: with up to 5 KB
-    # chunks folded into the system prompt the response routinely exceeds
-    # the previous 1500-token budget — observed on host gemma4:e4b runs the
-    # final '}' was being truncated, leaving an unparseable JSON tail.
-    max_tokens: 3000
+    max_tokens: 4096
+  fallback:
+    provider_id: "ollama-local"
+    kind: "ollama"
+    name: "gemma4:e4b"
+    version: "2026-04"
+    params:
+      temperature: 0.2
+      top_p: 0.9
+      max_tokens: 3000
 
 # Loop bounds.
 limits:
@@ -61,7 +65,7 @@ defaults:
 #   mode=prefetch — orchestrator pre-runs kb_search and folds hits into
 #                   system prompt; chat runs once with tools=[]
 retrieval:
-  mode: "prefetch"
+  mode: "tool"
   prefetch:
     # top_k omitted ⇒ falls back to limits.max_kb_search_results (D5)
     query_fields: ["subject", "body"]

@@ -45,17 +45,40 @@ export interface ConfigResponse {
   modules: Record<string, boolean>;
 }
 
+export interface ModelOption {
+  id: string;
+  label: string;
+  provider_id: string;
+  kind: string;
+  name: string;
+  retrieval_mode: string;
+}
+
+export interface ModelsResponse {
+  models: ModelOption[];
+  default_id: string;
+}
+
 export async function getConfig(): Promise<ConfigResponse> {
   const res = await fetch('/api/config');
   if (!res.ok) throw new Error(`Config fetch failed: ${res.status}`);
   return res.json();
 }
 
-export async function runTicket(input: Record<string, unknown>): Promise<RunResponse> {
+export async function getModels(): Promise<ModelsResponse> {
+  const res = await fetch('/api/models');
+  if (!res.ok) throw new Error(`Models fetch failed: ${res.status}`);
+  return res.json();
+}
+
+export async function runTicket(
+  input: Record<string, unknown>,
+  modelId?: string
+): Promise<RunResponse> {
   const res = await fetch('/api/run', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ input })
+    body: JSON.stringify({ input, model_id: modelId ?? null })
   });
   if (!res.ok) throw new Error(`Run failed: ${res.status}`);
   return res.json();

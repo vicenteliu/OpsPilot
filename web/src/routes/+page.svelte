@@ -1,11 +1,13 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import '../app.css';
-  import { getConfig, runTicket, listSessions, getSession, type RunResponse, type NextAction, type SessionSummary } from '$lib/api';
+  import { getConfig, getModels, runTicket, listSessions, getSession, type RunResponse, type NextAction, type SessionSummary, type ModelOption } from '$lib/api';
 
   // --- State ---
-  let modelRef = $state<string>('');
+  let modelRef = $state<string | null>(null);
   let modules = $state<Record<string, boolean>>({ run: true, history: true });
+  let availableModels = $state<ModelOption[]>([]);
+  let selectedModelId = $state<string>('');
+  let modelsLoaded = $state<boolean>(false);
   let ticketInput = $state<string>(JSON.stringify(
     {
       "ticket_id": "TKT-DEMO-001",
@@ -30,16 +32,30 @@
   let summary = $derived(result?.result ?? null);
   let runError = $derived(result?.error ?? null);
 
-  // --- Lifecycle ---
-  onMount(async () => {
-    try {
-      const cfg = await getConfig();
-      modelRef = cfg.active_model_ref;
-      modules = cfg.modules;
-    } catch (e) {
-      modelRef = 'unknown';
-    }
-    if (modules.history) await refreshHistory();
+  // $effect replaces onMount: onMount is unreliable in Svelte 5 runes mode.
+  let _initialized = false;
+  $effect(() => {
+    if (_initialized) return;
+    _initialized = true;
+    (async () => {
+      try {
+        const cfg = await getConfig();
+        modelRef = cfg.active_model_ref;
+        modules = cfg.modules;
+      } catch {
+        modelRef = 'unknown';
+      }
+      try {
+        const modelsRes = await getModels();
+        availableModels = modelsRes.models;
+        selectedModelId = modelsRes.default_id;
+      } catch {
+        // models unavailable; badge shows modelRef
+      } finally {
+        modelsLoaded = true;
+      }
+      if (modules.history) await refreshHistory();
+    })();
   });
 
   // --- Handlers ---
@@ -82,7 +98,7 @@
     }
     loading = true;
     try {
-      result = await runTicket(input);
+      result = await runTicket(input, selectedModelId || undefined);
       if (modules.history) await refreshHistory();
     } catch (e) {
       fetchError = e instanceof Error ? e.message : String(e);
@@ -106,7 +122,17 @@
   <!-- Header -->
   <header>
     <h1>OpsPilot</h1>
-    <span class="model-ref" title="Active model (read-only)">{modelRef || 'Loading...'}</span>
+    {#if !modelsLoaded}
+      <span class="model-ref">Loading...</span>
+    {:else if availableModels.length > 1}
+      <select class="model-select" bind:value={selectedModelId} disabled={loading}>
+        {#each availableModels as m}
+          <option value={m.id}>{m.label}</option>
+        {/each}
+      </select>
+    {:else}
+      <span class="model-ref" title="Active model">{selectedModelId || modelRef || '—'}</span>
+    {/if}
   </header>
 
   <!-- Ticket input section -->
@@ -270,6 +296,22 @@
     padding: 0.25rem 0.6rem;
     border-radius: 4px;
     border: 1px solid #bee3f8;
+  }
+
+  .model-select {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.8rem;
+    background: #e8f4fd;
+    color: #1a56db;
+    padding: 0.25rem 0.6rem;
+    border-radius: 4px;
+    border: 1px solid #bee3f8;
+    cursor: pointer;
+  }
+
+  .model-select:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 
   .input-section {
