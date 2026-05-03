@@ -77,18 +77,57 @@ Open [http://localhost:5173](http://localhost:5173).
 
 ## Architecture
 
+### Request flow
+
 ```
-web/          Svelte 5 + SvelteKit frontend (SSR disabled, local tool)
+Browser (Svelte 5 / SvelteKit)
+  │  POST /api/run { ticket_json, model_id }
+  │  GET  /api/models  ·  GET /api/sessions
+  ▼
+FastAPI  (opspilot.api)
+  │  resolves playbook + provider from model_id
+  ▼
+Orchestrator  (opspilot.orchestrator.ticket_summary)
+  ├─▶ Redactor ──────────────── strips PII from ticket text
+  │
+  ├─▶ KB Search  ─────────────── hybrid retrieval over ingested KB
+  │     ├── SqliteStore  (FTS5 full-text search)
+  │     └── LanceStore   (LanceDB vector search)
+  │           ▲
+  │     embedded by OllamaProvider (nomic-embed-text-v2-moe)
+  │
+  ├─▶ Provider  ──────────────── sends redacted prompt + KB chunks to LLM
+  │     ├── AnthropicProvider   (Claude Haiku / Sonnet / Opus)
+  │     ├── OpenAIProvider      (OpenAI · OpenRouter · Gemini)
+  │     └── OllamaProvider      (local Gemma, Phi, …)
+  │           │ ProviderError → retry with fallback provider
+  │
+  └─▶ SessionManager ─────────── archives trace + validated artifact
+        │  trace.jsonl  (every prompt, tool call, response, redaction event)
+        └─ artifact.json (schema-validated ticket_summary_v1)
+  │
+  ▼
+ApiRunResponse { result, usage, session_id, error }
+  │
+  ▼
+Browser  — renders output cards + token count badge
+           history table loads past sessions on demand
+```
+
+### Module map
+
+```
 src/opspilot/
-  api/        FastAPI app — /api/run, /api/config, /api/models, /api/sessions
-  orchestrator/  Playbook runner: redact → retrieve → chat loop → validate → archive
-  providers/  LLM provider abstraction (Anthropic, OpenAI-compat, Ollama)
-  memory/     SQLite (FTS5) + LanceDB vector store
-  session/    Session lifecycle, trace writer, artifact storage
-  redaction/  PII scrubbing before model / KB ingestion
-  schemas/    JSON Schema registry + validator
-playbooks/    YAML playbook specs + system prompts
-kb/           Source documents for KB ingestion
+  api/          FastAPI routes: /run  /config  /models  /sessions
+  orchestrator/ Playbook runner — chat loop, tool dispatch, schema validate
+  providers/    AnthropicProvider · OpenAIProvider · OllamaProvider
+  memory/       SqliteStore (FTS5) · LanceStore (vectors)
+  session/      SessionManager · TraceWriter · ArtifactStore
+  redaction/    PII scrubbing rules + placeholder injection
+  schemas/      JSON Schema registry + validator
+web/            Svelte 5 frontend (model selector, run, history)
+playbooks/      YAML playbook specs + system prompts
+kb/             Source documents for KB ingestion
 ```
 
 ### Provider routing
