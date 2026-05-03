@@ -51,9 +51,9 @@ class SamplingParams(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    temperature: float = Field(0.2, ge=0, le=2)
-    top_p: float = Field(0.9, ge=0, le=1)
-    max_tokens: int = Field(2000, ge=1)
+    temperature: float = Field(default=0.2, ge=0, le=2)
+    top_p: float = Field(default=0.9, ge=0, le=1)
+    max_tokens: int = Field(default=2000, ge=1)
     seed: int | None = None
     stop: list[str] | None = None
 

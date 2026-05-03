@@ -12,6 +12,7 @@ Two layers:
 from __future__ import annotations
 
 import json
+from collections.abc import Generator
 
 import httpx
 import pytest
@@ -373,12 +374,13 @@ class TestFactory:
                 p.close()
 
     def test_unknown_provider_raises(self) -> None:
-        with pytest.raises(ConfigError, match="not supported in Stage 1"):
-            make_provider("anthropic-claude")
+        with pytest.raises(ConfigError, match="not supported"):
+            make_provider("totally-unknown-provider-xyz", kind="unknown-kind-xyz")
 
     def test_base_url_override(self) -> None:
         p = make_provider(base_url="http://other:11434")
         try:
+            assert isinstance(p, OllamaProvider)
             assert p.base_url == "http://other:11434"
         finally:
             if isinstance(p, OllamaProvider):
@@ -400,7 +402,7 @@ class TestIntegration:
     """
 
     @pytest.fixture(scope="class")
-    def provider(self) -> OllamaProvider:
+    def provider(self) -> Generator[OllamaProvider, None, None]:
         p = OllamaProvider()
         if not p.health_probe():
             p.close()

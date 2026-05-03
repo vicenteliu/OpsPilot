@@ -1,5 +1,6 @@
-.PHONY: install dev ensure-venv test test-cov test-ollama lint format typecheck validate \
-        ollama-up ollama-down ollama-pull ollama-logs harness golden golden-kb docker-build clean ci help
+.PHONY: install install-dev install-ui dev ensure-venv test test-cov test-ollama lint format \
+        typecheck validate serve build-ui lint-ui ci-ui ci \
+        ollama-up ollama-down ollama-pull ollama-logs harness golden golden-kb docker-build clean help
 
 # Use python3.12 explicitly; on macOS this resolves to brew's installation.
 PYTHON ?= python3.12
@@ -10,6 +11,9 @@ PYTEST := $(VENV)/bin/pytest
 RUFF   := $(VENV)/bin/ruff
 MYPY   := $(VENV)/bin/mypy
 OPSPL  := $(VENV)/bin/opspilot
+
+PNPM    := pnpm
+WEB_DIR := web
 
 help: ## Show this help.
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -22,7 +26,13 @@ install: ## Create venv and install in editable mode with dev extras.
 	@echo
 	@echo "Done. Activate with: source $(VENV)/bin/activate"
 
-dev: install ## Alias for install.
+install-dev: ## Install Python deps in editable mode with dev extras.
+	$(PYTHON) -m venv $(VENV)
+	$(PIP) install -U pip
+	$(PIP) install -e ".[dev]"
+
+install-ui: ## Install Svelte/Node dependencies.
+	cd $(WEB_DIR) && $(PNPM) install
 
 ensure-venv: ## Fail fast if venv / dev extras not installed.
 	@test -x $(PYTEST) || { \
@@ -53,7 +63,25 @@ typecheck: ensure-venv ## Run mypy.
 validate: ensure-venv ## Validate every example file against its inferred schema.
 	$(OPSPL) validate examples/ --recursive
 
-ci: lint typecheck test validate ## Run the full PR-1 quality gate.
+serve: ensure-venv ## Start the FastAPI API server on port 8000.
+	$(VENV)/bin/uvicorn opspilot.api.app:app --reload --port 8000
+
+build-ui: install-ui ## Build Svelte app for production.
+	cd $(WEB_DIR) && $(PNPM) build
+
+lint-ui: install-ui ## Lint and type-check the Svelte app.
+	cd $(WEB_DIR) && $(PNPM) check
+
+ci-ui: lint-ui ## Svelte quality gate (type-check).
+
+dev: ensure-venv install-ui ## Start FastAPI (port 8000) + Svelte dev server (port 5173).
+	@echo "Starting API and UI dev servers (Ctrl+C stops both)..."
+	@trap 'kill 0' SIGINT; \
+	  $(VENV)/bin/uvicorn opspilot.api.app:app --reload --port 8000 & \
+	  cd $(WEB_DIR) && $(PNPM) dev; \
+	  wait
+
+ci: lint typecheck test validate ## Run the full quality gate.
 
 # ── PR-3: Ollama orchestration ──────────────────────────────────────────
 # OLLAMA_MODE = local  → talk to host's `ollama` binary (macOS dev default;
