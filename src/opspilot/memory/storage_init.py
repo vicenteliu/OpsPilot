@@ -57,7 +57,7 @@ def init_sqlite(db_path: Path) -> sqlite3.Connection:
     """
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), check_same_thread=False)
     conn.row_factory = sqlite3.Row
 
     # PRAGMAs first so the schema executes under WAL etc.
@@ -80,7 +80,7 @@ def open_sqlite(db_path: Path) -> sqlite3.Connection:
     if not db_path.is_file():
         raise FileNotFoundError(f"SQLite DB not found at {db_path}")
 
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), check_same_thread=False)
     conn.row_factory = sqlite3.Row
 
     cur = conn.cursor()

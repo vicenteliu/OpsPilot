@@ -113,8 +113,9 @@ def run_ticket_summary(
             effective_tools: list[ToolDef] = [tool_def]
             effective_max_turns = pb.limits.max_turns
             prefetch_chunk_ids: set[str] = set()
+            prefetch_hits: list[dict[str, Any]] = []
             if pb.retrieval.mode == "prefetch":
-                effective_system_prompt, prefetch_chunk_ids = _do_prefetch(
+                effective_system_prompt, prefetch_chunk_ids, prefetch_hits = _do_prefetch(
                     pb=pb,
                     ticket=ticket,
                     redactor=redactor,
@@ -253,6 +254,10 @@ def run_ticket_summary(
                 # before schema validation. Bounded by edit-distance ≤ 1.
                 if prefetch_chunk_ids:
                     _correct_citation_chunk_ids(summary, prefetch_chunk_ids)
+                    # If the model returned empty citations despite having KB
+                    # hits, auto-populate from the prefetch results.
+                    if not summary.get("citations") and prefetch_hits:
+                        summary["citations"] = _citations_from_hits(prefetch_hits)
 
                 try:
                     schema_validate(pb.output_schema, summary)
@@ -325,8 +330,8 @@ def _do_prefetch(
     redactor: Redactor,
     tool_handler: Callable[[dict[str, Any]], dict[str, Any]],
     tw: Any,  # TraceWriter — typed Any to avoid import cycle
-) -> tuple[str, set[str]]:
-    """Run kb_search once before the chat loop; return augmented system prompt + retrieved chunk_ids.
+) -> tuple[str, set[str], list[dict[str, Any]]]:
+    """Run kb_search once before the chat loop; return augmented system prompt + retrieved chunk_ids + raw hits.
 
     Side effects:
       * writes one ``tool_call`` and one ``tool_result`` event to ``tw``
@@ -383,10 +388,11 @@ def _do_prefetch(
     )
 
     addendum = _render_prefetch_addendum(payload)
+    hits = list(payload.get("hits") or [])
     chunk_ids: set[str] = {
-        str(h["chunk_id"]) for h in (payload.get("hits") or []) if h.get("chunk_id")
+        str(h["chunk_id"]) for h in hits if h.get("chunk_id")
     }
-    return pb.system_prompt + "\n\n" + addendum, chunk_ids
+    return pb.system_prompt + "\n\n" + addendum, chunk_ids, hits
 
 
 _REDACTION_PLACEHOLDER_RE = re.compile(r"\[REDACTED:[^\[\]]*\]")
@@ -444,6 +450,28 @@ def _render_prefetch_addendum(payload: dict[str, Any]) -> str:
         "Chunk N 标题里反引号包裹的字符串，不要省略或修改任何字符。"
     )
     return "\n".join(parts)
+
+
+def _citations_from_hits(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Build citation objects from prefetch hits for models that omit citations."""
+    result = []
+    for i, h in enumerate(hits, start=1):
+        cit = h.get("citation") or {}
+        entry: dict[str, Any] = {
+            "id": f"kb-{i}",
+            "chunk_id": h.get("chunk_id", ""),
+            "document_id": h.get("document_id", ""),
+        }
+        if cit.get("source_path"):
+            entry["source_path"] = cit["source_path"]
+        if cit.get("line_start") is not None:
+            entry["line_start"] = cit["line_start"]
+        if cit.get("line_end") is not None:
+            entry["line_end"] = cit["line_end"]
+        if cit.get("heading_path"):
+            entry["heading_path"] = cit["heading_path"]
+        result.append(entry)
+    return result
 
 
 def _correct_citation_chunk_ids(

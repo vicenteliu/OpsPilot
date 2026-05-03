@@ -46,7 +46,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     kb_dir.mkdir(parents=True, exist_ok=True)
 
     # SQLite store — init schema on first run; open without re-running afterwards.
-    sqlite_db_path = kb_dir / "kb.db"
+    sqlite_db_path = kb_dir / "sqlite.db"
     conn = init_sqlite(sqlite_db_path)
     sqlite = SqliteStore(conn)
 
