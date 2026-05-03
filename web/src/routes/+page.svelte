@@ -23,6 +23,8 @@
   let fetchError = $state<string | null>(null);
   let sessions = $state<SessionSummary[]>([]);
   let historyLoading = $state<boolean>(false);
+  let expanded = $state<Record<string, boolean>>({});
+  let sessionCache = $state<Record<string, RunResponse>>({});
 
   // --- Derived ---
   let summary = $derived(result?.result ?? null);
@@ -52,17 +54,20 @@
     }
   }
 
-  async function viewSession(sessionId: string) {
-    fetchError = null;
-    loading = true;
-    try {
-      result = await getSession(sessionId);
-    } catch (e) {
-      fetchError = e instanceof Error ? e.message : String(e);
-    } finally {
-      loading = false;
+  async function toggleSession(sessionId: string) {
+    if (expanded[sessionId]) {
+      expanded = { ...expanded, [sessionId]: false };
+      return;
     }
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (!sessionCache[sessionId]) {
+      try {
+        const res = await getSession(sessionId);
+        sessionCache = { ...sessionCache, [sessionId]: res };
+      } catch {
+        return;
+      }
+    }
+    expanded = { ...expanded, [sessionId]: true };
   }
 
   async function handleRun() {
@@ -137,51 +142,33 @@
     {/if}
 
     <!-- Output cards -->
-    {#if summary}
+    {#snippet outputCards(s: TicketSummary)}
       <section class="cards">
-
-        <!-- Summary card -->
         <div class="card">
           <div class="card-header">
             <h3>Summary</h3>
-            <button class="btn-copy" onclick={() => copyText(summary?.summary ?? '')}>
-              Copy
-            </button>
+            <button class="btn-copy" onclick={() => copyText(s.summary ?? '')}>Copy</button>
           </div>
-          <p>{summary.summary}</p>
+          <p>{s.summary}</p>
         </div>
-
-        <!-- Symptoms card -->
         <div class="card">
           <div class="card-header">
             <h3>Symptoms</h3>
-            <button
-              class="btn-copy"
-              onclick={() => copyText((summary?.symptoms ?? []).join('\n'))}
-            >
-              Copy
-            </button>
+            <button class="btn-copy" onclick={() => copyText((s.symptoms ?? []).join('\n'))}>Copy</button>
           </div>
           <ul>
-            {#each summary.symptoms as symptom}
+            {#each s.symptoms as symptom}
               <li>{symptom}</li>
             {/each}
           </ul>
         </div>
-
-        <!-- Next Actions card -->
         <div class="card">
           <div class="card-header">
             <h3>Next Actions</h3>
-            <button
-              class="btn-copy"
-              onclick={() => copyText(formatNextActions(summary?.next_actions ?? []))}
-            >
-              Copy
-            </button>
+            <button class="btn-copy" onclick={() => copyText(formatNextActions(s.next_actions ?? []))}>Copy</button>
           </div>
           <ol>
-            {#each summary.next_actions as action}
+            {#each s.next_actions as action}
               <li>
                 <strong>{action.action}</strong>
                 <p class="rationale">{action.rationale}</p>
@@ -189,28 +176,21 @@
             {/each}
           </ol>
         </div>
-
-        <!-- Severity card -->
         <div class="card">
           <div class="card-header">
             <h3>Severity</h3>
-            <button
-              class="btn-copy"
-              onclick={() => copyText(
-                summary?.severity_suggested +
-                (summary?.escalation_hint ? '\n' + summary.escalation_hint : '')
-              )}
-            >
-              Copy
-            </button>
+            <button class="btn-copy" onclick={() => copyText(s.severity_suggested + (s.escalation_hint ? '\n' + s.escalation_hint : ''))}>Copy</button>
           </div>
-          <span class="severity-badge">{summary.severity_suggested}</span>
-          {#if summary.escalation_hint}
-            <p class="escalation">{summary.escalation_hint}</p>
+          <span class="severity-badge">{s.severity_suggested}</span>
+          {#if s.escalation_hint}
+            <p class="escalation">{s.escalation_hint}</p>
           {/if}
         </div>
-
       </section>
+    {/snippet}
+
+    {#if summary}
+      {@render outputCards(summary as TicketSummary)}
     {/if}
     <!-- History module -->
     {#if modules.history}
@@ -240,11 +220,18 @@
                     <span class="status-badge status-{s.status}">{s.status}</span>
                   </td>
                   <td>
-                    <button class="btn-view" onclick={() => viewSession(s.session_id)}>
-                      View
+                    <button class="btn-view" onclick={() => toggleSession(s.session_id)}>
+                      {expanded[s.session_id] ? '▲ Hide' : '▼ View'}
                     </button>
                   </td>
                 </tr>
+                {#if expanded[s.session_id] && sessionCache[s.session_id]}
+                  <tr class="expanded-row">
+                    <td colspan="3">
+                      {@render outputCards(sessionCache[s.session_id].result as TicketSummary)}
+                    </td>
+                  </tr>
+                {/if}
               {/each}
             </tbody>
           </table>
@@ -525,5 +512,11 @@
 
   .btn-view:hover {
     background: #e2e8f0;
+  }
+
+  .expanded-row td {
+    padding: 0.75rem;
+    background: #f8fafc;
+    border-bottom: 2px solid #e2e8f0;
   }
 </style>
