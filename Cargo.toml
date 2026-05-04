@@ -1,0 +1,18 @@
+[workspace]
+members = [
+    "crates/opspilot-core",
+    "crates/opspilot-chunker",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Vicente Liu <vicenteliuca@gmail.com>"]
+license = "MIT"
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
+strip = true

@@ -1,0 +1,15 @@
+[package]
+name = "opspilot-chunker"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "PyO3 bindings for the OpsPilot markdown chunker"
+
+[lib]
+name = "opspilot_chunker"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.22", features = ["extension-module"] }
+opspilot-core = { path = "../opspilot-core" }

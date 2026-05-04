@@ -49,6 +49,7 @@ dev = [
     "types-pyyaml",
     "types-jsonschema",
     "reportlab >= 4",          # PR-5: generate tests/fixtures/sample.pdf
+    "maturin >= 1.7, < 2.0",   # PR-16: Rust extension build tool
 ]
 
 [project.scripts]
@@ -107,6 +108,11 @@ module = [
     "uvicorn",
     "uvicorn.*",
 ]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# Rust extension — only present after `maturin develop`; ignore when absent.
+module = ["opspilot_chunker", "opspilot_chunker.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

@@ -1,6 +1,7 @@
 .PHONY: install install-dev install-ui dev ensure-venv test test-cov test-ollama lint format \
         typecheck validate serve build-ui lint-ui ci-ui ci \
-        ollama-up ollama-down ollama-pull ollama-logs harness golden golden-kb docker-build clean help
+        ollama-up ollama-down ollama-pull ollama-logs harness golden golden-kb docker-build \
+        rust-dev rust-build clean help
 
 # Use python3.12 explicitly; on macOS this resolves to brew's installation.
 PYTHON ?= python3.12
@@ -12,8 +13,10 @@ RUFF   := $(VENV)/bin/ruff
 MYPY   := $(VENV)/bin/mypy
 OPSPL  := $(VENV)/bin/opspilot
 
-PNPM    := pnpm
-WEB_DIR := web
+PNPM         := pnpm
+WEB_DIR      := web
+MATURIN_BIN  := $(abspath $(VENV)/bin/maturin)
+CHUNKER_DIR  := crates/opspilot-chunker
 
 help: ## Show this help.
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -145,7 +148,15 @@ docker-build: ## Build the multi-stage docker image (opspilot:latest).
 	docker build -t opspilot:latest .
 	docker run --rm opspilot:latest opspilot --version
 
+# ── PR-16: Rust extension build chain ──────────────────────────────────
+rust-dev: ensure-venv ## Build Rust extension (debug) and install into venv.
+	cd $(CHUNKER_DIR) && $(MATURIN_BIN) develop
+
+rust-build: ensure-venv ## Build Rust extension wheel (release, optimized).
+	cd $(CHUNKER_DIR) && $(MATURIN_BIN) build --release
+
 clean: ## Remove venv + caches.
 	rm -rf $(VENV) .pytest_cache .ruff_cache .mypy_cache
 	rm -rf build dist *.egg-info
 	find . -type d -name __pycache__ -prune -exec rm -rf {} +
+	cargo clean 2>/dev/null || true
