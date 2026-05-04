@@ -697,12 +697,12 @@ def harness_golden(
 
 
 # ──────────────────────────────────────────────────────────────────────────
-#  wiki (PR-19)
+#  wiki (PR-19 / PR-24)
 # ──────────────────────────────────────────────────────────────────────────
 
 wiki_app = typer.Typer(
     name="wiki",
-    help="Wiki operations: ingest KB documents into wiki pages.",
+    help="Wiki operations: ingest KB docs into wiki pages; query→page conversion.",
     no_args_is_help=True,
 )
 app.add_typer(wiki_app)
@@ -755,6 +755,80 @@ def wiki_ingest(
     _console.print(f"  page_id : {result.page_id}")
     _console.print(f"  slug    : {result.slug}")
     _console.print(f"  created : {result.pages_created}  updated : {result.pages_updated}")
+
+
+@wiki_app.command("query-to-page")
+def wiki_query_to_page(
+    session_id: str | None = typer.Option(  # noqa: UP007
+        None,
+        "--session",
+        "-s",
+        help="Convert a specific session ID. Omit to scan recent sessions.",
+    ),
+    wiki_root: Path = typer.Option(  # noqa: B008
+        Path("wiki"),
+        "--wiki-root",
+        help="Path to the wiki/ directory.",
+    ),
+    model: str = typer.Option(
+        "qwen2.5:7b",
+        "--model",
+        help="Ollama model name for page drafting.",
+    ),
+    base_url: str = typer.Option(
+        "http://localhost:11434",
+        "--base-url",
+        help="Ollama API base URL.",
+    ),
+    owner: str = typer.Option("wiki-maintainer@opspilot", "--owner"),
+    namespace: str = typer.Option("opspilot:public-kb", "--namespace"),
+    max_sessions: int = typer.Option(50, "--max-sessions", help="Max sessions to scan."),
+) -> None:
+    """Convert qualifying session responses into wiki synthesis pages (PR-24).
+
+    Use --session to convert one specific session, or omit to scan and
+    convert all qualifying recent sessions.
+    """
+    from .providers.ollama import OllamaProvider
+    from .wiki.query_to_page import QueryToPageConfig, scan_and_convert
+    from .wiki.query_to_page import query_to_page as _q2p
+
+    cfg = load_config()
+    sm = SessionManager(home=cfg.home)
+    provider = OllamaProvider(base_url=base_url)
+    q2p_cfg = QueryToPageConfig(
+        wiki_root=wiki_root,
+        namespace=namespace,
+        owner=owner,
+        model=model,
+    )
+
+    if session_id:
+        results = [_q2p(session_id, session_manager=sm, provider=provider, config=q2p_cfg)]
+    else:
+        results = scan_and_convert(
+            session_manager=sm,
+            provider=provider,
+            config=q2p_cfg,
+            max_sessions=max_sessions,
+        )
+
+    table = Table(title="Query→Page results", show_lines=False)
+    table.add_column("Session", overflow="fold")
+    table.add_column("Slug", overflow="fold")
+    table.add_column("Trigger")
+    table.add_column("Status", justify="right")
+
+    for r in results:
+        if r.skipped:
+            status = f"[dim]skipped: {r.skip_reason[:60]}[/dim]"
+        else:
+            status = "[green]✓ created[/green]"
+        table.add_row(r.session_id[:24], r.slug or "—", r.trigger or "—", status)
+
+    _console.print(table)
+    created = sum(1 for r in results if not r.skipped)
+    _console.print(f"\n{created} page(s) created · {len(results) - created} skipped")
 
 
 # ──────────────────────────────────────────────────────────────────────────
