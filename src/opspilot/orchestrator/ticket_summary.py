@@ -166,13 +166,11 @@ def run_ticket_summary(
             auto_fallback_model = pb.extra_models[0] if pb.extra_models else None
             fallback_provider: ProviderProtocol | None = None
             if auto_fallback_model is not None:
-                try:
+                with contextlib.suppress(Exception):  # unavailable fallback is non-fatal
                     fallback_provider = make_provider(
                         auto_fallback_model.provider_id,
                         kind=auto_fallback_model.kind,
                     )
-                except Exception:  # noqa: BLE001 — unavailable fallback is non-fatal
-                    pass
 
             for _ in range(effective_max_turns):
                 try:
@@ -377,6 +375,7 @@ def _drop_extra_fields(summary: dict[str, Any], schema_name: str) -> dict[str, A
     without weakening the schema itself.
     """
     from ..schemas import get_schema
+
     allowed = set(get_schema(schema_name).get("properties", {}).keys())
     if not allowed:
         return summary
@@ -449,9 +448,7 @@ def _do_prefetch(
 
     addendum = _render_prefetch_addendum(payload)
     hits = list(payload.get("hits") or [])
-    chunk_ids: set[str] = {
-        str(h["chunk_id"]) for h in hits if h.get("chunk_id")
-    }
+    chunk_ids: set[str] = {str(h["chunk_id"]) for h in hits if h.get("chunk_id")}
     return pb.system_prompt + "\n\n" + addendum, chunk_ids, hits
 
 

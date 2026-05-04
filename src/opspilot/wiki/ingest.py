@@ -144,7 +144,7 @@ def _call_llm(
         raw = re.sub(r"\n?```$", "", raw.rstrip())
 
     try:
-        data = json.loads(raw)
+        data: dict[str, Any] = json.loads(raw)
     except json.JSONDecodeError as exc:
         raise WikiIngestError(f"LLM output is not valid JSON: {exc}\n---\n{raw[:500]}") from exc
 

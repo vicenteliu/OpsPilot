@@ -34,13 +34,15 @@ class SessionsScreen(Widget):
         for sid in sm.list():
             try:
                 s = sm.load(sid)
-                rows.append((
-                    s.id,
-                    f"{s.playbook.id}@{s.playbook.version}",
-                    s.status,
-                    s.owner,
-                    s.created_at[:19],
-                ))
+                rows.append(
+                    (
+                        s.id,
+                        f"{s.playbook.id}@{s.playbook.version}",
+                        s.status,
+                        s.owner,
+                        s.created_at[:19],
+                    )
+                )
             except Exception:  # noqa: BLE001
                 rows.append((sid, "—", "error", "—", "—"))
 

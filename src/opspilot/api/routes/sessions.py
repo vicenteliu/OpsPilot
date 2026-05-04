@@ -45,8 +45,8 @@ def get_session(session_id: str, request: Request) -> ApiRunResponse:
     mgr = request.app.state.session_mgr
     try:
         sess = mgr.load(session_id)
-    except Exception:
-        raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=f"Session {session_id} not found") from exc
 
     art_store = mgr.artifacts(session_id)
     art_ids = art_store.list_ids()
@@ -54,7 +54,9 @@ def get_session(session_id: str, request: Request) -> ApiRunResponse:
         return ApiRunResponse(
             session_id=session_id,
             artifact_id=None,
-            schema_valid=sess.status.value == "archived" if hasattr(sess.status, "value") else sess.status == "archived",
+            schema_valid=sess.status.value == "archived"
+            if hasattr(sess.status, "value")
+            else sess.status == "archived",
             result={},
             error="No artifact found for this session",
         )
@@ -64,7 +66,7 @@ def get_session(session_id: str, request: Request) -> ApiRunResponse:
         content = art_store.read_text(artifact_id)
         summary = json.loads(content)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to read artifact: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to read artifact: {e}") from e
 
     status = sess.status.value if hasattr(sess.status, "value") else str(sess.status)
     return ApiRunResponse(

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from textual.widgets import ContentSwitcher, DataTable, Footer, Header, Label, ListItem
 
-from opspilot.tui.app import OpsPilotApp, _NAV, _SCREEN_MAP
+from opspilot.tui.app import _NAV, _SCREEN_MAP, OpsPilotApp
 from opspilot.tui.screens import (
     ConfigScreen,
     DashboardScreen,
@@ -15,7 +15,6 @@ from opspilot.tui.screens import (
     SessionsScreen,
     WikiTreeScreen,
 )
-
 
 # ──────────────────────────────────────────────────────────────────────────
 #  PR-20: shell structure and navigation
@@ -67,7 +66,7 @@ class TestNavigation:
     async def test_keys_1_through_8_all_navigate(self) -> None:
         expected = [sid for _, sid, _ in _NAV]
         async with OpsPilotApp().run_test() as pilot:
-            for key, screen_id in zip("12345678", expected):
+            for key, screen_id in zip("12345678", expected, strict=True):
                 await pilot.press(key)
                 assert pilot.app.active_module == screen_id
 

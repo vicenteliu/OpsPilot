@@ -106,7 +106,7 @@ def read_page(path: Path) -> WikiPage:
     if end == -1:
         raise ValueError(f"Unclosed frontmatter in {path}")
     fm_str = text[4:end]
-    body = text[end + 5:].lstrip("\n")
+    body = text[end + 5 :].lstrip("\n")
     fm = yaml.safe_load(fm_str)
     return WikiPage(
         page_id=fm["page_id"],

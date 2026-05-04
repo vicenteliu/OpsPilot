@@ -36,14 +36,16 @@ class WikiTreeScreen(Widget):
             for md_file in sorted(pages_root.rglob("*.md")):
                 try:
                     page = read_page(md_file)
-                    rows.append((
-                        page.slug,
-                        page.title[:40],
-                        page.kind,
-                        page.lifecycle_state,
-                        page.language,
-                        page.updated_at[:19],
-                    ))
+                    rows.append(
+                        (
+                            page.slug,
+                            page.title[:40],
+                            page.kind,
+                            page.lifecycle_state,
+                            page.language,
+                            page.updated_at[:19],
+                        )
+                    )
                 except Exception:  # noqa: BLE001
                     rows.append((md_file.stem, "—", "—", "—", "—", "—"))
 

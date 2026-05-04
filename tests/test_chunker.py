@@ -235,7 +235,7 @@ class TestRustParity:
         py = _py_chunk_markdown(text)
         rs_raw = _rs_mod.chunk_markdown(text)
         assert len(py) == len(rs_raw), f"chunk count mismatch on: {text[:40]!r}"
-        for p, r in zip(py, rs_raw):
+        for p, r in zip(py, rs_raw, strict=True):
             assert p.content == r.content, f"content mismatch seq={p.seq}"
             assert p.char_start == r.char_start, f"char_start mismatch seq={p.seq}"
             assert p.char_end == r.char_end, f"char_end mismatch seq={p.seq}"
@@ -249,7 +249,7 @@ class TestRustParity:
         py = _py_chunk_markdown(sop_vpn_zh_text)
         rs_raw = _rs_mod.chunk_markdown(sop_vpn_zh_text)
         assert len(py) == len(rs_raw)
-        for p, r in zip(py, rs_raw):
+        for p, r in zip(py, rs_raw, strict=True):
             assert p.content == r.content
             assert p.char_start == r.char_start
             assert p.char_end == r.char_end

@@ -41,13 +41,15 @@ class HarnessScreen(Widget):
                         if not line:
                             continue
                         d = json.loads(line)
-                        rows.append((
-                            d.get("fixture_id", "—"),
-                            d.get("playbook_id", "—"),
-                            f"{d.get('weighted_score', 0):.3f}",
-                            "✓" if d.get("pass") else "✗",
-                            (d.get("run_at") or "")[:19],
-                        ))
+                        rows.append(
+                            (
+                                d.get("fixture_id", "—"),
+                                d.get("playbook_id", "—"),
+                                f"{d.get('weighted_score', 0):.3f}",
+                                "✓" if d.get("pass") else "✗",
+                                (d.get("run_at") or "")[:19],
+                            )
+                        )
             except Exception:  # noqa: BLE001
                 pass
 

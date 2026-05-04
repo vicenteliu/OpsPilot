@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sqlite3
 import textwrap
 from pathlib import Path
 from typing import Any
@@ -16,7 +15,6 @@ from opspilot.providers.types import ChatResponse, Usage
 from opspilot.wiki.index import WikiLogEntry, append_log, update_index
 from opspilot.wiki.ingest import WikiIngestConfig, WikiIngestError, ingest
 from opspilot.wiki.page import WikiPage, make_page_id, read_page, write_page
-
 
 # ──────────────────────────────────────────────────────────────────────────
 #  Helpers
@@ -390,7 +388,7 @@ class TestIngest:
             cfg = WikiIngestConfig(wiki_root=wiki_root)
             result = ingest("doc_aabb1234", sqlite=sqlite, provider=bad_slug_provider, config=cfg)
 
-        assert result.slug == "my-bad-slug-"[:result.slug.__len__()] or "-" not in result.slug[:1]
+        assert result.slug == "my-bad-slug-"[: result.slug.__len__()] or "-" not in result.slug[:1]
 
 
 # ──────────────────────────────────────────────────────────────────────────

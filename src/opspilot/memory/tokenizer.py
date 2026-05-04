@@ -43,5 +43,5 @@ def count_tokens(text: str) -> int:
     to the pure-Python implementation otherwise.
     """
     if _HAS_RUST_TOKENIZER:
-        return _rs_count_tokens(text)
+        return int(_rs_count_tokens(text))
     return _py_count_tokens(text)

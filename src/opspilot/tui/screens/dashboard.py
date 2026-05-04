@@ -58,7 +58,11 @@ class DashboardScreen(Widget):
             except Exception:  # noqa: BLE001
                 pass
         sess_lines = "\n".join(f"  {k}: {v}" for k, v in sorted(by_status.items()))
-        sess_text = f"Sessions\ntotal: {len(sess_ids)}\n{sess_lines}" if sess_ids else "Sessions\n(none yet)"
+        sess_text = (
+            f"Sessions\ntotal: {len(sess_ids)}\n{sess_lines}"
+            if sess_ids
+            else "Sessions\n(none yet)"
+        )
 
         # KB
         db_path = cfg.home / "kb" / "sqlite.db"

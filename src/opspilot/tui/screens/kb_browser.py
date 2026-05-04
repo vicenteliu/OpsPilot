@@ -41,14 +41,16 @@ class KBBrowserScreen(Widget):
                 "FROM kb_documents ORDER BY ingested_at DESC"
             )
             for r in cur.fetchall():
-                rows.append((
-                    r["id"],
-                    (r["title"] or "")[:40],
-                    r["language"] or "—",
-                    str(r["chunk_count"]),
-                    r["namespace"] or "—",
-                    (r["ingested_at"] or "")[:19],
-                ))
+                rows.append(
+                    (
+                        r["id"],
+                        (r["title"] or "")[:40],
+                        r["language"] or "—",
+                        str(r["chunk_count"]),
+                        r["namespace"] or "—",
+                        (r["ingested_at"] or "")[:19],
+                    )
+                )
             conn.close()
 
         def update() -> None:

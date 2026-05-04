@@ -28,8 +28,6 @@ from .harness import load_fixture, load_golden, run_harness
 from .harness.reporter import render_result_table
 from .memory.ingestion import IngestConfig
 from .memory.ingestion import ingest as run_ingest
-from .wiki.ingest import WikiIngestConfig
-from .wiki.ingest import ingest as run_wiki_ingest
 from .memory.kb_loader import load_kb_fixture
 from .memory.lance_store import LanceStore
 from .memory.retrieval import kb_search
@@ -48,6 +46,8 @@ from .schemas import (
     validate as schema_validate,
 )
 from .session import SessionManager
+from .wiki.ingest import WikiIngestConfig
+from .wiki.ingest import ingest as run_wiki_ingest
 
 app = typer.Typer(
     name="opspilot",
