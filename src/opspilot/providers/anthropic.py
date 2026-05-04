@@ -129,7 +129,7 @@ class AnthropicProvider:
             kwargs["system"] = system_text
         if params.temperature is not None:
             kwargs["temperature"] = params.temperature
-        if params.top_p is not None:
+        elif params.top_p is not None:
             kwargs["top_p"] = params.top_p
         if params.stop:
             kwargs["stop_sequences"] = params.stop

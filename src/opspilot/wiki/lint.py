@@ -40,14 +40,14 @@ _SUMMARY_REQUIRED_SECTIONS = ("## TL;DR", "## Key claims", "## Sources")
 class LintIssue:
     """One lint finding.  Conforms to lint-issue.schema.json."""
 
-    id: str                          # lnt_<sha8>
-    issue_type: str                  # enum per schema
-    severity: str                    # low / medium / high / critical
-    detected_at: str                 # RFC3339
-    scope: dict[str, Any]            # {pages: [page_id]}
-    summary: str                     # human-readable ≤500 chars
-    suggested_action: dict[str, Any] # {kind, rationale}
-    page_slug: str = ""              # for TUI display (not in schema output)
+    id: str  # lnt_<sha8>
+    issue_type: str  # enum per schema
+    severity: str  # low / medium / high / critical
+    detected_at: str  # RFC3339
+    scope: dict[str, Any]  # {pages: [page_id]}
+    summary: str  # human-readable ≤500 chars
+    suggested_action: dict[str, Any]  # {kind, rationale}
+    page_slug: str = ""  # for TUI display (not in schema output)
     lint_run_id: str | None = None
     evidence: list[dict[str, Any]] = field(default_factory=list)
     lifecycle_state: str = "open"
@@ -117,7 +117,10 @@ def lint_wiki(wiki_root: Path) -> list[LintIssue]:
                     detected_at=now,
                     scope={"pages": []},
                     summary=f"Failed to parse {md_file.name}: {exc}"[:500],
-                    suggested_action={"kind": "redact", "rationale": "Fix malformed frontmatter or body."},
+                    suggested_action={
+                        "kind": "redact",
+                        "rationale": "Fix malformed frontmatter or body.",
+                    },
                     page_slug=md_file.stem,
                 )
             )

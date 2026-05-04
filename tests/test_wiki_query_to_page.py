@@ -119,10 +119,14 @@ class TestReadTrace:
         assert d.final_response == "ok"
 
     def test_kb_hits_deduplicated(self, tmp_path: Path) -> None:
-        hits_json = json.dumps({"hits": [
-            {"chunk_id": "chk_11111111", "content": "A"},
-            {"chunk_id": "chk_22222222", "content": "B"},
-        ]})
+        hits_json = json.dumps(
+            {
+                "hits": [
+                    {"chunk_id": "chk_11111111", "content": "A"},
+                    {"chunk_id": "chk_22222222", "content": "B"},
+                ]
+            }
+        )
         f = tmp_path / "trace.jsonl"
         f.write_text(
             _make_trace_events(

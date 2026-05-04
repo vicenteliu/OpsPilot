@@ -9,6 +9,7 @@ from opspilot.wiki.page import WikiPage, write_page
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
+
 def _make_page(
     slug: str,
     *,
@@ -52,6 +53,7 @@ def _write(wiki_root: Path, page: WikiPage, kind_subdir: str = "") -> None:
 
 # ── Empty / missing wiki ───────────────────────────────────────────────────────
 
+
 class TestEmptyWiki:
     def test_no_pages_dir_returns_empty(self, tmp_path: Path) -> None:
         assert lint_wiki(tmp_path) == []
@@ -63,6 +65,7 @@ class TestEmptyWiki:
 
 # ── Orphan check ──────────────────────────────────────────────────────────────
 
+
 class TestOrphan:
     def test_single_page_is_orphan(self, tmp_path: Path) -> None:
         _write(tmp_path, _make_page("my-page"))
@@ -73,7 +76,9 @@ class TestOrphan:
 
     def test_page_with_inbound_link_not_orphan(self, tmp_path: Path) -> None:
         page_a = _make_page("alpha")
-        page_b = _make_page("beta", body="## TL;DR\nSee [[alpha]].\n## Key claims\n1. x.\n## Sources\n1. y.")
+        page_b = _make_page(
+            "beta", body="## TL;DR\nSee [[alpha]].\n## Key claims\n1. x.\n## Sources\n1. y."
+        )
         _write(tmp_path, page_a)
         _write(tmp_path, page_b)
         issues = lint_wiki(tmp_path)
@@ -91,6 +96,7 @@ class TestOrphan:
 
 
 # ── Broken link check ─────────────────────────────────────────────────────────
+
 
 class TestBrokenLink:
     def test_link_to_missing_slug(self, tmp_path: Path) -> None:
@@ -110,7 +116,9 @@ class TestBrokenLink:
         assert not broken
 
     def test_duplicate_broken_link_emitted_once(self, tmp_path: Path) -> None:
-        body = "## TL;DR\nSee [[ghost]] and [[ghost]] again.\n## Key claims\n1. x.\n## Sources\n1. y."
+        body = (
+            "## TL;DR\nSee [[ghost]] and [[ghost]] again.\n## Key claims\n1. x.\n## Sources\n1. y."
+        )
         _write(tmp_path, _make_page("src", body=body))
         issues = lint_wiki(tmp_path)
         broken = [i for i in issues if i.issue_type == "broken_link"]
@@ -118,6 +126,7 @@ class TestBrokenLink:
 
 
 # ── Redaction warning check ───────────────────────────────────────────────────
+
 
 class TestRedactionWarning:
     def test_redacted_placeholder_in_body(self, tmp_path: Path) -> None:
@@ -135,6 +144,7 @@ class TestRedactionWarning:
 
 
 # ── Missing sections check ────────────────────────────────────────────────────
+
 
 class TestMissingSections:
     def test_summary_page_missing_tldr(self, tmp_path: Path) -> None:
@@ -161,6 +171,7 @@ class TestMissingSections:
 
 # ── Schema invalid / parse error ─────────────────────────────────────────────
 
+
 class TestParseError:
     def test_malformed_frontmatter(self, tmp_path: Path) -> None:
         bad_file = tmp_path / "pages" / "summary" / "broken.md"
@@ -172,6 +183,7 @@ class TestParseError:
 
 
 # ── LintIssue data model ──────────────────────────────────────────────────────
+
 
 class TestLintIssue:
     def test_to_dict_excludes_page_slug(self) -> None:

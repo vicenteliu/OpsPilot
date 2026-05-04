@@ -57,7 +57,7 @@ class QueryToPageResult:
     slug: str
     page_id: str
     page_path: Path
-    trigger: str           # "kb_search_count" | "user_accept"
+    trigger: str  # "kb_search_count" | "user_accept"
     skipped: bool = False  # True when page already existed or session not qualified
     skip_reason: str = ""
 
@@ -73,10 +73,10 @@ _KB_TOOL_NAMES = {"kb_search", "kb.search"}
 
 @dataclass
 class _TraceData:
-    final_response: str            # content of the last stop-or-final response
+    final_response: str  # content of the last stop-or-final response
     kb_hits: list[dict[str, Any]]  # deduplicated KB hits from tool_result events
-    kb_search_count: int           # number of kb_search tool calls
-    has_user_accept: bool          # any user_action.accept event
+    kb_search_count: int  # number of kb_search tool calls
+    has_user_accept: bool  # any user_action.accept event
 
 
 def _read_trace(trace_path: Path) -> _TraceData:
@@ -468,5 +468,7 @@ def scan_and_convert(
     session_ids = session_manager.list()
     results: list[QueryToPageResult] = []
     for sid in reversed(session_ids[-max_sessions:]):
-        results.append(query_to_page(sid, session_manager=session_manager, provider=provider, config=config))
+        results.append(
+            query_to_page(sid, session_manager=session_manager, provider=provider, config=config)
+        )
     return results
