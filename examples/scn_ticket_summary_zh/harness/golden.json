@@ -15,14 +15,15 @@
     "missing_fields_min": ["VPN 客户端版本", "受影响账号"],
     "next_actions_min_count": 3,
     "severity_suggested": "P2",
-    "must_have_citation_to_chunk": "chk_0cf89826"
+    "must_have_citation_to_chunk": "chk_0cf89826",
+    "relevant_chunk_ids": ["chk_0cf89826", "chk_ea5a0261"]
   },
 
   "expected_summary_nl": "上午 10:00 起多名用户 VPN 认证失败；终端/网络已交叉验证可排除；建议优先排查 VPN 网关与认证后端。",
 
   "rubric_ref": "examples/scn_ticket_summary_zh/harness/rubric.md",
 
-  "must_contain": ["authentication failed", "多名用户", "VPN 网关"],
+  "must_contain": ["authentication failed", "多名用户", "服务端"],
   "must_not_contain": ["[REDACTED:", "T-XXXX 真实 ID"],
 
   "schema_check": {

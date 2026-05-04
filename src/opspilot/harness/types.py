@@ -116,6 +116,15 @@ class Golden:
             return v
         return None
 
+    @property
+    def relevant_chunk_ids(self) -> list[str]:
+        """Full relevant set for precision: explicit list or fallback to expected_chunk_id."""
+        explicit = self.expected_structured.get("relevant_chunk_ids")
+        if isinstance(explicit, list):
+            return [c for c in explicit if isinstance(c, str)]
+        single = self.expected_chunk_id
+        return [single] if single else []
+
 
 @dataclass(frozen=True)
 class Rubric:

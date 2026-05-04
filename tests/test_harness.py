@@ -328,8 +328,9 @@ def test_rag_precision_at_k(golden: Golden) -> None:
             retrieved=["chk_0cf89826", "chk_ea5a0261", "chk_0f674194"],
         )
     )
-    # 1 of 3 = 0.333; spec threshold ≥ 0.5 → fail (acceptable; tweakable)
-    assert 0.3 <= r.score <= 0.4
+    # 2 of 3 relevant (chk_0cf89826 + chk_ea5a0261); chk_0f674194 is irrelevant
+    assert 0.6 <= r.score <= 0.7
+    assert r.passed
 
 
 def test_rag_citation_validity_all_match(golden: Golden) -> None:

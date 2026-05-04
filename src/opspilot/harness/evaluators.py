@@ -159,8 +159,13 @@ def evaluate_rag_recall_at_k(ctx: EvalContext) -> EvaluatorResult:
 
 
 def evaluate_rag_precision_at_k(ctx: EvalContext) -> EvaluatorResult:
-    """Fraction of retrieved chunks that are 'relevant' (= the expected one)."""
-    expected = ctx.golden.expected_chunk_id
+    """Fraction of retrieved chunks that are relevant.
+
+    Uses ``golden.relevant_chunk_ids`` as the relevant set (includes must +
+    should chunks).  Falls back to the single ``expected_chunk_id`` when no
+    explicit list is present.
+    """
+    relevant_set = ctx.golden.relevant_chunk_ids
     retrieved = ctx.retrieved_chunk_ids
     if not retrieved:
         return EvaluatorResult(
@@ -168,9 +173,9 @@ def evaluate_rag_precision_at_k(ctx: EvalContext) -> EvaluatorResult:
             type="rag.precision_at_k",
             score=0.0,
             passed=False,
-            details={"expected": [expected] if expected else [], "retrieved": []},
+            details={"expected": relevant_set, "retrieved": []},
         )
-    if not expected:
+    if not relevant_set:
         # No golden truth: vacuously correct.
         return EvaluatorResult(
             id="ev_rag_precision_at_k",
@@ -179,7 +184,8 @@ def evaluate_rag_precision_at_k(ctx: EvalContext) -> EvaluatorResult:
             passed=True,
             details={"expected": [], "retrieved": retrieved},
         )
-    relevant = sum(1 for c in retrieved if c == expected)
+    relevant_set_s = set(relevant_set)
+    relevant = sum(1 for c in retrieved if c in relevant_set_s)
     score = relevant / len(retrieved)
     # Spec exit threshold: ≥ 0.5
     return EvaluatorResult(
@@ -188,7 +194,7 @@ def evaluate_rag_precision_at_k(ctx: EvalContext) -> EvaluatorResult:
         score=score,
         passed=score >= 0.5,
         details={
-            "expected": [expected],
+            "expected": relevant_set,
             "retrieved": retrieved,
             "relevant_count": relevant,
         },
