@@ -8,6 +8,7 @@
 * ``opspilot run``          — run a playbook end-to-end (PR-7)
 * ``opspilot harness run``  — run a single fixture through harness (PR-8)
 * ``opspilot harness golden`` — run the Stage 1 golden test (PR-8)
+* ``opspilot wiki ingest``  — generate wiki page from KB document (PR-19)
 """
 
 from __future__ import annotations
@@ -26,6 +27,8 @@ from .harness import load_fixture, load_golden, run_harness
 from .harness.reporter import render_result_table
 from .memory.ingestion import IngestConfig
 from .memory.ingestion import ingest as run_ingest
+from .wiki.ingest import WikiIngestConfig
+from .wiki.ingest import ingest as run_wiki_ingest
 from .memory.kb_loader import load_kb_fixture
 from .memory.lance_store import LanceStore
 from .memory.retrieval import kb_search
@@ -690,6 +693,67 @@ def harness_golden(
     )
     if code != 0:
         raise typer.Exit(code=code)
+
+
+# ──────────────────────────────────────────────────────────────────────────
+#  wiki (PR-19)
+# ──────────────────────────────────────────────────────────────────────────
+
+wiki_app = typer.Typer(
+    name="wiki",
+    help="Wiki operations: ingest KB documents into wiki pages.",
+    no_args_is_help=True,
+)
+app.add_typer(wiki_app)
+
+
+@wiki_app.command("ingest")
+def wiki_ingest(
+    doc_id: str = typer.Argument(..., help="KB document ID (doc_<sha8>) to ingest."),
+    wiki_root: Path = typer.Option(  # noqa: B008
+        Path("wiki"),
+        "--wiki-root",
+        help="Path to the wiki/ directory.",
+    ),
+    model: str = typer.Option(
+        "qwen2.5:7b",
+        "--model",
+        help="Ollama model name for page generation.",
+    ),
+    base_url: str = typer.Option(
+        "http://localhost:11434",
+        "--base-url",
+        help="Ollama API base URL.",
+    ),
+    owner: str = typer.Option("wiki-maintainer@opspilot", "--owner"),
+    namespace: str = typer.Option("opspilot:public-kb", "--namespace"),
+    db_path: Path = typer.Option(  # noqa: B008
+        None, "--db", help="SQLite KB path (default: ~/.opspilot/kb/kb.sqlite)."
+    ),
+) -> None:
+    """Generate a wiki summary page from an already-ingested KB document."""
+    cfg = load_config()
+    kb_dir = cfg.home / "kb"
+    kb_dir.mkdir(parents=True, exist_ok=True)
+    sqlite_path = db_path or (kb_dir / "sqlite.db")
+
+    from .providers.ollama import OllamaProvider
+
+    provider = OllamaProvider(base_url=base_url)
+
+    with SqliteStore(init_sqlite(sqlite_path)) as sqlite:
+        wiki_cfg = WikiIngestConfig(
+            wiki_root=wiki_root,
+            namespace=namespace,
+            owner=owner,
+            model=model,
+        )
+        result = run_wiki_ingest(doc_id, sqlite=sqlite, provider=provider, config=wiki_cfg)
+
+    _console.print(f"[green]✓[/green] Created wiki page: {result.page_path}")
+    _console.print(f"  page_id : {result.page_id}")
+    _console.print(f"  slug    : {result.slug}")
+    _console.print(f"  created : {result.pages_created}  updated : {result.pages_updated}")
 
 
 # ──────────────────────────────────────────────────────────────────────────

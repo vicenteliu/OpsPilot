@@ -170,6 +170,17 @@ class SqliteStore:
             return None
         return _row_to_dict_with_json(r, json_fields=("heading_path_json", "tags_json"))
 
+    def get_chunks_by_document_id(self, doc_id: str) -> list[dict[str, Any]]:
+        """Return all chunks for *doc_id*, ordered by ``seq``."""
+        cur = self._conn.execute(
+            "SELECT * FROM kb_chunks WHERE document_id = ? ORDER BY seq",
+            (doc_id,),
+        )
+        return [
+            _row_to_dict_with_json(r, json_fields=("heading_path_json", "tags_json"))
+            for r in cur.fetchall()
+        ]
+
     def get_chunks_by_vector_ids(self, vector_ids: Sequence[str]) -> dict[str, dict[str, Any]]:
         """Fetch chunks for a set of LanceDB vector_ids; returns {vector_id: row}.
 
