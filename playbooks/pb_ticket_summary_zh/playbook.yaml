@@ -92,7 +92,7 @@ defaults:
 #   mode=prefetch — orchestrator pre-runs kb_search and folds hits into
 #                   system prompt; chat runs once with tools=[]
 retrieval:
-  mode: "tool"
+  mode: "prefetch"
   prefetch:
     # top_k omitted ⇒ falls back to limits.max_kb_search_results (D5)
     query_fields: ["subject", "body"]
