@@ -9,6 +9,7 @@
 * ``opspilot harness run``  — run a single fixture through harness (PR-8)
 * ``opspilot harness golden`` — run the Stage 1 golden test (PR-8)
 * ``opspilot wiki ingest``  — generate wiki page from KB document (PR-19)
+* ``opspilot tui``          — launch the terminal UI (PR-20)
 """
 
 from __future__ import annotations
@@ -754,6 +755,19 @@ def wiki_ingest(
     _console.print(f"  page_id : {result.page_id}")
     _console.print(f"  slug    : {result.slug}")
     _console.print(f"  created : {result.pages_created}  updated : {result.pages_updated}")
+
+
+# ──────────────────────────────────────────────────────────────────────────
+#  tui (PR-20)
+# ──────────────────────────────────────────────────────────────────────────
+
+
+@app.command()
+def tui() -> None:
+    """Launch the OpsPilot terminal UI."""
+    from .tui import run_tui
+
+    run_tui()
 
 
 # ──────────────────────────────────────────────────────────────────────────

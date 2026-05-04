@@ -38,6 +38,7 @@ dependencies = [
     "openai >= 1.0",                  # Stage 2: OpenAI-compatible providers (OpenAI, OpenRouter, Gemini)
     "fastapi >= 0.111",               # Stage 2: API server
     "uvicorn[standard] >= 0.30",      # Stage 2: ASGI server
+    "textual >= 8.0",                 # PR-20: TUI shell
 ]
 
 [project.optional-dependencies]
@@ -50,6 +51,7 @@ dev = [
     "types-jsonschema",
     "reportlab >= 4",          # PR-5: generate tests/fixtures/sample.pdf
     "maturin >= 1.7, < 2.0",   # PR-16: Rust extension build tool
+    "pytest-asyncio >= 1.0",   # PR-20: async tests for TUI
 ]
 
 [project.scripts]
@@ -115,6 +117,10 @@ ignore_missing_imports = true
 module = ["opspilot_chunker", "opspilot_chunker.*", "opspilot_tokenizer", "opspilot_tokenizer.*"]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = ["textual", "textual.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
@@ -122,3 +128,4 @@ markers = [
     "requires_ollama: requires running Ollama instance",
 ]
 addopts = "-v --strict-markers"
+asyncio_mode = "auto"
