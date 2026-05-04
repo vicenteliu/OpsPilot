@@ -214,12 +214,8 @@ def _parse_blocks(body: str, body_char_offset: int, body_line_offset: int) -> li
 # ──────────────────────────────────────────────────────────────────────────
 
 
-def chunk_markdown(text: str, *, config: ChunkConfig | None = None) -> list[Chunk]:
-    """Split *text* into chunks using the ``headings_then_size`` strategy.
-
-    See module docstring for the full algorithm; PR-2 keeps it intentionally
-    simple, deferring real tokenizer-driven sizing to PR-5.
-    """
+def _py_chunk_markdown(text: str, *, config: ChunkConfig | None = None) -> list[Chunk]:
+    """Pure-Python headings_then_size implementation (fallback / parity test)."""
     cfg = config or ChunkConfig()
     body, body_char_offset, body_line_offset = _strip_frontmatter(text)
     blocks = _parse_blocks(body, body_char_offset, body_line_offset)
@@ -312,3 +308,39 @@ def chunk_markdown(text: str, *, config: ChunkConfig | None = None) -> list[Chun
         )
 
     return chunks
+
+
+# ── Rust-accelerated dispatch ─────────────────────────────────────────────
+
+try:
+    from opspilot_chunker import chunk_markdown as _rs_chunk_markdown
+
+    _HAS_RUST_CHUNKER = True
+except ImportError:
+    _HAS_RUST_CHUNKER = False
+
+
+def chunk_markdown(text: str, *, config: ChunkConfig | None = None) -> list[Chunk]:
+    """Split *text* into chunks using the headings_then_size strategy.
+
+    Dispatches to the Rust extension when available (≥5x faster); falls back
+    to the pure-Python implementation otherwise.
+    """
+    cfg = config or ChunkConfig()
+    if _HAS_RUST_CHUNKER:
+        rs_chunks = _rs_chunk_markdown(text, cfg.target_size_tokens, cfg.max_size_tokens)
+        return [
+            Chunk(
+                seq=c.seq,
+                content=c.content,
+                char_start=c.char_start,
+                char_end=c.char_end,
+                line_start=c.line_start,
+                line_end=c.line_end,
+                heading_path=tuple(c.heading_path),
+                anchor=c.anchor,
+                token_count=c.token_count,
+            )
+            for c in rs_chunks
+        ]
+    return _py_chunk_markdown(text, config=cfg)

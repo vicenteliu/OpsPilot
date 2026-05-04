@@ -9,9 +9,17 @@ import pytest
 
 from opspilot.memory.chunker import (
     ChunkConfig,
+    _py_chunk_markdown,
     _strip_frontmatter,
     chunk_markdown,
 )
+
+try:
+    import opspilot_chunker as _rs_mod
+
+    _HAS_RUST = True
+except ImportError:
+    _HAS_RUST = False
 
 # ──────────────────────────────────────────────────────────────────────────
 #  Frontmatter handling
@@ -202,3 +210,46 @@ class TestConfig:
         big = chunk_markdown(sop_vpn_zh_text, config=ChunkConfig(target_size_tokens=2000))
         small = chunk_markdown(sop_vpn_zh_text, config=ChunkConfig(target_size_tokens=80))
         assert len(small) >= len(big)
+
+
+# ──────────────────────────────────────────────────────────────────────────
+#  Rust / Python output parity
+# ──────────────────────────────────────────────────────────────────────────
+
+PARITY_TEXTS = [
+    SIMPLE_DOC,
+    HEADING_ONLY_DOC,
+    "# Only heading\n",
+    "no heading at all\njust text\n",
+    "",
+    "---\ntitle: Test\n---\n# Body\ncontent\n",
+]
+
+
+@pytest.mark.skipif(not _HAS_RUST, reason="opspilot_chunker Rust extension not installed")
+class TestRustParity:
+    """Verify Rust chunker output matches Python on every field."""
+
+    @pytest.mark.parametrize("text", PARITY_TEXTS)
+    def test_field_by_field(self, text: str) -> None:
+        py = _py_chunk_markdown(text)
+        rs_raw = _rs_mod.chunk_markdown(text)
+        assert len(py) == len(rs_raw), f"chunk count mismatch on: {text[:40]!r}"
+        for p, r in zip(py, rs_raw):
+            assert p.content == r.content, f"content mismatch seq={p.seq}"
+            assert p.char_start == r.char_start, f"char_start mismatch seq={p.seq}"
+            assert p.char_end == r.char_end, f"char_end mismatch seq={p.seq}"
+            assert p.line_start == r.line_start, f"line_start mismatch seq={p.seq}"
+            assert p.line_end == r.line_end, f"line_end mismatch seq={p.seq}"
+            assert list(p.heading_path) == r.heading_path, f"heading_path mismatch seq={p.seq}"
+            assert p.anchor == r.anchor, f"anchor mismatch seq={p.seq}"
+            assert p.token_count == r.token_count, f"token_count mismatch seq={p.seq}"
+
+    def test_parity_on_vpn_sop(self, sop_vpn_zh_text: str) -> None:
+        py = _py_chunk_markdown(sop_vpn_zh_text)
+        rs_raw = _rs_mod.chunk_markdown(sop_vpn_zh_text)
+        assert len(py) == len(rs_raw)
+        for p, r in zip(py, rs_raw):
+            assert p.content == r.content
+            assert p.char_start == r.char_start
+            assert p.char_end == r.char_end
