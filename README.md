@@ -4,7 +4,7 @@
 
 > 中文版：[README_zh.md](./README_zh.md)
 
-OpsPilot turns raw IT tickets into structured, KB-cited summaries using a playbook-driven AI pipeline. It runs locally with Ollama or against any cloud provider (Anthropic, OpenAI, OpenRouter, Gemini), with a Svelte 5 web UI and a FastAPI backend.
+OpsPilot turns raw IT tickets into structured, KB-cited summaries using a playbook-driven AI pipeline. It runs locally with Ollama or against any cloud provider (Anthropic, OpenAI, OpenRouter, Gemini), with a terminal UI, a Svelte 5 web UI, and a FastAPI backend.
 
 ---
 
@@ -13,11 +13,15 @@ OpsPilot turns raw IT tickets into structured, KB-cited summaries using a playbo
 - **Multi-provider** — Anthropic Claude, OpenAI, OpenRouter, Gemini, or local Ollama; switch from the UI dropdown without restarting
 - **Fallback routing** — playbook declares a primary model + optional local fallback (e.g. Claude → Gemma)
 - **KB retrieval** — hybrid vector (LanceDB) + full-text search (SQLite FTS5) over an ingested knowledge base; citations traced to source chunks
+- **Retrieval modes** — `tool` (model calls `kb_search` via ReAct loop) or `prefetch` (orchestrator injects chunks before the LLM call); prefetch makes weak local models (Gemma, Phi) reliably cite KB chunks
 - **Redaction** — PII stripped before any content reaches the model or the KB
 - **Session audit** — every run produces a signed trace + artifact; sessions are archived and browsable
 - **Schema validation** — model output validated against a strict JSON Schema before it's accepted
 - **Token usage display** — input/output token counts shown after each run
 - **Session history** — past runs listed inline with expandable output cards for side-by-side comparison
+- **Terminal UI (TUI)** — 8-module Textual workbench: dashboard, sessions, KB browser, wiki tree, harness, lint issues, providers, config; run playbooks inline with `R`; generate wiki pages from sessions with `W`; promote draft wiki pages with `P`
+- **Wiki layer** — compounding knowledge base built on top of the long-term KB: ingest KB docs into wiki summary pages, auto-generate synthesis pages from qualifying session responses, lint for orphans/broken links/redaction warnings, promote pages through a `draft → reviewed → live → stale → archived` lifecycle
+- **Rust extensions** — `opspilot_chunker` (9.6× faster than pure Python) and `opspilot_tokenizer` (45× faster BPE-ish token counter) compiled via PyO3/maturin
 
 ---
 
@@ -58,14 +62,21 @@ cp .env.example .env
 opspilot kb ingest kb/
 ```
 
-### 5. Start the API server
+### 5. Launch the terminal UI
+
+```bash
+opspilot tui                                      # interactive workbench
+opspilot tui run --input ticket.json              # open run modal directly
+```
+
+### 6. Start the API server (optional web UI)
 
 ```bash
 source .env  # or: set -a && source .env && set +a
 uvicorn opspilot.api.app:app --reload
 ```
 
-### 6. Start the web UI
+### 7. Start the web UI (optional)
 
 ```bash
 cd web && pnpm install && pnpm dev
@@ -125,6 +136,8 @@ src/opspilot/
   session/      SessionManager · TraceWriter · ArtifactStore
   redaction/    PII scrubbing rules + placeholder injection
   schemas/      JSON Schema registry + validator
+  wiki/         ingest · query_to_page · lint · promote — compounding KB layer
+  tui/          Textual TUI shell + 8 screens + RunModal + WikiQueryModal
 web/            Svelte 5 frontend (model selector, run, history)
 playbooks/      YAML playbook specs + system prompts
 kb/             Source documents for KB ingestion
@@ -190,6 +203,56 @@ The UI model selector lets you override the model per-run without editing YAML. 
 |------|-------------|----------|
 | `tool` | Model decides when to call `kb_search` via tool-use protocol (ReAct loop) | Strong models (Claude, GPT-4) |
 | `prefetch` | Orchestrator runs `kb_search` once, injects chunks into system prompt | Weak local models (Gemma, Phi) |
+
+---
+
+## Terminal UI
+
+Launch with `opspilot tui`. Press keys `1`–`8` to jump between modules.
+
+| Key | Module | Description |
+|-----|--------|-------------|
+| `1` | Dashboard | Session/KB/wiki counts |
+| `2` | Sessions | All runs; `W` → generate wiki page from selected session |
+| `3` | KB Browser | Ingested documents and chunk counts |
+| `4` | Wiki Tree | All wiki pages; `P` → promote selected draft/reviewed page to live |
+| `5` | Harness | Eval run history |
+| `6` | Lint Issues | Wiki lint results (orphans, broken links, redaction warnings) |
+| `7` | Providers | Ollama / Anthropic / OpenAI connectivity status |
+| `8` | Config | Active configuration values |
+| `R` | — | Open Run modal (any screen) |
+| `Q` | — | Quit |
+
+```bash
+opspilot tui run --input ticket.json --playbook playbooks/pb_ticket_summary_zh
+```
+
+---
+
+## Wiki CLI
+
+The wiki layer converts KB documents and session responses into a browsable,
+lint-checked, lifecycle-managed knowledge base.
+
+```bash
+# Ingest a KB document into a wiki summary page
+opspilot wiki ingest <doc_id>
+
+# Convert qualifying archived sessions into synthesis pages (auto-scan)
+opspilot wiki query-to-page
+opspilot wiki query-to-page --session sess_<id>   # single session
+
+# Promote a draft page through the lifecycle
+opspilot wiki promote <slug>                       # draft → live (default)
+opspilot wiki promote <slug> --to reviewed         # draft → reviewed
+
+# Lint the wiki for structural issues
+opspilot wiki lint
+```
+
+**Wiki page lifecycle:** `draft` → `reviewed` → `live` → `stale` → `archived`
+
+Pages are always written as `draft` by automated tools. Human review (CLI or TUI `P`) promotes them to `live`.
 
 ---
 

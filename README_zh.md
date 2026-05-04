@@ -94,6 +94,68 @@ Pick one of the paths:
 
 ---
 
+## 终端工作台（TUI）
+
+```bash
+opspilot tui                                     # 启动 8 模块交互式工作台
+opspilot tui run --input ticket.json             # 直接打开运行弹窗
+```
+
+按数字键 `1`–`8` 切换模块：
+
+| 键 | 模块 | 说明 |
+|----|------|------|
+| `1` | Dashboard | 会话 / KB / Wiki 统计 |
+| `2` | Sessions | 所有运行记录；`W` → 对选中会话生成 Wiki 页 |
+| `3` | KB Browser | 已入库文档与 chunk 数量 |
+| `4` | Wiki Tree | 所有 Wiki 页；`P` → 将选中的 draft/reviewed 页升为 live |
+| `5` | Harness | 评估运行历史 |
+| `6` | Lint Issues | Wiki 静态检查（孤儿页、断链、脱敏警告） |
+| `7` | Providers | Ollama / Anthropic / OpenAI 连通状态 |
+| `8` | Config | 当前配置项 |
+| `R` | — | 打开运行弹窗（任意屏幕有效） |
+
+---
+
+## Wiki 知识沉淀层
+
+Wiki 层把 KB 文档和会话响应转化为可浏览、可校验、有生命周期的知识库。
+
+```bash
+# 将已入库 KB 文档生成 wiki 摘要页
+opspilot wiki ingest <doc_id>
+
+# 自动扫描合格的归档会话，生成 synthesis 页（需要 Ollama）
+opspilot wiki query-to-page
+opspilot wiki query-to-page --session sess_<id>   # 单条会话
+
+# 推进页面生命周期
+opspilot wiki promote <slug>            # draft → live（默认）
+opspilot wiki promote <slug> --to reviewed
+
+# 静态检查
+opspilot wiki lint
+```
+
+**Wiki 页面生命周期**：`draft` → `reviewed` → `live` → `stale` → `archived`
+
+自动化工具（ingest / query-to-page）始终写入 `draft`；人工审核后通过 CLI 或 TUI `P` 键升为 `live`。
+
+**触发 query-to-page 的条件（满足其一即可）：**
+- 会话中 `kb_search` 工具调用次数 ≥ 2
+- 会话 trace 中存在 `user_action.accept` 事件
+
+**四类 lint 检查：**
+
+| 类型 | 说明 |
+|------|------|
+| `orphan` | 页面无入链且非归档状态 |
+| `broken_link` | `[[slug]]` 引用的目标页不存在 |
+| `redaction_warning` | 正文中出现 `[REDACTED:` 残留占位符 |
+| `schema_invalid` | 前置 YAML 解析失败、slug 冲突或 summary 类页缺少必要章节 |
+
+---
+
 ## Repository structure | 仓库结构
 
 ```text
@@ -183,7 +245,33 @@ playbooks/  ──▶  Session(create) ◀──────────┘
 - **sandbox/**：AI 提出动作的"先跑给你看，再决定要不要落地"的隔离执行层；默认 deny-all
 - **harness/**：Prompt/Playbook 的"单元测试 + 回归门"；模型升级前后必跑
 
-> ⚠️ **当前状态 / Status**：六个目录均为 **spec-only**（规范+模板）阶段，不含运行实现。先把契约梳理清楚，再做参考实现。
+---
+
+## 检索模式
+
+| 模式 | 工作方式 | 适合场景 |
+|------|---------|---------|
+| `tool` | 模型通过 ReAct 循环自主调用 `kb_search` | Claude、GPT-4 等强模型 |
+| `prefetch` | Orchestrator 提前检索并注入 system prompt，禁用工具调用 | Gemma、Phi 等弱 tool-call 本地模型 |
+
+Playbook 通过 `retrieval.mode` 字段声明；`prefetch` 模式下 trace.jsonl 仍写入 `tool_call + tool_result` 事件，harness 评估口径不变。
+
+---
+
+## Rust 扩展
+
+`src/opspilot_chunker/` 和 `src/opspilot_tokenizer/` 是 PyO3/maturin 编译的 Rust 扩展：
+
+| 扩展 | 加速比 | 说明 |
+|------|--------|------|
+| `opspilot_chunker` | 9.6× | 标题感知文本分块 |
+| `opspilot_tokenizer` | 45× | BPE-ish token 计数 |
+
+安装时自动编译（`pip install -e ".[dev]"`），无需手动操作。
+
+---
+
+> ⚠️ **当前状态 / Status**：六个顶层目录均为 **spec-only**（规范+模板），不含运行实现。`src/opspilot/` 为可运行实现。
 > ⚠️ **模型版本**：所有 `model_ref` 与 `embedding_model` 必须显式锁版本；禁用 `latest` / `auto` / `stable`。
 > ⚠️ **PII 红线**：未脱敏内容不得入向量库 / SQLite / 蒸馏 pipeline；redaction 规则参见 `session/templates/redaction-rules.template.yaml`。
 > ⚠️ **Skill 信任**：community / unknown 等级 skill 默认禁写动作 + 强制 sandbox；详见 `skills/templates/lifecycle-policy.template.yaml`。
