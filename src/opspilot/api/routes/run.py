@@ -29,10 +29,14 @@ async def run_ticket(body: ApiRunRequest, request: Request) -> ApiRunResponse:
     # model_id = None or matching the primary → use startup provider as-is.
     # model_id matching any extra_model → promote that model to primary for this run.
     primary_id = f"{pb.model.provider_id}/{pb.model.name}"
-    override_model = next(
-        (m for m in pb.extra_models if f"{m.provider_id}/{m.name}" == body.model_id),
-        None,
-    ) if body.model_id and body.model_id != primary_id else None
+    override_model = (
+        next(
+            (m for m in pb.extra_models if f"{m.provider_id}/{m.name}" == body.model_id),
+            None,
+        )
+        if body.model_id and body.model_id != primary_id
+        else None
+    )
 
     if override_model is not None:
         cfg = state.cfg
@@ -42,7 +46,9 @@ async def run_ticket(body: ApiRunRequest, request: Request) -> ApiRunResponse:
             api_key=cfg.anthropic_api_key if override_model.kind == "anthropic" else None,
             base_url=cfg.ollama_base_url if override_model.kind == "ollama" else None,
         )
-        override_retrieval_mode = "prefetch" if override_model.kind == "ollama" else pb.retrieval.mode
+        override_retrieval_mode = (
+            "prefetch" if override_model.kind == "ollama" else pb.retrieval.mode
+        )
         effective_playbook = dataclasses.replace(
             pb,
             model=override_model,

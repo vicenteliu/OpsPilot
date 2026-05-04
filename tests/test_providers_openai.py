@@ -15,7 +15,6 @@ from opspilot.errors import ProviderError
 from opspilot.providers import Message, OpenAIProvider, SamplingParams, ToolCall, ToolDef
 from opspilot.providers.base import ProviderProtocol
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

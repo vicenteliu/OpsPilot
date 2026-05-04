@@ -12,14 +12,16 @@ class ApiRunRequest(BaseModel):
 
     input: dict[str, Any]  # raw ticket JSON
     playbook_id: str | None = None  # defaults to "pb_ticket_summary_zh"
-    model_id: str | None = None  # e.g. "anthropic/claude-haiku-4-5-20251001"; None = playbook default
+    model_id: str | None = (
+        None  # e.g. "anthropic/claude-haiku-4-5-20251001"; None = playbook default
+    )
 
 
 class ApiModelOption(BaseModel):
     """One selectable model in GET /api/models."""
 
-    id: str          # "{provider_id}/{name}"
-    label: str       # human-readable
+    id: str  # "{provider_id}/{name}"
+    label: str  # human-readable
     provider_id: str
     kind: str
     name: str

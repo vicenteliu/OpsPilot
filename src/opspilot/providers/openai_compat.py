@@ -58,8 +58,7 @@ class OpenAIProvider:
         resolved_key = api_key or os.environ.get(env_key)
         if not resolved_key:
             raise ProviderError(
-                f"API key for '{provider_id}' not found. "
-                f"Set {env_key} env var or pass api_key.",
+                f"API key for '{provider_id}' not found. Set {env_key} env var or pass api_key.",
                 error_code="missing_api_key",
             )
 
@@ -86,25 +85,29 @@ class OpenAIProvider:
         openai_messages: list[dict[str, Any]] = []
         for msg in messages:
             if msg.role == "tool":
-                openai_messages.append({
-                    "role": "tool",
-                    "tool_call_id": msg.tool_call_id or "",
-                    "content": msg.content,
-                })
+                openai_messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": msg.tool_call_id or "",
+                        "content": msg.content,
+                    }
+                )
             elif msg.role == "assistant" and msg.tool_calls:
                 content: Any = msg.content or None
-                openai_messages.append({
-                    "role": "assistant",
-                    "content": content,
-                    "tool_calls": [
-                        {
-                            "id": tc.id,
-                            "type": "function",
-                            "function": {"name": tc.name, "arguments": str(tc.arguments)},
-                        }
-                        for tc in msg.tool_calls
-                    ],
-                })
+                openai_messages.append(
+                    {
+                        "role": "assistant",
+                        "content": content,
+                        "tool_calls": [
+                            {
+                                "id": tc.id,
+                                "type": "function",
+                                "function": {"name": tc.name, "arguments": str(tc.arguments)},
+                            }
+                            for tc in msg.tool_calls
+                        ],
+                    }
+                )
             else:
                 openai_messages.append({"role": msg.role, "content": msg.content})
 
@@ -145,6 +148,7 @@ class OpenAIProvider:
         tool_calls: list[ToolCall] = []
         if msg_out.tool_calls:
             import json as _json
+
             for tc in msg_out.tool_calls:
                 try:
                     args = _json.loads(tc.function.arguments)

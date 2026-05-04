@@ -76,7 +76,7 @@ def append_log(wiki_root: Path, entry: WikiLogEntry) -> None:
     now = now_rfc3339()
     lines = [
         f"\n## [{now}] {entry.op} | {entry.subject}\n",
-        f"- by: wiki-maintainer-skill@pr-19\n",
+        "- by: wiki-maintainer-skill@pr-19\n",
     ]
     if entry.session_id:
         lines.append(f"- session_id: {entry.session_id}\n")

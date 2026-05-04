@@ -120,7 +120,9 @@ def load_playbook(playbook_dir: Path) -> PlaybookSpec:
         params=dict(model_d.get("params") or {}),
     )
 
-    def _parse_model(d: dict[str, Any], default_version: str, default_params: dict[str, Any]) -> Model:
+    def _parse_model(
+        d: dict[str, Any], default_version: str, default_params: dict[str, Any]
+    ) -> Model:
         return Model(
             provider_id=d["provider_id"],
             kind=d["kind"],
@@ -136,7 +138,9 @@ def load_playbook(playbook_dir: Path) -> PlaybookSpec:
     # Backward compat: promote old `model.fallback` to extra_models if list is empty.
     fallback_d = model_d.get("fallback")
     if fallback_d and not extra_models:
-        extra_models.append(_parse_model(fallback_d, model_d["version"], model_d.get("params") or {}))
+        extra_models.append(
+            _parse_model(fallback_d, model_d["version"], model_d.get("params") or {})
+        )
 
     tools = [
         PlaybookToolSpec(name=t["name"], description=t.get("description", ""))
