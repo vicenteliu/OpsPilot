@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from textual.widgets import ContentSwitcher, DataTable, Footer, Header, Label, ListItem
+from textual.widgets import ContentSwitcher, DataTable, Footer, Header, ListItem
 
 from opspilot.tui.app import _NAV, _SCREEN_MAP, OpsPilotApp
 from opspilot.tui.screens import (
@@ -166,12 +166,20 @@ class TestHarnessScreen:
 
 
 class TestLintIssuesScreen:
-    async def test_no_issues_label_present(self) -> None:
+    async def test_table_has_correct_columns(self) -> None:
         async with OpsPilotApp().run_test() as pilot:
             await pilot.press("6")
-            screen = pilot.app.query_one(LintIssuesScreen)
-            labels = [str(lbl.render()) for lbl in screen.query(Label)]
-            assert any("No lint issues" in lbl for lbl in labels)
+            dt = pilot.app.query_one(LintIssuesScreen).query_one(DataTable)
+            col_labels = [str(col.label) for col in dt.columns.values()]
+            assert "Type" in col_labels
+            assert "Sev" in col_labels
+
+    async def test_loads_without_error(self) -> None:
+        async with OpsPilotApp().run_test() as pilot:
+            await pilot.press("6")
+            await pilot.pause(0.3)
+            dt = pilot.app.query_one(LintIssuesScreen).query_one(DataTable)
+            assert dt.row_count >= 1  # "No lint issues found." placeholder or real issues
 
 
 class TestProvidersScreen:
