@@ -1,10 +1,25 @@
-"""Tests for the OpsPilot TUI shell (PR-20)."""
+"""Tests for the OpsPilot TUI — shell (PR-20) and screens (PR-21)."""
 
 from __future__ import annotations
 
-from textual.widgets import ContentSwitcher, Footer, Header, ListItem
+from textual.widgets import ContentSwitcher, DataTable, Footer, Header, Label, ListItem
 
 from opspilot.tui.app import OpsPilotApp, _NAV, _SCREEN_MAP
+from opspilot.tui.screens import (
+    ConfigScreen,
+    DashboardScreen,
+    HarnessScreen,
+    KBBrowserScreen,
+    LintIssuesScreen,
+    ProvidersScreen,
+    SessionsScreen,
+    WikiTreeScreen,
+)
+
+
+# ──────────────────────────────────────────────────────────────────────────
+#  PR-20: shell structure and navigation
+# ──────────────────────────────────────────────────────────────────────────
 
 
 class TestAppStructure:
@@ -61,3 +76,133 @@ class TestNavigation:
             pilot.app.action_switch_module("harness")
             await pilot.pause()
             assert pilot.app.active_module == "harness"
+
+
+# ──────────────────────────────────────────────────────────────────────────
+#  PR-21: screen content
+# ──────────────────────────────────────────────────────────────────────────
+
+
+class TestDashboardScreen:
+    async def test_stat_cards_present(self) -> None:
+        async with OpsPilotApp().run_test() as pilot:
+            screen = pilot.app.query_one(DashboardScreen)
+            assert screen.query_one("#stat-sessions")
+            assert screen.query_one("#stat-kb")
+            assert screen.query_one("#stat-wiki")
+
+    async def test_loads_without_error(self) -> None:
+        async with OpsPilotApp().run_test() as pilot:
+            await pilot.pause(0.3)
+            # Stat cards should have updated text (no longer "loading…")
+            screen = pilot.app.query_one(DashboardScreen)
+            assert screen is not None
+
+
+class TestSessionsScreen:
+    async def test_table_has_correct_columns(self) -> None:
+        async with OpsPilotApp().run_test() as pilot:
+            await pilot.press("2")
+            screen = pilot.app.query_one(SessionsScreen)
+            dt = screen.query_one(DataTable)
+            col_labels = [str(col.label) for col in dt.columns.values()]
+            assert "ID" in col_labels
+            assert "Status" in col_labels
+
+    async def test_table_has_at_least_one_row_after_load(self) -> None:
+        async with OpsPilotApp().run_test() as pilot:
+            await pilot.press("2")
+            await pilot.pause(0.3)
+            dt = pilot.app.query_one(SessionsScreen).query_one(DataTable)
+            assert dt.row_count >= 1  # at least the "none yet" placeholder row
+
+
+class TestKBBrowserScreen:
+    async def test_table_columns(self) -> None:
+        async with OpsPilotApp().run_test() as pilot:
+            await pilot.press("3")
+            dt = pilot.app.query_one(KBBrowserScreen).query_one(DataTable)
+            col_labels = [str(col.label) for col in dt.columns.values()]
+            assert "Doc ID" in col_labels
+            assert "Chunks" in col_labels
+
+    async def test_loads_without_error(self) -> None:
+        async with OpsPilotApp().run_test() as pilot:
+            await pilot.press("3")
+            await pilot.pause(0.3)
+            screen = pilot.app.query_one(KBBrowserScreen)
+            assert screen is not None
+
+
+class TestWikiTreeScreen:
+    async def test_table_columns(self) -> None:
+        async with OpsPilotApp().run_test() as pilot:
+            await pilot.press("4")
+            dt = pilot.app.query_one(WikiTreeScreen).query_one(DataTable)
+            col_labels = [str(col.label) for col in dt.columns.values()]
+            assert "Slug" in col_labels
+            assert "State" in col_labels
+
+    async def test_loads_without_error(self) -> None:
+        async with OpsPilotApp().run_test() as pilot:
+            await pilot.press("4")
+            await pilot.pause(0.3)
+            assert pilot.app.query_one(WikiTreeScreen) is not None
+
+
+class TestHarnessScreen:
+    async def test_table_columns(self) -> None:
+        async with OpsPilotApp().run_test() as pilot:
+            await pilot.press("5")
+            dt = pilot.app.query_one(HarnessScreen).query_one(DataTable)
+            col_labels = [str(col.label) for col in dt.columns.values()]
+            assert "Score" in col_labels
+            assert "Pass" in col_labels
+
+    async def test_loads_without_error(self) -> None:
+        async with OpsPilotApp().run_test() as pilot:
+            await pilot.press("5")
+            await pilot.pause(0.3)
+            assert pilot.app.query_one(HarnessScreen) is not None
+
+
+class TestLintIssuesScreen:
+    async def test_no_issues_label_present(self) -> None:
+        async with OpsPilotApp().run_test() as pilot:
+            await pilot.press("6")
+            screen = pilot.app.query_one(LintIssuesScreen)
+            labels = [str(lbl.render()) for lbl in screen.query(Label)]
+            assert any("No lint issues" in lbl for lbl in labels)
+
+
+class TestProvidersScreen:
+    async def test_table_has_correct_columns(self) -> None:
+        async with OpsPilotApp().run_test() as pilot:
+            await pilot.press("7")
+            dt = pilot.app.query_one(ProvidersScreen).query_one(DataTable)
+            col_labels = [str(col.label) for col in dt.columns.values()]
+            assert "Provider" in col_labels
+            assert "Status" in col_labels
+
+    async def test_rows_populated_after_probe(self) -> None:
+        async with OpsPilotApp().run_test() as pilot:
+            await pilot.press("7")
+            await pilot.pause(0.5)
+            dt = pilot.app.query_one(ProvidersScreen).query_one(DataTable)
+            assert dt.row_count == 3  # ollama, anthropic, openai
+
+
+class TestConfigScreen:
+    async def test_config_rows_present(self) -> None:
+        async with OpsPilotApp().run_test() as pilot:
+            await pilot.press("8")
+            dt = pilot.app.query_one(ConfigScreen).query_one(DataTable)
+            assert dt.row_count >= 5
+
+    async def test_home_row_exists(self) -> None:
+        async with OpsPilotApp().run_test() as pilot:
+            await pilot.press("8")
+            dt = pilot.app.query_one(ConfigScreen).query_one(DataTable)
+            # first column of first row should be "home"
+            cell = dt.get_cell_at((0, 0))
+            assert str(cell) == "home"
