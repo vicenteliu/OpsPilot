@@ -1,4 +1,4 @@
-"""Sessions screen — list of all sessions (PR-21)."""
+"""Sessions screen — list of all sessions (PR-21 / PR-22)."""
 
 from __future__ import annotations
 
@@ -21,6 +21,11 @@ class SessionsScreen(Widget):
     def on_mount(self) -> None:
         dt = self.query_one(DataTable)
         dt.add_columns("ID", "Playbook", "Status", "Owner", "Created")
+        self.load_sessions()
+
+    def refresh_sessions(self) -> None:
+        """Clear and reload the sessions table (called after a new run completes)."""
+        self.query_one(DataTable).clear()
         self.load_sessions()
 
     @work(thread=True)

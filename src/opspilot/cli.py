@@ -758,16 +758,46 @@ def wiki_ingest(
 
 
 # ──────────────────────────────────────────────────────────────────────────
-#  tui (PR-20)
+#  tui (PR-20 / PR-22)
 # ──────────────────────────────────────────────────────────────────────────
 
+tui_app = typer.Typer(
+    name="tui",
+    help="Terminal UI: browse sessions, KB, wiki; run playbooks interactively.",
+    no_args_is_help=False,
+    invoke_without_command=True,
+)
+app.add_typer(tui_app)
 
-@app.command()
-def tui() -> None:
+
+@tui_app.callback(invoke_without_command=True)
+def tui(ctx: typer.Context) -> None:
     """Launch the OpsPilot terminal UI."""
+    if ctx.invoked_subcommand is None:
+        from .tui import run_tui
+
+        run_tui()
+
+
+@tui_app.command("run")
+def tui_run(
+    input: Path = typer.Option(  # noqa: A002, B008
+        ...,
+        "--input",
+        "-i",
+        help="Path to the input ticket JSON.",
+    ),
+    playbook: Path = typer.Option(  # noqa: B008
+        Path("playbooks/pb_ticket_summary_zh"),
+        "--playbook",
+        "-p",
+        help="Path to the playbook directory.",
+    ),
+) -> None:
+    """Launch TUI and immediately open the Run modal for a ticket."""
     from .tui import run_tui
 
-    run_tui()
+    run_tui(run_input=str(input), run_playbook=str(playbook))
 
 
 # ──────────────────────────────────────────────────────────────────────────

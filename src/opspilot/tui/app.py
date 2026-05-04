@@ -1,12 +1,13 @@
-"""OpsPilot TUI — main app shell (PR-20).
+"""OpsPilot TUI — main app shell (PR-20 / PR-22).
 
 Layout:
   ┌─ Header ─────────────────────────────────────────┐
   │ NavSidebar (width=18) │ ContentSwitcher           │
   └─ Footer ─────────────────────────────────────────┘
 
-Keys 1-8 jump directly to each module; Q quits.
+Keys 1-8 jump directly to each module; R opens the Run modal; Q quits.
 PR-21 replaces each placeholder Label with full screen content.
+PR-22 adds the Run modal for inline playbook execution.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ from textual.binding import Binding
 from textual.containers import Horizontal
 from textual.widgets import ContentSwitcher, Footer, Header, Label, ListItem, ListView, Static
 
+from .run_modal import RunModal
 from .screens import (
     ConfigScreen,
     DashboardScreen,
@@ -87,8 +89,14 @@ class OpsPilotApp(App[None]):
         Binding("6", "switch_module('lint-issues')", "Lint Issues", show=False),
         Binding("7", "switch_module('providers')", "Providers", show=False),
         Binding("8", "switch_module('config')", "Config", show=False),
+        Binding("r", "start_run", "Run", show=True),
         Binding("q", "quit", "Quit"),
     ]
+
+    def __init__(self, run_input: str = "", run_playbook: str = "") -> None:
+        super().__init__()
+        self._run_input = run_input
+        self._run_playbook = run_playbook
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -106,12 +114,35 @@ class OpsPilotApp(App[None]):
                     yield screen_cls(id=screen_id)
         yield Footer()
 
+    def on_mount(self) -> None:
+        if self._run_input:
+            self.set_timer(0.3, self._auto_open_run_modal)
+
+    def _auto_open_run_modal(self) -> None:
+        self.push_screen(
+            RunModal(input_path=self._run_input, playbook_dir=self._run_playbook),
+            self._on_run_done,
+        )
+
     def action_switch_module(self, screen_id: str) -> None:
         self.query_one(ContentSwitcher).current = screen_id
         # Sync sidebar highlight to active module
         for _, sid, _ in _NAV:
             item = self.query_one(f"#nav-{sid}", ListItem)
             item.highlighted = sid == screen_id
+
+    def action_start_run(self) -> None:
+        """Open the Run modal (bound to `r`)."""
+        self.push_screen(RunModal(), self._on_run_done)
+
+    def _on_run_done(self, session_id: str | None) -> None:
+        """Called when RunModal dismisses; refresh Sessions if a run completed."""
+        if session_id:
+            try:
+                self.query_one(SessionsScreen).refresh_sessions()
+                self.action_switch_module("sessions")
+            except Exception:  # noqa: BLE001
+                pass
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         if event.item.id and event.item.id.startswith("nav-"):
@@ -123,6 +154,9 @@ class OpsPilotApp(App[None]):
         return self.query_one(ContentSwitcher).current or "dashboard"
 
 
-def run_tui() -> None:
-    """Launch the OpsPilot TUI (entry point for `opspilot tui`)."""
-    OpsPilotApp().run()
+def run_tui(*, run_input: str = "", run_playbook: str = "") -> None:
+    """Launch the OpsPilot TUI.
+
+    If ``run_input`` is set the Run modal opens automatically on startup.
+    """
+    OpsPilotApp(run_input=run_input, run_playbook=run_playbook).run()
