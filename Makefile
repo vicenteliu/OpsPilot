@@ -15,8 +15,9 @@ OPSPL  := $(VENV)/bin/opspilot
 
 PNPM         := pnpm
 WEB_DIR      := web
-MATURIN_BIN  := $(abspath $(VENV)/bin/maturin)
-CHUNKER_DIR  := crates/opspilot-chunker
+MATURIN_BIN    := $(abspath $(VENV)/bin/maturin)
+CHUNKER_DIR    := crates/opspilot-chunker
+TOKENIZER_DIR  := crates/opspilot-tokenizer
 
 help: ## Show this help.
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -148,12 +149,14 @@ docker-build: ## Build the multi-stage docker image (opspilot:latest).
 	docker build -t opspilot:latest .
 	docker run --rm opspilot:latest opspilot --version
 
-# ── PR-16: Rust extension build chain ──────────────────────────────────
-rust-dev: ensure-venv ## Build Rust extension (debug) and install into venv.
+# ── PR-16/18: Rust extension build chain ───────────────────────────────
+rust-dev: ensure-venv ## Build all Rust extensions (debug) and install into venv.
 	cd $(CHUNKER_DIR) && $(MATURIN_BIN) develop
+	cd $(TOKENIZER_DIR) && $(MATURIN_BIN) develop
 
-rust-build: ensure-venv ## Build Rust extension wheel (release, optimized).
+rust-build: ensure-venv ## Build all Rust extension wheels (release, optimized).
 	cd $(CHUNKER_DIR) && $(MATURIN_BIN) build --release
+	cd $(TOKENIZER_DIR) && $(MATURIN_BIN) build --release
 
 clean: ## Remove venv + caches.
 	rm -rf $(VENV) .pytest_cache .ruff_cache .mypy_cache

@@ -111,8 +111,8 @@ module = [
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-# Rust extension — only present after `maturin develop`; ignore when absent.
-module = ["opspilot_chunker", "opspilot_chunker.*"]
+# Rust extensions — only present after `maturin develop`; ignore when absent.
+module = ["opspilot_chunker", "opspilot_chunker.*", "opspilot_tokenizer", "opspilot_tokenizer.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

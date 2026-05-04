@@ -2,6 +2,7 @@
 members = [
     "crates/opspilot-core",
     "crates/opspilot-chunker",
+    "crates/opspilot-tokenizer",
 ]
 resolver = "2"
 

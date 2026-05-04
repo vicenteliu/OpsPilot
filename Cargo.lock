@@ -63,6 +63,14 @@ name = "opspilot-core"
 version = "0.1.0"
 
 [[package]]
+name = "opspilot-tokenizer"
+version = "0.1.0"
+dependencies = [
+ "opspilot-core",
+ "pyo3",
+]
+
+[[package]]
 name = "portable-atomic"
 version = "1.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
