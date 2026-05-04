@@ -831,6 +831,48 @@ def wiki_query_to_page(
     _console.print(f"\n{created} page(s) created · {len(results) - created} skipped")
 
 
+@wiki_app.command("promote")
+def wiki_promote(
+    slug: str = typer.Argument(help="Page slug to promote."),
+    wiki_root: Path = typer.Option(  # noqa: B008
+        Path("wiki"),
+        "--wiki-root",
+        help="Path to the wiki/ directory.",
+    ),
+    to: str = typer.Option(
+        "live",
+        "--to",
+        help="Target lifecycle state: reviewed | live | stale | archived.",
+    ),
+) -> None:
+    """Advance a wiki page's lifecycle state (PR-25).
+
+    Examples::
+
+        opspilot wiki promote my-page-slug
+        opspilot wiki promote my-page-slug --to reviewed
+        opspilot wiki promote my-page-slug --to stale
+    """
+    from .wiki.promote import PromoteConfig, PromoteError
+    from .wiki.promote import promote_page as _promote
+
+    cfg = PromoteConfig(wiki_root=wiki_root, target_state=to)
+    try:
+        result = _promote(slug, cfg)
+    except PromoteError as exc:
+        _console.print(f"[red]Error:[/red] {exc}")
+        raise typer.Exit(1) from exc
+
+    if result.skipped:
+        _console.print(f"[yellow]Skipped:[/yellow] {result.skip_reason}")
+    else:
+        _console.print(
+            f"[green]✓[/green] {slug}: {result.old_state} → {result.new_state}"
+            f"  (v{result.new_version})"
+        )
+        _console.print(f"  path: {result.page_path}")
+
+
 # ──────────────────────────────────────────────────────────────────────────
 #  tui (PR-20 / PR-22)
 # ──────────────────────────────────────────────────────────────────────────
