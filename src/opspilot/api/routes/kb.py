@@ -1,4 +1,5 @@
-"""KB API routes: GET /api/kb/docs, POST /api/kb/ingest, GET /api/kb/search."""
+"""KB API routes: GET /api/kb/docs, POST /api/kb/ingest, GET /api/kb/search,
+GET /api/kb/conflicts, PATCH /api/kb/conflicts/{id}/resolve."""
 
 from __future__ import annotations
 
@@ -141,8 +142,65 @@ async def search_kb(
                 "score": h.score,
                 "rank_vector": h.rank_vector,
                 "rank_fts": h.rank_fts,
+                "valid_from": h.valid_from,
+                "has_open_conflicts": h.has_open_conflicts,
                 "content": (h.content or "")[:500],
             }
             for h in hits
         ],
     }
+
+
+@router.get("/kb/conflicts")
+async def list_conflicts(
+    request: Request,
+    status: str = Query("open", description="Filter status (open/all)"),
+    limit: int = Query(50, description="Max rows"),
+) -> dict[str, Any]:
+    """List KB conflict records."""
+    state = request.app.state
+    loop = asyncio.get_event_loop()
+
+    def _run() -> Any:
+        return state.sqlite.list_conflicts(
+            status=None if status == "all" else status,
+            limit=limit,
+        )
+
+    rows = await loop.run_in_executor(None, _run)
+    return {"conflicts": rows, "total": len(rows)}
+
+
+class ResolveRequest(BaseModel):
+    resolution: str  # a_wins | b_wins | merged | dismissed
+    resolved_by: str = "api-user"
+    note: str = ""
+
+
+@router.patch("/kb/conflicts/{conflict_id}/resolve")
+async def resolve_conflict_route(
+    conflict_id: str, body: ResolveRequest, request: Request
+) -> dict[str, Any]:
+    """Apply a resolution to an open KB conflict."""
+    state = request.app.state
+
+    from ...memory.conflict import resolve_conflict
+
+    loop = asyncio.get_event_loop()
+
+    def _run() -> None:
+        resolve_conflict(
+            conflict_id,
+            resolution=body.resolution,
+            resolved_by=body.resolved_by,
+            note=body.note,
+            sqlite=state.sqlite,
+        )
+
+    try:
+        await loop.run_in_executor(None, _run)
+    except (ValueError, KeyError) as e:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    return {"conflict_id": conflict_id, "resolution": body.resolution, "ok": True}

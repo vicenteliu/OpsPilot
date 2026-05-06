@@ -104,6 +104,8 @@ class SqliteStore:
             "redaction_rules_version": doc.get("redaction_rules_version"),
             "license": doc.get("license"),
             "extensions_json": json.dumps(doc.get("extensions", {}), ensure_ascii=False),
+            "valid_from": doc.get("valid_from"),
+            "source_authority": doc.get("source_authority", "internal"),
         }
 
         self._conn.execute(
@@ -113,13 +115,15 @@ class SqliteStore:
               content_hash, version, ingested_at, last_modified, language,
               tags_json, namespace, chunk_strategy, chunk_count,
               embedding_model, embedding_dim, redaction_passed,
-              redaction_rules_version, license, extensions_json
+              redaction_rules_version, license, extensions_json,
+              valid_from, source_authority
             ) VALUES (
               :id, :source_path, :source_url, :title, :classification,
               :content_hash, :version, :ingested_at, :last_modified, :language,
               :tags_json, :namespace, :chunk_strategy, :chunk_count,
               :embedding_model, :embedding_dim, :redaction_passed,
-              :redaction_rules_version, :license, :extensions_json
+              :redaction_rules_version, :license, :extensions_json,
+              :valid_from, :source_authority
             )
             """,
             row,
@@ -150,12 +154,14 @@ class SqliteStore:
               id, document_id, seq, content, content_artifact_id,
               content_hash, char_start, char_end, line_start, line_end,
               heading_path_json, anchor, token_count, embedding_model,
-              vector_id, namespace, classification, language, tags_json
+              vector_id, namespace, classification, language, tags_json,
+              valid_from, superseded_by
             ) VALUES (
               :id, :document_id, :seq, :content, :content_artifact_id,
               :content_hash, :char_start, :char_end, :line_start, :line_end,
               :heading_path_json, :anchor, :token_count, :embedding_model,
-              :vector_id, :namespace, :classification, :language, :tags_json
+              :vector_id, :namespace, :classification, :language, :tags_json,
+              :valid_from, :superseded_by
             )
             """,
             rows,
@@ -210,6 +216,7 @@ class SqliteStore:
         top_k: int = 10,
         namespace: str | None = None,
         classification: str | None = None,
+        exclude_superseded: bool = True,
     ) -> list[FtsHit]:
         """Run a BM25 keyword query over ``kb_chunks_fts``.
 
@@ -234,6 +241,8 @@ class SqliteStore:
         if classification:
             sql.append("AND c.classification = ?")
             params.append(classification)
+        if exclude_superseded:
+            sql.append("AND c.superseded_by IS NULL")
         sql.append("ORDER BY score ASC LIMIT ?")
         params.append(top_k)
 
@@ -250,6 +259,111 @@ class SqliteStore:
             )
             for r in cur.fetchall()
         ]
+
+    # ── KB conflicts ─────────────────────────────────────────────────
+
+    def upsert_conflict(self, conflict: dict[str, Any]) -> None:
+        self._conn.execute(
+            """
+            INSERT OR IGNORE INTO kb_conflicts (
+              id, chunk_a_id, chunk_b_id, doc_a_id, doc_b_id,
+              conflict_type, similarity, status, detected_at
+            ) VALUES (
+              :id, :chunk_a_id, :chunk_b_id, :doc_a_id, :doc_b_id,
+              :conflict_type, :similarity, :status, :detected_at
+            )
+            """,
+            conflict,
+        )
+        self._conn.commit()
+
+    def get_conflict(self, conflict_id: str) -> dict[str, Any] | None:
+        cur = self._conn.execute("SELECT * FROM kb_conflicts WHERE id = ?", (conflict_id,))
+        r = cur.fetchone()
+        return dict(r) if r else None
+
+    def list_conflicts(
+        self, status: str | None = None, limit: int = 100
+    ) -> list[dict[str, Any]]:
+        """Return conflicts enriched with document titles."""
+        where = "WHERE c.status = ?" if status else ""
+        params: tuple = (status, limit) if status else (limit,)
+        cur = self._conn.execute(
+            f"""
+            SELECT c.*,
+                   da.title AS doc_a_title, da.valid_from AS doc_a_valid_from,
+                   db.title AS doc_b_title, db.valid_from AS doc_b_valid_from,
+                   ca.content AS chunk_a_content, cb.content AS chunk_b_content
+            FROM kb_conflicts c
+            JOIN kb_documents da ON da.id = c.doc_a_id
+            JOIN kb_documents db ON db.id = c.doc_b_id
+            LEFT JOIN kb_chunks ca ON ca.id = c.chunk_a_id
+            LEFT JOIN kb_chunks cb ON cb.id = c.chunk_b_id
+            {where}
+            ORDER BY c.detected_at DESC
+            LIMIT ?
+            """,
+            params,
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+    def update_conflict_status(
+        self,
+        conflict_id: str,
+        *,
+        status: str,
+        resolved_by: str,
+        resolved_at: str,
+        resolution_note: str = "",
+    ) -> None:
+        self._conn.execute(
+            """
+            UPDATE kb_conflicts
+            SET status=?, resolved_by=?, resolved_at=?, resolution_note=?
+            WHERE id=?
+            """,
+            (status, resolved_by, resolved_at, resolution_note, conflict_id),
+        )
+        self._conn.commit()
+
+    def mark_chunk_superseded(self, chunk_id: str, *, superseded_by: str) -> None:
+        self._conn.execute(
+            "UPDATE kb_chunks SET superseded_by=? WHERE id=?",
+            (superseded_by, chunk_id),
+        )
+        self._conn.commit()
+
+    def count_open_conflicts(self) -> int:
+        cur = self._conn.execute(
+            "SELECT COUNT(*) FROM kb_conflicts WHERE status='open'"
+        )
+        return int(cur.fetchone()[0])
+
+    def get_docs_with_open_conflicts(self, doc_ids: list[str]) -> set[str]:
+        """Return the subset of *doc_ids* that have at least one open conflict."""
+        if not doc_ids:
+            return set()
+        placeholders = ",".join("?" * len(doc_ids))
+        cur = self._conn.execute(
+            f"SELECT DISTINCT doc_a_id AS doc_id FROM kb_conflicts "
+            f"WHERE status='open' AND doc_a_id IN ({placeholders}) "
+            f"UNION "
+            f"SELECT DISTINCT doc_b_id FROM kb_conflicts "
+            f"WHERE status='open' AND doc_b_id IN ({placeholders})",
+            tuple(doc_ids) * 2,
+        )
+        return {str(r["doc_id"]) for r in cur.fetchall()}
+
+    def get_superseded_chunk_ids(self, chunk_ids: list[str]) -> set[str]:
+        """Return the subset of *chunk_ids* where ``superseded_by IS NOT NULL``."""
+        if not chunk_ids:
+            return set()
+        placeholders = ",".join("?" * len(chunk_ids))
+        cur = self._conn.execute(
+            f"SELECT id FROM kb_chunks WHERE id IN ({placeholders}) AND superseded_by IS NOT NULL",
+            tuple(chunk_ids),
+        )
+        return {str(r["id"]) for r in cur.fetchall()}
 
     # ── memory_records (D3 — minimal CRUD) ───────────────────────────
 
@@ -346,6 +460,8 @@ def _chunk_dict_to_row(c: dict[str, Any]) -> dict[str, Any]:
         "classification": md.get("classification") or c.get("classification"),
         "language": md.get("language") or c.get("language"),
         "tags_json": json.dumps(md.get("tags") or c.get("tags") or [], ensure_ascii=False),
+        "valid_from": c.get("valid_from"),
+        "superseded_by": c.get("superseded_by"),
     }
 
 

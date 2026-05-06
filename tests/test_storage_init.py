@@ -77,8 +77,8 @@ def test_init_is_idempotent(tmp_path: Path) -> None:
             "SELECT key, value FROM schema_meta WHERE key='schema_version'"
         ).fetchall()
         assert len(rows) == 1
-        # Schema bumped to 1.1.0 in PR-4 (FTS5 tokenizer trigram).
-        assert rows[0]["value"] == "1.1.0"
+        # Schema bumped to 1.2.0 (IT-KB: conflicts, corrections, valid_from).
+        assert rows[0]["value"] == "1.2.0"
     finally:
         conn2.close()
 

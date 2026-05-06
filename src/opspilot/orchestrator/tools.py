@@ -35,15 +35,19 @@ class KBSearchHit:
     score: float
     content: str
     citation: dict[str, Any]
+    has_open_conflicts: bool = False
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        d: dict[str, Any] = {
             "chunk_id": self.chunk_id,
             "document_id": self.document_id,
             "score": self.score,
             "content": self.content,
             "citation": dict(self.citation),
         }
+        if self.has_open_conflicts:
+            d["has_open_conflicts"] = True
+        return d
 
 
 # ── Tool factory ─────────────────────────────────────────────────────
@@ -129,9 +133,25 @@ def make_kb_search_tool(
                     score=h.score,
                     content=h.content or "",
                     citation=citation,
+                    has_open_conflicts=h.has_open_conflicts,
                 ).to_dict()
             )
-        return {"hits": out_hits, "query": query}
+
+        result: dict[str, Any] = {"hits": out_hits, "query": query}
+
+        # Surface a top-level warning when any source document has unresolved
+        # conflicts so the LLM can mention this caveat in its final answer.
+        conflicted_docs = {
+            h.document_id for h in hits if h.has_open_conflicts
+        }
+        if conflicted_docs:
+            result["_conflict_warning"] = (
+                f"{len(conflicted_docs)} source document(s) have unresolved "
+                "KB conflicts. The information may be inconsistent or outdated. "
+                "Inform the user that the answer should be verified by a human."
+            )
+
+        return result
 
     return tool, handler
 

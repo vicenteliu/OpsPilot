@@ -69,7 +69,7 @@ class Hit:
     across queries because it depends on the sizes of the two input
     lists). ``rank_vector`` / ``rank_fts`` expose the per-source rank for
     debugging — ``None`` means the chunk did not appear in that source's
-    top-k.
+    top-k. ``valid_from`` is ISO8601 and used as a tie-breaker (newer wins).
     """
 
     chunk_id: str
@@ -79,6 +79,8 @@ class Hit:
     document_id: str
     namespace: str
     content: str | None
+    valid_from: str | None = None
+    has_open_conflicts: bool = False
 
 
 def kb_search(
@@ -93,6 +95,7 @@ def kb_search(
     classification: str | None = None,
     vector_weight: float = DEFAULT_VECTOR_WEIGHT,
     keyword_weight: float = DEFAULT_KEYWORD_WEIGHT,
+    exclude_superseded: bool = True,
 ) -> list[Hit]:
     """Hybrid search over the KB. Returns top-k chunks fused by weighted RRF.
 
@@ -129,16 +132,23 @@ def kb_search(
         top_k=candidate_k,
         namespace=namespace,
         classification=classification,
+        exclude_superseded=exclude_superseded,
     )
 
     # ── Vector (ANN) path ────────────────────────────────────────────
     query_vec = embed_fn(q)
+    # Fetch extra candidates to absorb any superseded chunks we'll drop.
+    ann_top_k = candidate_k * 2 if exclude_superseded else candidate_k
     ann_hits = lance.ann_search(
         query_vec,
-        top_k=candidate_k,
+        top_k=ann_top_k,
         namespace=namespace,
         classification=classification,
     )
+    if exclude_superseded and ann_hits:
+        superseded = sqlite.get_superseded_chunk_ids([h.chunk_id for h in ann_hits])
+        if superseded:
+            ann_hits = [h for h in ann_hits if h.chunk_id not in superseded]
 
     # ── Weighted Reciprocal Rank Fusion ──────────────────────────────
     rrf_scores: dict[str, float] = {}
@@ -162,15 +172,26 @@ def kb_search(
     if not rrf_scores:
         return []
 
-    # Sort + truncate.
-    ordered_ids = sorted(
-        rrf_scores.keys(),
-        key=lambda cid: rrf_scores[cid],
-        reverse=True,
-    )[:top_k]
+    # Hydrate all candidate chunks so we can use valid_from as tie-breaker.
+    candidate_ids = list(rrf_scores.keys())
+    rows_by_chunk = _fetch_chunk_rows(sqlite, candidate_ids)
 
-    # ── Hydrate text + metadata from SQLite in one round-trip ───────
-    rows_by_chunk = _fetch_chunk_rows(sqlite, ordered_ids)
+    def _sort_key(cid: str) -> tuple[float, str]:
+        score = rrf_scores[cid]
+        # Newer valid_from wins ties; missing → empty string (sorts earlier).
+        row = rows_by_chunk.get(cid) or {}
+        vf: str = row.get("valid_from") or ""  # type: ignore[assignment]
+        return (score, vf)
+
+    ordered_ids = sorted(candidate_ids, key=_sort_key, reverse=True)[:top_k]
+
+    # Check which source documents carry open (unresolved) conflicts.
+    hit_doc_ids = [
+        str(rows_by_chunk[cid]["document_id"])
+        for cid in ordered_ids
+        if cid in rows_by_chunk
+    ]
+    docs_with_conflicts = sqlite.get_docs_with_open_conflicts(hit_doc_ids)
 
     out: list[Hit] = []
     for cid in ordered_ids:
@@ -181,15 +202,18 @@ def kb_search(
             # raise so partial degradation > complete failure.
             continue
         content = row.get("content")
+        doc_id = str(row["document_id"])
         out.append(
             Hit(
                 chunk_id=cid,
                 score=rrf_scores[cid],
                 rank_vector=rank_vector.get(cid),
                 rank_fts=rank_fts.get(cid),
-                document_id=str(row["document_id"]),
+                document_id=doc_id,
                 namespace=str(row["namespace"]),
                 content=str(content) if content is not None else None,
+                valid_from=row.get("valid_from"),  # type: ignore[arg-type]
+                has_open_conflicts=doc_id in docs_with_conflicts,
             )
         )
     return out

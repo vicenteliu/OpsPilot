@@ -3,8 +3,9 @@
   import {
     getConfig, getModels, runTicket, listSessions, getSession, getLineage,
     listKBDocs, searchKB, wikiIngest, wikiQueryToPage, wikiLint, wikiPromote, listMCPServers,
+    listConflicts, resolveConflict,
     type RunResponse, type NextAction, type SessionSummary, type ModelOption, type SkillLineage,
-    type KBDoc, type KBHit, type WikiLintIssue, type MCPServer
+    type KBDoc, type KBHit, type KBConflict, type WikiLintIssue, type MCPServer
   } from '$lib/api';
 
   // --- State ---
@@ -44,7 +45,14 @@
   let kbSearchResults = $state<KBHit[]>([]);
   let kbSearchLoading = $state<boolean>(false);
   let kbSearchError = $state<string | null>(null);
-  let kbSection = $state<'docs' | 'search'>('docs');
+  let kbSection = $state<'docs' | 'search' | 'conflicts'>('docs');
+
+  // Conflict state
+  let kbConflicts = $state<KBConflict[]>([]);
+  let conflictsLoading = $state<boolean>(false);
+  let conflictsError = $state<string | null>(null);
+  let conflictStatusFilter = $state<'open' | 'all'>('open');
+  let resolving = $state<Record<string, boolean>>({});
 
   // Wiki state
   let wikiDocId = $state<string>('');
@@ -249,6 +257,32 @@
     }
   }
 
+  // ── Conflict handlers ───────────────────────────────────────────────────────
+  async function loadConflicts() {
+    conflictsLoading = true;
+    conflictsError = null;
+    try {
+      kbConflicts = await listConflicts(conflictStatusFilter);
+    } catch (e) {
+      conflictsError = e instanceof Error ? e.message : String(e);
+      kbConflicts = [];
+    } finally {
+      conflictsLoading = false;
+    }
+  }
+
+  async function handleResolve(conflictId: string, resolution: string) {
+    resolving = { ...resolving, [conflictId]: true };
+    try {
+      await resolveConflict(conflictId, resolution);
+      await loadConflicts();
+    } catch (e) {
+      conflictsError = e instanceof Error ? e.message : String(e);
+    } finally {
+      resolving = { ...resolving, [conflictId]: false };
+    }
+  }
+
   // ── MCP handlers ────────────────────────────────────────────────────────────
   async function loadMCPServers() {
     mcpLoading = true;
@@ -428,6 +462,9 @@
         <div class="section-tabs">
           <button class="tab-btn {kbSection === 'docs' ? 'active' : ''}" onclick={() => kbSection = 'docs'}>Docs</button>
           <button class="tab-btn {kbSection === 'search' ? 'active' : ''}" onclick={() => kbSection = 'search'}>Search</button>
+          <button class="tab-btn {kbSection === 'conflicts' ? 'active' : ''}" onclick={() => { kbSection = 'conflicts'; loadConflicts(); }}>
+            Conflicts {#if kbConflicts.filter(c => c.status === 'open').length > 0}<span class="conflict-badge">{kbConflicts.filter(c => c.status === 'open').length}</span>{/if}
+          </button>
         </div>
         <button class="btn-refresh" onclick={loadKBDocs} disabled={kbDocsLoading}>↻</button>
       </div>
@@ -453,7 +490,7 @@
             </tbody>
           </table>
         {/if}
-      {:else}
+      {:else if kbSection === 'search'}
         <div class="search-row">
           <input
             class="search-input"
@@ -469,13 +506,17 @@
           <p class="section-error">{kbSearchError}</p>
         {:else if kbSearchResults.length > 0}
           <table class="data-table">
-            <thead><tr><th>Chunk</th><th>Doc</th><th>Score</th><th>Snippet</th></tr></thead>
+            <thead><tr><th>Chunk</th><th>Doc</th><th>Score</th><th>Valid From</th><th>Snippet</th></tr></thead>
             <tbody>
               {#each kbSearchResults as h}
-                <tr>
+                <tr class="{h.has_open_conflicts ? 'row-conflict' : ''}">
                   <td class="mono">{h.chunk_id.slice(0, 20)}</td>
-                  <td class="mono">{h.document_id.slice(0, 20)}</td>
+                  <td class="mono">
+                    {h.document_id.slice(0, 20)}
+                    {#if h.has_open_conflicts}<span class="warn-badge" title="Source document has open conflicts">⚠</span>{/if}
+                  </td>
                   <td class="num">{h.score.toFixed(4)}</td>
+                  <td class="dim">{h.valid_from ? h.valid_from.slice(0, 10) : '—'}</td>
                   <td class="snippet">{h.content.slice(0, 100)}</td>
                 </tr>
               {/each}
@@ -483,6 +524,68 @@
           </table>
         {:else if !kbSearchLoading && kbSearchQuery}
           <p class="section-empty">No results.</p>
+        {/if}
+      {:else}
+        <!-- Conflicts tab -->
+        <div class="conflict-toolbar">
+          <label class="filter-label">
+            Show:
+            <select bind:value={conflictStatusFilter} onchange={loadConflicts}>
+              <option value="open">Open only</option>
+              <option value="all">All</option>
+            </select>
+          </label>
+          <button class="btn-refresh" onclick={loadConflicts} disabled={conflictsLoading}>↻</button>
+        </div>
+        {#if conflictsError}
+          <p class="section-error">{conflictsError}</p>
+        {:else if conflictsLoading}
+          <p class="section-empty">Loading…</p>
+        {:else if kbConflicts.length === 0}
+          <p class="section-empty">No {conflictStatusFilter === 'open' ? 'open ' : ''}conflicts found.</p>
+        {:else}
+          <table class="data-table conflict-table">
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th>Sim</th>
+                <th>Doc A</th>
+                <th>Doc B</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each kbConflicts as c}
+                <tr>
+                  <td><span class="conflict-type-badge ctype-{c.conflict_type}">{c.conflict_type.replace('_', ' ')}</span></td>
+                  <td class="num">{c.similarity.toFixed(3)}</td>
+                  <td>
+                    <div class="conflict-doc">{c.doc_a_title || c.doc_a_id}</div>
+                    {#if c.doc_a_valid_from}<div class="dim" style="font-size:0.75rem">{c.doc_a_valid_from.slice(0,10)}</div>{/if}
+                    {#if c.chunk_a_content}<div class="chunk-preview">{c.chunk_a_content.slice(0, 80)}…</div>{/if}
+                  </td>
+                  <td>
+                    <div class="conflict-doc">{c.doc_b_title || c.doc_b_id}</div>
+                    {#if c.doc_b_valid_from}<div class="dim" style="font-size:0.75rem">{c.doc_b_valid_from.slice(0,10)}</div>{/if}
+                    {#if c.chunk_b_content}<div class="chunk-preview">{c.chunk_b_content.slice(0, 80)}…</div>{/if}
+                  </td>
+                  <td><span class="status-badge status-{c.status}">{c.status}</span></td>
+                  <td>
+                    {#if c.status === 'open'}
+                      <div class="resolve-btns">
+                        <button class="btn-sm btn-a-wins" onclick={() => handleResolve(c.id, 'a_wins')} disabled={resolving[c.id]}>A wins</button>
+                        <button class="btn-sm btn-b-wins" onclick={() => handleResolve(c.id, 'b_wins')} disabled={resolving[c.id]}>B wins</button>
+                        <button class="btn-sm" onclick={() => handleResolve(c.id, 'dismissed')} disabled={resolving[c.id]}>Dismiss</button>
+                      </div>
+                    {:else}
+                      <span class="dim" style="font-size:0.8rem">{c.resolved_by || '—'}</span>
+                    {/if}
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
         {/if}
       {/if}
     </section>
@@ -1270,4 +1373,107 @@
   .sev-high { background: #fed7aa; color: #9a3412; }
   .sev-medium { background: #fef9c3; color: #854d0e; }
   .sev-low { background: #dcfce7; color: #15803d; }
+
+  /* ── Conflicts ── */
+  .conflict-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    background: #ef4444;
+    color: #fff;
+    border-radius: 9999px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    margin-left: 4px;
+    vertical-align: middle;
+  }
+
+  .conflict-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
+
+  .filter-label {
+    font-size: 0.85rem;
+    color: #475569;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .filter-label select {
+    font-size: 0.85rem;
+    padding: 0.2rem 0.5rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+  }
+
+  .conflict-table td {
+    vertical-align: top;
+    padding: 0.5rem 0.65rem;
+  }
+
+  .conflict-doc {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: #1e293b;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .chunk-preview {
+    font-size: 0.75rem;
+    color: #64748b;
+    margin-top: 0.2rem;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .conflict-type-badge {
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 0.1rem 0.45rem;
+    border-radius: 3px;
+    white-space: nowrap;
+  }
+
+  .ctype-temporal_supersede { background: #dbeafe; color: #1e40af; }
+  .ctype-direct_contradiction { background: #fee2e2; color: #991b1b; }
+  .ctype-scope_overlap { background: #fef9c3; color: #854d0e; }
+
+  .resolve-btns {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  .btn-a-wins { background: #dcfce7; color: #15803d; border-color: #86efac; }
+  .btn-b-wins { background: #dbeafe; color: #1e40af; border-color: #93c5fd; }
+
+  .row-conflict {
+    background: #fffbeb;
+  }
+
+  .warn-badge {
+    display: inline-block;
+    margin-left: 4px;
+    color: #b45309;
+    font-size: 0.85rem;
+    cursor: help;
+  }
+
+  .status-open { background: #fef3c7; color: #92400e; }
+  .status-a_wins { background: #dcfce7; color: #15803d; }
+  .status-b_wins { background: #dbeafe; color: #1e40af; }
+  .status-merged { background: #f3e8ff; color: #7e22ce; }
+  .status-dismissed { background: #f1f5f9; color: #64748b; }
 </style>

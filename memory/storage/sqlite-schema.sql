@@ -1,16 +1,14 @@
 -- OpsPilot Memory · SQLite Schema
 -- 适用：mid-term memory + KB 元数据/关键字索引（FTS5）
--- 版本：1.1.0
--- 信息日期：2026-05-01
+-- 版本：1.2.0
+-- 信息日期：2026-05-06
 -- 强约束：所有进入此 DB 的内容必须已脱敏（redacted=1）。
 --
 -- 变更日志 / Changelog:
---   1.1.0 (PR-4): FTS5 tokenizer unicode61 → trigram，对 CJK 友好；
---                 unicode61 把整段中文当一个 token，召回率太低
---                 (例：query "认证失败" 无法命中 "...认证失败基本指向..."
---                  这种嵌入式 substring；trigram 按 3-gram 切片可命中)。
---                 副作用：失去 porter 词干提取，对纯英文索引影响轻微，
---                 logs/技术词没有词干变化诉求。
+--   1.2.0 (IT-KB): 添加 valid_from / source_authority 至 kb_documents；
+--                  添加 valid_from / superseded_by 至 kb_chunks；
+--                  新增 kb_conflicts（冲突队列）和 kb_corrections（知识修正）表。
+--   1.1.0 (PR-4): FTS5 tokenizer unicode61 → trigram，对 CJK 友好。
 --   1.0.0:        initial spec.
 --
 -- 推荐 PRAGMA：
@@ -32,7 +30,7 @@ CREATE TABLE IF NOT EXISTS schema_meta (
 ) STRICT;
 
 INSERT OR REPLACE INTO schema_meta(key, value) VALUES
-  ('schema_version', '1.1.0'),
+  ('schema_version', '1.2.0'),
   ('created_at',     strftime('%Y-%m-%dT%H:%M:%fZ','now'));
 
 ------------------------------------------------------------
@@ -122,7 +120,10 @@ CREATE TABLE IF NOT EXISTS kb_documents (
   redaction_passed         INTEGER NOT NULL CHECK (redaction_passed = 1),
   redaction_rules_version  TEXT,
   license                  TEXT,
-  extensions_json          TEXT NOT NULL DEFAULT '{}'
+  extensions_json          TEXT NOT NULL DEFAULT '{}',
+  valid_from               TEXT,    -- effective date (ISO8601); NULL = unknown
+  source_authority         TEXT NOT NULL DEFAULT 'internal'
+                               CHECK (source_authority IN ('official','vendor','internal','unverified'))
 ) STRICT;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_doc_source_path ON kb_documents(source_path);
@@ -130,6 +131,7 @@ CREATE INDEX        IF NOT EXISTS idx_doc_namespace   ON kb_documents(namespace)
 CREATE INDEX        IF NOT EXISTS idx_doc_class       ON kb_documents(classification);
 CREATE INDEX        IF NOT EXISTS idx_doc_lang        ON kb_documents(language);
 CREATE INDEX        IF NOT EXISTS idx_doc_emb_model   ON kb_documents(embedding_model);
+CREATE INDEX        IF NOT EXISTS idx_doc_valid_from  ON kb_documents(valid_from DESC);
 
 ------------------------------------------------------------
 -- 4. KB CHUNKS（元数据；向量本体在 LanceDB）
@@ -156,6 +158,8 @@ CREATE TABLE IF NOT EXISTS kb_chunks (
   classification      TEXT NOT NULL CHECK (classification IN ('public','internal','confidential','restricted')),
   language            TEXT,
   tags_json           TEXT NOT NULL DEFAULT '[]',
+  valid_from          TEXT,    -- inherited from document; ISO8601
+  superseded_by       TEXT,    -- chunk_id of the newer chunk that replaces this
   CHECK (char_end >= char_start),
   CHECK (line_end >= line_start),
   CHECK (
@@ -164,10 +168,12 @@ CREATE TABLE IF NOT EXISTS kb_chunks (
   )
 ) STRICT;
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_chk_doc_seq    ON kb_chunks(document_id, seq);
-CREATE INDEX        IF NOT EXISTS idx_chk_namespace  ON kb_chunks(namespace);
-CREATE INDEX        IF NOT EXISTS idx_chk_class      ON kb_chunks(classification);
-CREATE INDEX        IF NOT EXISTS idx_chk_emb_model  ON kb_chunks(embedding_model);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_chk_doc_seq      ON kb_chunks(document_id, seq);
+CREATE INDEX        IF NOT EXISTS idx_chk_namespace    ON kb_chunks(namespace);
+CREATE INDEX        IF NOT EXISTS idx_chk_class        ON kb_chunks(classification);
+CREATE INDEX        IF NOT EXISTS idx_chk_emb_model    ON kb_chunks(embedding_model);
+CREATE INDEX        IF NOT EXISTS idx_chk_valid_from   ON kb_chunks(valid_from DESC);
+CREATE INDEX        IF NOT EXISTS idx_chk_superseded   ON kb_chunks(superseded_by);
 
 -- KB Chunk 的 FTS5 索引（用于 hybrid 检索的 keyword 路径）
 -- tokenize='trigram': 对中英文混合内容均能命中 substring 查询
@@ -198,7 +204,52 @@ CREATE TRIGGER IF NOT EXISTS kb_chunks_au AFTER UPDATE ON kb_chunks BEGIN
 END;
 
 ------------------------------------------------------------
--- 5. INGEST RUNS（审计与可恢复）
+-- 5. KB CONFLICTS（知识冲突队列）
+------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS kb_conflicts (
+  id              TEXT PRIMARY KEY
+                      CHECK (id GLOB 'conf_[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'),
+  chunk_a_id      TEXT NOT NULL REFERENCES kb_chunks(id) ON DELETE CASCADE,
+  chunk_b_id      TEXT NOT NULL REFERENCES kb_chunks(id) ON DELETE CASCADE,
+  doc_a_id        TEXT NOT NULL REFERENCES kb_documents(id) ON DELETE CASCADE,
+  doc_b_id        TEXT NOT NULL REFERENCES kb_documents(id) ON DELETE CASCADE,
+  conflict_type   TEXT NOT NULL CHECK (conflict_type IN (
+                    'temporal_supersede',   -- one doc clearly newer; likely supersedes
+                    'scope_overlap',        -- high similarity; may duplicate or conflict
+                    'direct_contradiction'  -- heuristically detected opposing claims
+                  )),
+  similarity      REAL NOT NULL,            -- cosine similarity [0,1]
+  status          TEXT NOT NULL DEFAULT 'open'
+                      CHECK (status IN ('open','a_wins','b_wins','merged','dismissed')),
+  resolved_by     TEXT,
+  resolved_at     TEXT,
+  resolution_note TEXT,
+  detected_at     TEXT NOT NULL
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS idx_conf_status     ON kb_conflicts(status);
+CREATE INDEX IF NOT EXISTS idx_conf_doc_a      ON kb_conflicts(doc_a_id);
+CREATE INDEX IF NOT EXISTS idx_conf_doc_b      ON kb_conflicts(doc_b_id);
+CREATE INDEX IF NOT EXISTS idx_conf_detected   ON kb_conflicts(detected_at DESC);
+
+------------------------------------------------------------
+-- 6. KB CORRECTIONS（知识修正记录）
+------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS kb_corrections (
+  id           TEXT PRIMARY KEY
+                   CHECK (id GLOB 'corr_[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'),
+  chunk_id     TEXT NOT NULL REFERENCES kb_chunks(id) ON DELETE CASCADE,
+  corrected_by TEXT NOT NULL,
+  reason       TEXT NOT NULL,
+  old_content  TEXT NOT NULL,
+  new_content  TEXT NOT NULL,
+  created_at   TEXT NOT NULL
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS idx_corr_chunk ON kb_corrections(chunk_id);
+
+------------------------------------------------------------
+-- 7. INGEST RUNS（审计与可恢复）
 ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS ingest_runs (
   id                   TEXT PRIMARY KEY,             -- ULID
@@ -221,7 +272,7 @@ CREATE TABLE IF NOT EXISTS ingest_runs (
 CREATE INDEX IF NOT EXISTS idx_run_kb_started ON ingest_runs(kb_id, started_at DESC);
 
 ------------------------------------------------------------
--- 6. AUDIT LOG（与 session.audit.log 同语义）
+-- 8. AUDIT LOG（与 session.audit.log 同语义）
 ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS audit_log (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -236,7 +287,7 @@ CREATE INDEX IF NOT EXISTS idx_audit_ts     ON audit_log(ts DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_target ON audit_log(target);
 
 ------------------------------------------------------------
--- 7. 视图：检索辅助 / Helper view for hybrid retrieval
+-- 9. 视图：检索辅助 / Helper view for hybrid retrieval
 ------------------------------------------------------------
 CREATE VIEW IF NOT EXISTS v_chunks_with_doc AS
 SELECT

@@ -153,7 +153,27 @@ export interface KBHit {
   score: number;
   rank_vector: number | null;
   rank_fts: number | null;
+  valid_from: string | null;
+  has_open_conflicts: boolean;
   content: string;
+}
+
+export interface KBConflict {
+  id: string;
+  conflict_type: string;
+  similarity: number;
+  status: string;
+  doc_a_id: string;
+  doc_b_id: string;
+  doc_a_title: string;
+  doc_b_title: string;
+  doc_a_valid_from: string | null;
+  doc_b_valid_from: string | null;
+  chunk_a_content: string;
+  chunk_b_content: string;
+  detected_at: string;
+  resolved_by: string | null;
+  resolution_note: string | null;
 }
 
 export async function listKBDocs(): Promise<KBDoc[]> {
@@ -179,6 +199,28 @@ export async function ingestKB(paths: string[]): Promise<{ docs_succeeded: numbe
   });
   if (!res.ok) throw new Error(`KB ingest failed: ${res.status}`);
   return res.json();
+}
+
+export async function listConflicts(status = 'open'): Promise<KBConflict[]> {
+  const params = new URLSearchParams({ status });
+  const res = await fetch(`/api/kb/conflicts?${params}`);
+  if (!res.ok) throw new Error(`Conflicts fetch failed: ${res.status}`);
+  const data = await res.json();
+  return data.conflicts;
+}
+
+export async function resolveConflict(
+  conflictId: string,
+  resolution: string,
+  resolvedBy = 'web-user',
+  note = ''
+): Promise<void> {
+  const res = await fetch(`/api/kb/conflicts/${conflictId}/resolve`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ resolution, resolved_by: resolvedBy, note })
+  });
+  if (!res.ok) throw new Error(`Resolve failed: ${res.status}`);
 }
 
 // ── Wiki ─────────────────────────────────────────────────────────────────────

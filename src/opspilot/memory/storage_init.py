@@ -49,6 +49,27 @@ def _read_schema_sql() -> str:
     return SCHEMA_SQL_PATH.read_text(encoding="utf-8")
 
 
+_COLUMN_MIGRATIONS: Final[tuple[tuple[str, str, str], ...]] = (
+    # (table, column, definition) — applied when column is absent
+    ("kb_documents", "valid_from",        "TEXT"),
+    ("kb_documents", "source_authority",  "TEXT NOT NULL DEFAULT 'internal'"),
+    ("kb_chunks",    "valid_from",        "TEXT"),
+    ("kb_chunks",    "superseded_by",     "TEXT"),
+)
+
+
+def _col_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    cur = conn.execute(f"SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name=?", (column,))
+    return bool(cur.fetchone()[0])
+
+
+def _apply_column_migrations(conn: sqlite3.Connection) -> None:
+    """Add new columns to existing tables (idempotent via presence check)."""
+    for table, column, definition in _COLUMN_MIGRATIONS:
+        if not _col_exists(conn, table, column):
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
 def init_sqlite(db_path: Path) -> sqlite3.Connection:
     """Open (or create) the SQLite database at ``db_path`` and apply schema.
 
@@ -66,6 +87,7 @@ def init_sqlite(db_path: Path) -> sqlite3.Connection:
         cur.execute(f"PRAGMA {name} = {value}")
 
     cur.executescript(_read_schema_sql())
+    _apply_column_migrations(conn)
     conn.commit()
     return conn
 

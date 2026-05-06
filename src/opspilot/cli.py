@@ -35,6 +35,7 @@ from .config import ensure_home, load_config
 from .errors import OpsPilotError, SchemaError
 from .harness import load_fixture, load_golden, run_harness
 from .harness.reporter import render_result_table
+from .memory.conflict import resolve_conflict
 from .memory.ingestion import IngestConfig
 from .memory.ingestion import ingest as run_ingest
 from .memory.kb_loader import load_kb_fixture
@@ -552,6 +553,67 @@ def kb_load_fixture(
         str(stats.vector_count),
     )
     _console.print(table)
+
+
+@kb_app.command("conflicts")
+def kb_conflicts_cmd(
+    status: str = typer.Option("open", "--status", "-s", help="Filter by status (open/all)."),
+    limit: int = typer.Option(50, "--limit", "-n", help="Max rows to display."),
+) -> None:
+    """List KB conflict records detected during ingestion."""
+    cfg = load_config()
+    sqlite, _ = _open_kb_stores(home=cfg.home, embedding_dim=768, embedding_model="")
+    rows = sqlite.list_conflicts(
+        status=None if status == "all" else status,
+        limit=limit,
+    )
+    if not rows:
+        _console.print(f"[green]No conflicts with status={status!r}.[/green]")
+        return
+    table = Table(title=f"KB Conflicts (status={status})", show_lines=True)
+    table.add_column("ID", overflow="fold")
+    table.add_column("Type")
+    table.add_column("Sim", justify="right")
+    table.add_column("Status")
+    table.add_column("Doc A")
+    table.add_column("Doc B")
+    for r in rows:
+        table.add_row(
+            r["id"],
+            r["conflict_type"],
+            f"{r['similarity']:.3f}",
+            r["status"],
+            r.get("doc_a_title") or r["doc_a_id"],
+            r.get("doc_b_title") or r["doc_b_id"],
+        )
+    _console.print(table)
+
+
+@kb_app.command("resolve")
+def kb_resolve_cmd(
+    conflict_id: str = typer.Argument(..., help="Conflict ID (conf_xxxxxxxx)."),
+    resolution: str = typer.Option(
+        ..., "--resolution", "-r",
+        help="Resolution: a_wins | b_wins | merged | dismissed",
+    ),
+    resolved_by: str = typer.Option("cli-user", "--by", help="Who is resolving."),
+    note: str = typer.Option("", "--note", "-m", help="Optional resolution note."),
+) -> None:
+    """Apply a resolution to an open KB conflict."""
+    cfg = load_config()
+    sqlite, _ = _open_kb_stores(home=cfg.home, embedding_dim=768, embedding_model="")
+    try:
+        resolve_conflict(
+            conflict_id,
+            resolution=resolution,
+            resolved_by=resolved_by,
+            note=note,
+            sqlite=sqlite,
+        )
+        _console.print(f"[green]Conflict {conflict_id} resolved as {resolution!r}.[/green]")
+    except (ValueError, KeyError) as e:
+        _console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1) from e
 
 
 harness_app = typer.Typer(

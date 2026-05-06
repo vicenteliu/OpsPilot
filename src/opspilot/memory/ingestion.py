@@ -32,17 +32,21 @@ will add a more granular audit_log row per document.
 from __future__ import annotations
 
 import hashlib
+import re
 import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Final
+
 
 from ..errors import OpsPilotError
 from ..ids import new_ulid_id
 from ..redaction import Redactor
 from ..timeutil import now_rfc3339
 from .chunker import Chunk, ChunkConfig, chunk_markdown
+from .conflict import detect_and_store_conflicts
 from .lance_store import LanceStore, VectorRecord
 from .markitdown_adapter import AdapterError, AdapterResult, to_markdown
 from .sqlite_store import SqliteStore
@@ -84,6 +88,9 @@ class IngestConfig:
     chunk_strategy: str = "headings_then_size"
     redaction_rules_version: str = "1.0.0"
     chunk_config: ChunkConfig = field(default_factory=ChunkConfig)
+    detect_conflicts: bool = True           # run conflict detection after each doc
+    source_authority: str = "internal"      # official | vendor | internal | unverified
+    conflict_similarity_threshold: float = 0.82
 
 
 @dataclass
@@ -298,6 +305,7 @@ def _ingest_one(
 
     # 5. Embed + upsert.
     title = adapter_out.title or path.stem
+    valid_from = _extract_valid_from(path, md)
     sqlite.upsert_document(
         {
             "id": doc_id,
@@ -315,6 +323,8 @@ def _ingest_one(
             "embedding_dim": cfg.embedding_dim,
             "redaction_passed": True,
             "redaction_rules_version": cfg.redaction_rules_version,
+            "valid_from": valid_from,
+            "source_authority": cfg.source_authority,
         }
     )
 
@@ -342,6 +352,7 @@ def _ingest_one(
                 "token_count": chunk.token_count,
                 "embedding_model": cfg.embedding_model,
                 "vector_id": vector_id,
+                "valid_from": valid_from,
                 "metadata": {
                     "tags": [],
                     "namespace": namespace,
@@ -371,6 +382,17 @@ def _ingest_one(
     sqlite.upsert_chunks(chunk_rows)
     if vector_records:
         lance.upsert_vectors(vector_records)
+
+    # 6. Conflict detection (skip restricted docs — no vectors to compare).
+    if cfg.detect_conflicts and cfg.classification != "restricted" and vector_records:
+        detect_and_store_conflicts(
+            new_doc_id=doc_id,
+            new_chunks=chunk_rows,
+            lance=lance,
+            sqlite=sqlite,
+            embed_fn=embed_fn,
+            similarity_threshold=cfg.conflict_similarity_threshold,
+        )
 
     return FileResult(
         source_path=path,
@@ -464,3 +486,54 @@ def _detect_language(text: str) -> str:
     if any("一" <= ch <= "鿿" for ch in text):
         return "zh-CN"
     return "en"
+
+
+def _normalize_date(val: str) -> str:
+    """Coerce a freeform date string to ``YYYY-MM-DDTHH:MM:SSZ``."""
+    val = val.strip()
+    # ISO datetime must be checked first — date-only formats use val[:10]
+    # which would otherwise strip the time component.
+    m = re.match(r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})", val)
+    if m:
+        return m.group(1) + "Z"
+    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%d/%m/%Y", "%m/%d/%Y"):
+        try:
+            return datetime.strptime(val[:10], fmt).strftime("%Y-%m-%dT00:00:00Z")
+        except ValueError:
+            pass
+    return val
+
+
+def _extract_valid_from(path: Path, markdown: str) -> str:
+    """Return ISO8601 effective date for the document.
+
+    Priority: YAML frontmatter → filename date pattern → file mtime → now.
+    """
+    # 1. YAML frontmatter (--- ... ---)
+    if markdown.startswith("---"):
+        end = markdown.find("\n---", 3)
+        if end > 0:
+            try:
+                import yaml  # noqa: PLC0415
+                fm = yaml.safe_load(markdown[3:end])
+                if isinstance(fm, dict):
+                    for key in ("date", "valid_from", "updated", "last_updated", "created"):
+                        val = fm.get(key)
+                        if val:
+                            return _normalize_date(str(val))
+            except Exception:  # noqa: BLE001
+                pass
+
+    # 2. Filename date pattern YYYY[-_]MM[-_]DD
+    m = re.search(r"(\d{4})[_-](\d{2})[_-](\d{2})", path.stem)
+    if m:
+        return f"{m.group(1)}-{m.group(2)}-{m.group(3)}T00:00:00Z"
+
+    # 3. File mtime
+    try:
+        mtime = path.stat().st_mtime
+        return datetime.fromtimestamp(mtime, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    except OSError:
+        pass
+
+    return now_rfc3339()

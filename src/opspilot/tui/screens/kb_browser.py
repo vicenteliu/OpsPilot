@@ -26,6 +26,7 @@ class KBBrowserScreen(Widget):
         Binding("i", "start_ingest", "Ingest file", show=True),
         Binding("s", "start_search", "Search KB", show=True),
         Binding("r", "reload_docs", "Reload", show=True),
+        Binding("c", "show_conflicts", "Conflicts", show=True),
     ]
 
     def __init__(self, **kwargs: Any) -> None:
@@ -33,7 +34,7 @@ class KBBrowserScreen(Widget):
         self._pending_mode = ""
 
     def compose(self) -> ComposeResult:
-        yield Label("[b]KB Browser[/b] — [dim]I: ingest  S: search  R: reload[/dim]")
+        yield Label("[b]KB Browser[/b] — [dim]I: ingest  S: search  R: reload  C: conflicts[/dim]")
         yield Static(id="kb-input-row")
         yield DataTable(id="kb-table", zebra_stripes=True)
 
@@ -70,6 +71,9 @@ class KBBrowserScreen(Widget):
         dt = self.query_one(DataTable)
         dt.clear()
         self.load_docs()
+
+    def action_show_conflicts(self) -> None:
+        self.show_conflicts()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id != "kb-cmd-input":
@@ -236,5 +240,47 @@ class KBBrowserScreen(Widget):
                     dt.add_row(*row)
             else:
                 dt.add_row("(no documents ingested yet)", "", "", "", "", "")
+
+        self.app.call_from_thread(update)
+
+    # ── conflicts worker ────────────────────────────────────────────────────
+
+    @work(thread=True)
+    def show_conflicts(self) -> None:
+        from ...config import load_config
+        from ...memory.sqlite_store import SqliteStore
+        from ...memory.storage_init import init_sqlite
+
+        cfg = load_config()
+        db_path = cfg.home / "kb" / "sqlite.db"
+        if not db_path.exists():
+            self.app.call_from_thread(self.notify, "KB not initialised yet", severity="warning")
+            return
+
+        sqlite = SqliteStore(init_sqlite(db_path))
+        conflicts = sqlite.list_conflicts(status="open", limit=100)
+
+        rows = [
+            (
+                r["id"],
+                r.get("doc_a_title") or r["doc_a_id"],
+                r.get("doc_b_title") or r["doc_b_id"],
+                r["conflict_type"],
+                f"{r['similarity']:.3f}",
+                r["status"],
+            )
+            for r in conflicts
+        ]
+
+        def update() -> None:
+            dt = self.query_one(DataTable)
+            dt.clear()
+            if rows:
+                self.notify(f"{len(rows)} open conflict(s)", severity="warning")
+                for row in rows:
+                    dt.add_row(*row)
+            else:
+                self.notify("No open conflicts", severity="information")
+                dt.add_row("(no open conflicts)", "", "", "", "", "")
 
         self.app.call_from_thread(update)
