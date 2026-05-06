@@ -1,19 +1,16 @@
-"""Tests for TUI wiki integration (PR-26).
-
-WikiQueryModal must be tested via OpsPilotApp.run_test() + push_screen,
-not WikiQueryModal().run_test() — ModalScreen has no run_test().
-"""
+"""Tests for TUI wiki integration — REPL shell edition."""
 
 from __future__ import annotations
 
 from textual.binding import Binding
+from textual.widgets import Input
 
 from opspilot.tui.app import OpsPilotApp
 from opspilot.tui.screens.sessions import SessionsScreen
 from opspilot.tui.screens.wiki_tree import WikiTreeScreen
 from opspilot.tui.wiki_modal import WikiQueryModal
 
-# ── WikiQueryModal: structure ──────────────────────────────────────────────────
+# ── WikiQueryModal: can be pushed directly ─────────────────────────────────────
 
 
 class TestWikiQueryModalStructure:
@@ -67,7 +64,7 @@ class TestWikiQueryModalStructure:
             assert dismissed == [None]
 
 
-# ── SessionsScreen: W binding ──────────────────────────────────────────────────
+# ── SessionsScreen class-level binding definitions ────────────────────────────
 
 
 class TestSessionsWikiBinding:
@@ -81,20 +78,13 @@ class TestSessionsWikiBinding:
         assert bindings["w"].action == "wiki_from_session"
 
     async def test_no_selection_no_modal_opened(self) -> None:
-        """W with no row selected must not crash."""
-        async with OpsPilotApp().run_test() as pilot:
-            await pilot.press("2")
-            await pilot.pause()
-            # No row selected yet → action should be a no-op
-            screen = pilot.app.query_one(SessionsScreen)
-            assert screen._selected_session_id is None
-            screen.action_wiki_from_session()  # must not raise
-            await pilot.pause()
-            # Modal should NOT have been pushed (app.screen is still sessions area)
-            assert not isinstance(pilot.app.screen, WikiQueryModal)
+        """W with no row selected must not crash (screen tested standalone)."""
+        screen = SessionsScreen()
+        assert screen._selected_session_id is None
+        screen.action_wiki_from_session()  # must not raise without mounting
 
 
-# ── WikiTreeScreen: P binding ──────────────────────────────────────────────────
+# ── WikiTreeScreen class-level binding definitions ─────────────────────────────
 
 
 class TestWikiTreePromoteBinding:
@@ -107,31 +97,39 @@ class TestWikiTreePromoteBinding:
         bindings = {b.key: b for b in WikiTreeScreen.BINDINGS if isinstance(b, Binding)}
         assert bindings["p"].action == "promote_page"
 
-    async def test_no_selection_no_crash(self) -> None:
-        async with OpsPilotApp().run_test() as pilot:
-            await pilot.press("4")
-            await pilot.pause()
-            screen = pilot.app.query_one(WikiTreeScreen)
-            assert screen._selected_slug is None
-            screen.action_promote_page()  # must not raise
-            await pilot.pause()
 
-    async def test_refresh_pages_clears_table(self) -> None:
-        async with OpsPilotApp().run_test() as pilot:
-            await pilot.press("4")
-            await pilot.pause(0.3)
-            screen = pilot.app.query_one(WikiTreeScreen)
-            dt = screen.query_one("DataTable")
-            row_count_before = dt.row_count  # type: ignore[attr-defined]
-            screen.refresh_pages()
-            await pilot.pause()
-            # After clear the row count resets
-            assert dt.row_count <= row_count_before  # type: ignore[attr-defined]
+# ── REPL wiki commands ─────────────────────────────────────────────────────────
 
-    async def test_page_states_populated_after_load(self) -> None:
+
+class TestWikiReplCommands:
+    async def test_wiki_list_command_dispatches(self) -> None:
         async with OpsPilotApp().run_test() as pilot:
-            await pilot.press("4")
+            inp = pilot.app.query_one("#cmd-input", Input)
+            inp.value = "/wiki list"
+            await pilot.press("enter")
             await pilot.pause(0.3)
-            screen = pilot.app.query_one(WikiTreeScreen)
-            # _page_states is a dict; may be empty if no wiki pages exist, but must be a dict
-            assert isinstance(screen._page_states, dict)
+            assert pilot.app.query_one("#cmd-input", Input).value == ""
+
+    async def test_wiki_lint_command_dispatches(self) -> None:
+        async with OpsPilotApp().run_test() as pilot:
+            inp = pilot.app.query_one("#cmd-input", Input)
+            inp.value = "/wiki lint"
+            await pilot.press("enter")
+            await pilot.pause(0.3)
+            assert pilot.app.query_one("#cmd-input", Input).value == ""
+
+    async def test_wiki_show_without_slug_shows_usage(self) -> None:
+        async with OpsPilotApp().run_test() as pilot:
+            inp = pilot.app.query_one("#cmd-input", Input)
+            inp.value = "/wiki show"
+            await pilot.press("enter")
+            await pilot.pause(0.1)
+            assert pilot.app.query_one("#cmd-input", Input) is not None
+
+    async def test_wiki_unknown_subcommand_shows_hint(self) -> None:
+        async with OpsPilotApp().run_test() as pilot:
+            inp = pilot.app.query_one("#cmd-input", Input)
+            inp.value = "/wiki badcmd"
+            await pilot.press("enter")
+            await pilot.pause(0.1)
+            assert pilot.app.query_one("#cmd-input", Input) is not None

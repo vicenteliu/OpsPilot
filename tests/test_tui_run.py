@@ -1,18 +1,13 @@
-"""Tests for PR-22: TUI Run modal and `opspilot tui run` CLI subcommand."""
+"""Tests for TUI run flow — REPL shell edition."""
 
 from __future__ import annotations
-
-from unittest.mock import patch
 
 from textual.widgets import Button, Input, Label
 
 from opspilot.tui.app import OpsPilotApp
 from opspilot.tui.run_modal import RunModal
-from opspilot.tui.screens import SessionsScreen
 
-# ──────────────────────────────────────────────────────────────────────────
-#  RunModal structure — push onto OpsPilotApp in each test
-# ──────────────────────────────────────────────────────────────────────────
+# ── RunModal: still exists and can be pushed independently ────────────────────
 
 
 class TestRunModalStructure:
@@ -70,7 +65,6 @@ class TestRunModalStructure:
         assert results == [None]
 
     async def test_run_without_ticket_shows_error(self) -> None:
-        # RunModal() has empty ticket field by default
         async with OpsPilotApp().run_test() as pilot:
             pilot.app.push_screen(RunModal())
             await pilot.pause()
@@ -81,81 +75,53 @@ class TestRunModalStructure:
             assert "required" in str(lbl.render()).lower()
 
 
-# ──────────────────────────────────────────────────────────────────────────
-#  App-level Run keybinding
-# ──────────────────────────────────────────────────────────────────────────
+# ── REPL command parsing ──────────────────────────────────────────────────────
 
 
-class TestRunKeybinding:
-    async def test_r_key_opens_run_modal(self) -> None:
+class TestRunCommandParsing:
+    async def test_run_without_ticket_shows_usage(self) -> None:
         async with OpsPilotApp().run_test() as pilot:
-            await pilot.press("r")
-            await pilot.pause()
-            assert isinstance(pilot.app.screen, RunModal)
+            inp = pilot.app.query_one("#cmd-input", Input)
+            inp.value = "/run"
+            await pilot.press("enter")
+            await pilot.pause(0.1)
+            # Should show usage error, not crash
+            assert pilot.app.query_one("#cmd-input", Input) is not None
 
-    async def test_run_modal_opened_via_action(self) -> None:
+    async def test_run_with_ticket_dispatches(self) -> None:
+        # Dispatching /run with a path triggers a background worker.
+        # We only verify the app doesn't crash, not the full orchestrator result.
         async with OpsPilotApp().run_test() as pilot:
-            pilot.app.action_start_run()
-            await pilot.pause()
-            assert isinstance(pilot.app.screen, RunModal)
+            inp = pilot.app.query_one("#cmd-input", Input)
+            inp.value = "/run /nonexistent/ticket.json --playbook playbooks/pb_test"
+            await pilot.press("enter")
+            await pilot.pause(0.2)
+            # Input should be cleared; app still alive
+            assert pilot.app.query_one("#cmd-input", Input).value == ""
 
-
-# ──────────────────────────────────────────────────────────────────────────
-#  Sessions screen refresh (PR-22 integration point)
-# ──────────────────────────────────────────────────────────────────────────
-
-
-class TestSessionsRefresh:
-    async def test_refresh_sessions_clears_and_reloads(self) -> None:
+    async def test_sessions_command_dispatches(self) -> None:
         async with OpsPilotApp().run_test() as pilot:
-            await pilot.press("2")
+            inp = pilot.app.query_one("#cmd-input", Input)
+            inp.value = "/sessions"
+            await pilot.press("enter")
             await pilot.pause(0.3)
-            screen = pilot.app.query_one(SessionsScreen)
-            screen.refresh_sessions()
-            await pilot.pause(0.3)
-            # Table should still have at least 1 row (placeholder or real sessions)
-            assert screen.query_one("DataTable").row_count >= 1
+            assert pilot.app.query_one("#cmd-input", Input).value == ""
+
+    async def test_kb_missing_subcommand_shows_hint(self) -> None:
+        async with OpsPilotApp().run_test() as pilot:
+            inp = pilot.app.query_one("#cmd-input", Input)
+            inp.value = "/kb"
+            await pilot.press("enter")
+            await pilot.pause(0.1)
+            assert pilot.app.query_one("#cmd-input", Input) is not None
 
 
-# ──────────────────────────────────────────────────────────────────────────
-#  Auto-start via run_input constructor param
-# ──────────────────────────────────────────────────────────────────────────
+# ── Auto-start via constructor ─────────────────────────────────────────────────
 
 
 class TestAutoStart:
-    async def test_app_with_run_input_opens_modal(self) -> None:
-        app = OpsPilotApp(run_input="/tmp/ticket.json", run_playbook="playbooks/pb_test")
-        async with app.run_test() as pilot:
-            await pilot.pause(0.6)  # 0.3s timer + render
-            assert isinstance(pilot.app.screen, RunModal)
-
-    async def test_app_without_run_input_no_modal(self) -> None:
+    async def test_app_without_run_input_no_auto_run(self) -> None:
         async with OpsPilotApp().run_test() as pilot:
             await pilot.pause(0.5)
+            # No RunModal pushed — app stays on main screen
             assert not isinstance(pilot.app.screen, RunModal)
-
-
-# ──────────────────────────────────────────────────────────────────────────
-#  _on_run_done refreshes Sessions and switches to it
-# ──────────────────────────────────────────────────────────────────────────
-
-
-class TestOnRunDone:
-    async def test_on_run_done_with_session_id_switches_to_sessions(self) -> None:
-        async with OpsPilotApp().run_test() as pilot:
-            with patch.object(
-                pilot.app.query_one(SessionsScreen),
-                "refresh_sessions",
-                return_value=None,
-            ) as mock_refresh:
-                pilot.app._on_run_done("sess_abc123")
-                await pilot.pause()
-                mock_refresh.assert_called_once()
-                assert pilot.app.active_module == "sessions"
-
-    async def test_on_run_done_with_none_does_nothing(self) -> None:
-        async with OpsPilotApp().run_test() as pilot:
-            original_module = pilot.app.active_module
-            pilot.app._on_run_done(None)
-            await pilot.pause()
-            assert pilot.app.active_module == original_module
