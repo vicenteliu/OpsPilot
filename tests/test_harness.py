@@ -482,3 +482,223 @@ def test_load_golden_reads_spec_example() -> None:
     assert g.fixture_id == "fix_a1b2c3d4"
     assert "authentication failed" in g.must_contain
     assert g.expected_chunk_id == "chk_0cf89826"
+
+
+# ── Conflict-aware golden tests ───────────────────────────────────────
+
+# Recording provider — records full message lists so we can inspect
+# what the LLM sees in each round.
+class _RecordingProvider(_ScriptedProvider):
+    def __init__(self, responses: list[ChatResponse]) -> None:
+        super().__init__(responses)
+        self.all_messages: list[list[Message]] = []
+
+    def chat(
+        self,
+        messages: list[Message],
+        *,
+        model: str,
+        params: SamplingParams,
+        tools: list[ToolDef] | None = None,
+        timeout_ms: int = 90_000,
+    ) -> ChatResponse:
+        self.all_messages.append(list(messages))
+        return super().chat(messages, model=model, params=params, tools=tools, timeout_ms=timeout_ms)
+
+
+@pytest.fixture
+def populated_kb_with_open_conflict(tmp_path: Path) -> tuple[SqliteStore, LanceStore]:
+    """Standard KB + one open conflict record involving chk_0cf89826 / doc_88a277cf."""
+    # Build standard KB (mirrors populated_kb fixture)
+    sqlite = SqliteStore(init_sqlite(tmp_path / "kb.db"))
+    lance = LanceStore.open_or_create(tmp_path / "lancedb", dim=DIM, embedding_model=EMBED_MODEL)
+    doc = json.loads(KB_DOC.read_text(encoding="utf-8"))
+    doc.pop("_comment", None)
+    sqlite.upsert_document(doc)
+    chunks: list[dict[str, Any]] = []
+    for line in KB_CHUNKS.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            c = json.loads(line)
+            c.pop("_comment", None)
+            chunks.append(c)
+    sqlite.upsert_chunks(chunks)
+    records = []
+    for c in chunks:
+        md = c["metadata"]
+        records.append(
+            VectorRecord(
+                vector_id=c["vector_id"],
+                embedding=_topic_embed(c["content"] or ""),
+                document_id=c["document_id"],
+                chunk_id=c["id"],
+                namespace=md["namespace"],
+                classification=md["classification"],
+                language=md.get("language", "zh-CN"),
+                tags=md.get("tags", []),
+                embedding_model=EMBED_MODEL,
+            )
+        )
+    lance.upsert_vectors(records)
+
+    # Insert a second conflicting doc + chunk
+    sqlite.upsert_document(
+        {
+            "id": "doc_bb000000",
+            "source_path": "/kb/vpn_auth_alt.md",
+            "title": "VPN Auth Alt",
+            "classification": "internal",
+            "content_hash": "sha256:" + "b" * 64,
+            "ingested_at": "2026-05-01T00:00:00Z",
+            "language": "zh-CN",
+            "tags": [],
+            "namespace": "opspilot:public-kb",
+            "chunk_strategy": "headings_then_size",
+            "chunk_count": 1,
+            "embedding_model": EMBED_MODEL,
+            "embedding_dim": DIM,
+            "redaction_passed": True,
+        }
+    )
+    sqlite.upsert_chunks(
+        [
+            {
+                "id": "chk_bb000000",
+                "document_id": "doc_bb000000",
+                "seq": 0,
+                "content": "VPN 认证失败时，请检查 RADIUS 服务器状态与 authentication 配置。",
+                "content_hash": "sha256:" + "b" * 64,
+                "char_start": 0,
+                "char_end": 30,
+                "line_start": 1,
+                "line_end": 1,
+                "embedding_model": EMBED_MODEL,
+                "vector_id": "vec_chkbb0000",
+                "metadata": {
+                    "namespace": "opspilot:public-kb",
+                    "classification": "internal",
+                    "language": "zh-CN",
+                    "tags": [],
+                },
+            }
+        ]
+    )
+
+    # Open conflict between the two docs
+    sqlite.upsert_conflict(
+        {
+            "id": "conf_a1b2c3d4",
+            "chunk_a_id": "chk_0cf89826",
+            "chunk_b_id": "chk_bb000000",
+            "doc_a_id": "doc_88a277cf",
+            "doc_b_id": "doc_bb000000",
+            "conflict_type": "scope_overlap",
+            "similarity": 0.92,
+            "status": "open",
+            "detected_at": "2026-05-06T00:00:00Z",
+        }
+    )
+    return sqlite, lance
+
+
+# ── Tool-handler unit tests ───────────────────────────────────────────
+
+
+def test_kb_search_tool_conflict_warning_present_when_open(
+    populated_kb_with_open_conflict: tuple[SqliteStore, LanceStore],
+) -> None:
+    """kb_search tool result contains _conflict_warning when KB has open conflicts."""
+    from opspilot.orchestrator.tools import make_kb_search_tool
+
+    sqlite, lance = populated_kb_with_open_conflict
+    _, handler = make_kb_search_tool(sqlite=sqlite, lance=lance, embed_fn=_topic_embed)
+    result = handler({"query": "VPN 认证失败"})
+    assert "_conflict_warning" in result
+    assert "source document" in result["_conflict_warning"]
+
+
+def test_kb_search_tool_no_warning_after_resolve(
+    populated_kb_with_open_conflict: tuple[SqliteStore, LanceStore],
+) -> None:
+    """After resolve(a_wins), _conflict_warning disappears from tool result."""
+    from opspilot.memory.conflict import resolve_conflict
+    from opspilot.orchestrator.tools import make_kb_search_tool
+
+    sqlite, lance = populated_kb_with_open_conflict
+    resolve_conflict("conf_a1b2c3d4", resolution="a_wins", resolved_by="tester", sqlite=sqlite)
+    _, handler = make_kb_search_tool(sqlite=sqlite, lance=lance, embed_fn=_topic_embed)
+    result = handler({"query": "VPN 认证失败"})
+    assert "_conflict_warning" not in result
+
+
+# ── Harness integration tests ─────────────────────────────────────────
+
+
+def test_run_harness_conflict_warning_reaches_llm_context(
+    fixture: Fixture,
+    golden: Golden,
+    session_manager: SessionManager,
+    populated_kb_with_open_conflict: tuple[SqliteStore, LanceStore],
+    redactor: Redactor,
+    tmp_path: Path,
+) -> None:
+    """The _conflict_warning must appear in the tool-result message the LLM sees in round 2."""
+    sqlite, lance = populated_kb_with_open_conflict
+    pb = _load_pb_tool_mode()
+    provider = _RecordingProvider(_scripted_two_round())
+
+    run_harness(
+        fixture=fixture,
+        golden=golden,
+        playbook=pb,
+        session_manager=session_manager,
+        provider=provider,
+        redactor=redactor,
+        embed_fn=_topic_embed,
+        sqlite_store=sqlite,
+        lance_store=lance,
+        tmp_dir=tmp_path / "harness-tmp",
+    )
+
+    assert len(provider.all_messages) >= 2, "expected at least 2 chat rounds"
+    round2_msgs = provider.all_messages[1]
+    tool_msgs = [m for m in round2_msgs if m.role == "tool"]
+    assert any(
+        "_conflict_warning" in (m.content or "") for m in tool_msgs
+    ), "expected _conflict_warning in tool-result message of round-2 LLM context"
+
+
+def test_run_harness_no_conflict_warning_after_resolve(
+    fixture: Fixture,
+    golden: Golden,
+    session_manager: SessionManager,
+    populated_kb_with_open_conflict: tuple[SqliteStore, LanceStore],
+    redactor: Redactor,
+    tmp_path: Path,
+) -> None:
+    """After resolving the conflict, no _conflict_warning appears in tool result."""
+    from opspilot.memory.conflict import resolve_conflict
+
+    sqlite, lance = populated_kb_with_open_conflict
+    resolve_conflict("conf_a1b2c3d4", resolution="a_wins", resolved_by="tester", sqlite=sqlite)
+    pb = _load_pb_tool_mode()
+    provider = _RecordingProvider(_scripted_two_round())
+
+    run_harness(
+        fixture=fixture,
+        golden=golden,
+        playbook=pb,
+        session_manager=session_manager,
+        provider=provider,
+        redactor=redactor,
+        embed_fn=_topic_embed,
+        sqlite_store=sqlite,
+        lance_store=lance,
+        tmp_dir=tmp_path / "harness-tmp",
+    )
+
+    assert len(provider.all_messages) >= 2
+    round2_msgs = provider.all_messages[1]
+    tool_msgs = [m for m in round2_msgs if m.role == "tool"]
+    assert not any(
+        "_conflict_warning" in (m.content or "") for m in tool_msgs
+    ), "expected no _conflict_warning after conflict is resolved"
