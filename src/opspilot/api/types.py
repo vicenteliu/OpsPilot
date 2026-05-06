@@ -72,3 +72,31 @@ class ApiSessionListResponse(BaseModel):
     """Response body for GET /api/sessions."""
 
     sessions: list[ApiSessionSummary]
+
+
+class ApiLineageVersion(BaseModel):
+    """One version entry in a skill's lineage."""
+
+    version: str
+    parent: str | None
+    iteration: str | None
+    promoted_at: str
+    promoted_by: str
+    summary: str
+    promoted_variant_id: str | None = None
+    losing_variant_ids: list[str] = []
+    rollback_window_until: str | None = None
+    rolled_back: bool = False
+
+
+class ApiSkillLineage(BaseModel):
+    """Lineage history for one skill."""
+
+    skill_name: str
+    versions: list[ApiLineageVersion]
+
+
+class ApiLineageListResponse(BaseModel):
+    """Response body for GET /api/iteration/lineage."""
+
+    lineages: list[ApiSkillLineage]

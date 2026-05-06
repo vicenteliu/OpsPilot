@@ -1,13 +1,12 @@
-"""OpsPilot TUI — main app shell (PR-20 / PR-22).
+"""OpsPilot TUI — main app shell (PR-20 / PR-22 / PR-28).
 
 Layout:
   ┌─ Header ─────────────────────────────────────────┐
   │ NavSidebar (width=18) │ ContentSwitcher           │
   └─ Footer ─────────────────────────────────────────┘
 
-Keys 1-8 jump directly to each module; R opens the Run modal; Q quits.
-PR-21 replaces each placeholder Label with full screen content.
-PR-22 adds the Run modal for inline playbook execution.
+Keys 1-9 jump directly to each module; R opens the Run modal; Q quits.
+PR-28 adds key 9 → Iteration screen.
 """
 
 from __future__ import annotations
@@ -22,6 +21,7 @@ from .screens import (
     ConfigScreen,
     DashboardScreen,
     HarnessScreen,
+    IterationScreen,
     KBBrowserScreen,
     LintIssuesScreen,
     ProvidersScreen,
@@ -29,7 +29,7 @@ from .screens import (
     WikiTreeScreen,
 )
 
-# (key, screen_id, label) — order defines sidebar order and key 1-8 mapping
+# (key, screen_id, label) — order defines sidebar order and key 1-9 mapping
 _NAV: list[tuple[str, str, str]] = [
     ("1", "dashboard", "Dashboard"),
     ("2", "sessions", "Sessions"),
@@ -39,6 +39,7 @@ _NAV: list[tuple[str, str, str]] = [
     ("6", "lint-issues", "Lint Issues"),
     ("7", "providers", "Providers"),
     ("8", "config", "Config"),
+    ("9", "iteration", "Iteration"),
 ]
 
 _SCREEN_MAP: dict[str, type] = {
@@ -50,6 +51,7 @@ _SCREEN_MAP: dict[str, type] = {
     "lint-issues": LintIssuesScreen,
     "providers": ProvidersScreen,
     "config": ConfigScreen,
+    "iteration": IterationScreen,
 }
 
 
@@ -89,6 +91,7 @@ class OpsPilotApp(App[None]):
         Binding("6", "switch_module('lint-issues')", "Lint Issues", show=False),
         Binding("7", "switch_module('providers')", "Providers", show=False),
         Binding("8", "switch_module('config')", "Config", show=False),
+        Binding("9", "switch_module('iteration')", "Iteration", show=False),
         Binding("r", "start_run", "Run", show=True),
         Binding("q", "quit", "Quit"),
     ]

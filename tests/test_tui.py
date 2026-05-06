@@ -9,6 +9,7 @@ from opspilot.tui.screens import (
     ConfigScreen,
     DashboardScreen,
     HarnessScreen,
+    IterationScreen,
     KBBrowserScreen,
     LintIssuesScreen,
     ProvidersScreen,
@@ -25,7 +26,7 @@ class TestAppStructure:
     async def test_all_nav_items_present(self) -> None:
         async with OpsPilotApp().run_test() as pilot:
             items = pilot.app.query(ListItem)
-            assert len(items) == 8
+            assert len(items) == 9
 
     async def test_default_screen_is_dashboard(self) -> None:
         async with OpsPilotApp().run_test() as pilot:
@@ -37,10 +38,10 @@ class TestAppStructure:
             pilot.app.query_one(Header)
             pilot.app.query_one(Footer)
 
-    async def test_all_eight_modules_in_switcher(self) -> None:
+    async def test_all_nine_modules_in_switcher(self) -> None:
         async with OpsPilotApp().run_test() as pilot:
             sw = pilot.app.query_one(ContentSwitcher)
-            assert len(list(sw.children)) == 8
+            assert len(list(sw.children)) == 9
 
     async def test_screen_map_covers_all_nav_items(self) -> None:
         nav_ids = {sid for _, sid, _ in _NAV}
@@ -63,10 +64,10 @@ class TestNavigation:
             await pilot.press("8")
             assert pilot.app.active_module == "config"
 
-    async def test_keys_1_through_8_all_navigate(self) -> None:
+    async def test_keys_1_through_9_all_navigate(self) -> None:
         expected = [sid for _, sid, _ in _NAV]
         async with OpsPilotApp().run_test() as pilot:
-            for key, screen_id in zip("12345678", expected, strict=True):
+            for key, screen_id in zip("123456789", expected, strict=True):
                 await pilot.press(key)
                 assert pilot.app.active_module == screen_id
 

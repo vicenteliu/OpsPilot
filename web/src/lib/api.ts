@@ -110,3 +110,28 @@ export async function getSession(sessionId: string): Promise<RunResponse> {
   if (!res.ok) throw new Error(`Session fetch failed: ${res.status}`);
   return res.json();
 }
+
+export interface LineageVersion {
+  version: string;
+  parent: string | null;
+  iteration: string | null;
+  promoted_at: string;
+  promoted_by: string;
+  summary: string;
+  promoted_variant_id: string | null;
+  losing_variant_ids: string[];
+  rollback_window_until: string | null;
+  rolled_back: boolean;
+}
+
+export interface SkillLineage {
+  skill_name: string;
+  versions: LineageVersion[];
+}
+
+export async function getLineage(): Promise<SkillLineage[]> {
+  const res = await fetch('/api/iteration/lineage');
+  if (!res.ok) throw new Error(`Lineage fetch failed: ${res.status}`);
+  const data = await res.json();
+  return data.lineages;
+}

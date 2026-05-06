@@ -1,8 +1,9 @@
 """FastAPI application for OpsPilot.
 
 Exposes:
-  GET  /api/config  — returns active model ref and enabled UI modules
-  POST /api/run     — runs the ticket summary playbook on a submitted ticket
+  GET  /api/config              — active model ref and enabled UI modules
+  POST /api/run                 — run ticket summary playbook
+  GET  /api/iteration/lineage   — skill lineage history (PR-28)
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from ..providers.registry import make_provider
 from ..redaction import Redactor
 from ..session.manager import SessionManager
 from .routes.config import router as config_router
+from .routes.iteration import router as iteration_router
 from .routes.models import router as models_router
 from .routes.run import router as run_router
 from .routes.sessions import router as sessions_router
@@ -103,3 +105,4 @@ app.include_router(config_router, prefix="/api")
 app.include_router(models_router, prefix="/api")
 app.include_router(run_router, prefix="/api")
 app.include_router(sessions_router, prefix="/api")
+app.include_router(iteration_router, prefix="/api")
