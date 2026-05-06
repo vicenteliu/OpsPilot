@@ -1279,14 +1279,44 @@ def serve(
     workers: int = typer.Option(1, "--workers", "-w", help="Uvicorn worker count."),
     reload: bool = typer.Option(False, "--reload", help="Hot-reload (dev only)."),
     json_logs: bool = typer.Option(False, "--json-logs", help="Enable JSON structured logging."),
+    with_ui: bool = typer.Option(False, "--with-ui", help="Also start the Svelte frontend (pnpm dev)."),
+    ui_port: int = typer.Option(5173, "--ui-port", help="Frontend dev server port (used with --with-ui)."),
 ) -> None:
-    """Start the OpsPilot FastAPI server with uvicorn."""
+    """Start the OpsPilot FastAPI server with uvicorn.
+
+    Use --with-ui to start the Svelte frontend alongside the API server.
+    Both processes are stopped together on Ctrl+C.
+    """
+    import atexit
+    import subprocess
     import uvicorn
     from .api.middleware import configure_json_logging
 
     if json_logs:
         configure_json_logging()
         _console.print("[dim]JSON logging enabled[/dim]")
+
+    frontend_proc: subprocess.Popen | None = None
+    if with_ui:
+        web_dir = REPO_ROOT / "web"
+        if not (web_dir / "package.json").exists():
+            _err.print(f"[red]web/ not found at {web_dir}[/red]")
+            raise typer.Exit(code=1)
+        _console.print(f"Starting Svelte frontend on http://localhost:{ui_port}")
+        frontend_proc = subprocess.Popen(
+            ["pnpm", "dev", "--port", str(ui_port)],
+            cwd=web_dir,
+        )
+
+        def _stop_frontend() -> None:
+            if frontend_proc and frontend_proc.poll() is None:
+                frontend_proc.terminate()
+                try:
+                    frontend_proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    frontend_proc.kill()
+
+        atexit.register(_stop_frontend)
 
     _console.print(f"Starting OpsPilot API on http://{host}:{port}")
     uvicorn.run(

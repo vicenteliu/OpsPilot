@@ -72,18 +72,13 @@ opspilot tui                                      # interactive workbench
 opspilot tui run --input ticket.json              # open run modal directly
 ```
 
-### 6. Start the API server (optional web UI)
+### 6. Start the API server + web UI
 
 ```bash
 source .env
-opspilot serve --reload                           # dev (hot-reload)
-opspilot serve --host 0.0.0.0 --workers 2 --json-logs   # production
-```
-
-### 7. Start the web UI (optional)
-
-```bash
-cd web && pnpm install && pnpm dev
+opspilot serve --reload --with-ui                 # API + frontend together (Ctrl+C stops both)
+opspilot serve --reload                           # API only
+opspilot serve --host 0.0.0.0 --workers 2 --json-logs   # production (no frontend)
 ```
 
 Open [http://localhost:5173](http://localhost:5173).
