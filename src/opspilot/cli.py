@@ -14,6 +14,8 @@
 * ``opspilot iteration evaluate``     — apply promotion gates to variant eval results (PR-27)
 * ``opspilot iteration promote``      — promote variant + update lineage (PR-27)
 * ``opspilot iteration validate``     — validate iteration directory invariants (PR-27)
+* ``opspilot sandbox dry-run``        — preview action without executing (PR-30)
+* ``opspilot sandbox run``            — execute action in Docker L2 hardened container (PR-30)
 """
 
 from __future__ import annotations
@@ -1005,6 +1007,79 @@ def iteration_validate(
             _err.print(f"[red]✗[/red] {v}")
         raise typer.Exit(code=1)
     _console.print(f"[green]✓[/green] All invariants pass for {iteration_dir}")
+
+
+# ──────────────────────────────────────────────────────────────────────────
+#  sandbox (PR-30)
+# ──────────────────────────────────────────────────────────────────────────
+
+sandbox_app = typer.Typer(
+    name="sandbox",
+    help="Sandbox action execution — L2 Docker hardened (PR-30).",
+    no_args_is_help=True,
+)
+app.add_typer(sandbox_app)
+
+
+def _load_action(path: Path):  # type: ignore[return]
+    import yaml
+    from .sandbox.types import ActionRequest
+
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    return ActionRequest.model_validate(raw)
+
+
+@sandbox_app.command("dry-run")
+def sandbox_dry_run(
+    action: Path = typer.Argument(..., exists=True, help="Action YAML file."),  # noqa: B008
+) -> None:
+    """Preview a sandbox action without executing it."""
+    from rich.syntax import Syntax
+    from .sandbox.engine import SandboxEngine
+
+    req = _load_action(action)
+    result = SandboxEngine().dry_run(req)
+
+    _console.print(f"\n[bold]Action[/bold] {result.action_id}  status=[cyan]{result.status}[/cyan]")
+    if result.approval_required:
+        _console.print("[yellow]⚠ approval_required[/yellow]")
+    if result.dry_run_preview:
+        _console.print(f"\n[dim]{result.dry_run_preview.command_preview}[/dim]")
+        _console.print(Syntax(
+            "\n".join(result.dry_run_preview.docker_args),
+            "text", theme="monokai", word_wrap=True,
+        ))
+
+
+@sandbox_app.command("run")
+def sandbox_run(
+    action: Path = typer.Argument(..., exists=True, help="Action YAML file."),  # noqa: B008
+    approve: bool = typer.Option(False, "--approve", help="Bypass approval gate."),
+) -> None:
+    """Execute a sandbox action in a Docker L2 container."""
+    from .sandbox.engine import SandboxEngine
+
+    req = _load_action(action)
+    result = SandboxEngine().execute(req, force_approve=approve)
+
+    _console.print(f"\n[bold]Action[/bold] {result.action_id}  status=[cyan]{result.status}[/cyan]")
+
+    if result.status == "approval_pending":
+        _err.print(f"[yellow]⚠[/yellow] {result.rejection_reason}")
+        raise typer.Exit(2)
+
+    if result.apply_result:
+        r = result.apply_result
+        color = "green" if r.exit_code == 0 else "red"
+        _console.print(f"exit_code=[{color}]{r.exit_code}[/{color}]  duration={r.duration_ms}ms")
+        if r.stdout:
+            _console.print("\n[bold]stdout[/bold]")
+            _console.print(r.stdout)
+        if r.stderr:
+            _console.print("\n[bold]stderr[/bold]")
+            _console.print(r.stderr)
+        if r.exit_code != 0:
+            raise typer.Exit(1)
 
 
 # ──────────────────────────────────────────────────────────────────────────
