@@ -21,6 +21,8 @@ async def list_mcp_servers(request: Request) -> dict[str, Any]:
     loop = asyncio.get_event_loop()
 
     def _run() -> Any:
+        if not _DEFAULT_MCP_CONFIG.exists():
+            return {"servers": []}
         cfg = load_mcp_config(_DEFAULT_MCP_CONFIG)
         servers = [
             {
@@ -67,6 +69,8 @@ async def probe_mcp_server(server_id: str, request: Request) -> dict[str, Any]:
     loop = asyncio.get_event_loop()
 
     def _run() -> Any:
+        if not _DEFAULT_MCP_CONFIG.exists():
+            return None
         cfg = load_mcp_config(_DEFAULT_MCP_CONFIG)
         srv_cfg = next((s for s in cfg.mcps if s.id == server_id), None)
         if srv_cfg is None:
