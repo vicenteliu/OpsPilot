@@ -362,6 +362,42 @@ export async function wikiPromote(slug: string): Promise<{ old_state: string; ne
   return res.json();
 }
 
+export interface WikiPageSummary {
+  page_id: string;
+  slug: string;
+  kind: string;
+  title: string;
+  summary: string;
+  lifecycle_state: string;
+  language: string;
+  tags: string[];
+  updated_at: string;
+}
+
+export async function listWikiPages(): Promise<WikiPageSummary[]> {
+  const res = await fetch('/api/wiki/pages');
+  if (!res.ok) throw new Error(`Wiki pages fetch failed: ${res.status}`);
+  const data = await res.json();
+  return data.pages;
+}
+
+export interface VendorDocSummary {
+  filename: string;
+  doc_ref: string;
+  template_id: string;
+  title: string;
+  scope_note: string | null;
+  sections_count: number;
+  citations_count: number;
+}
+
+export async function listVendorDocs(): Promise<VendorDocSummary[]> {
+  const res = await fetch('/api/vendor-docs');
+  if (!res.ok) throw new Error(`Vendor docs fetch failed: ${res.status}`);
+  const data = await res.json();
+  return data.docs;
+}
+
 // ── MCP ──────────────────────────────────────────────────────────────────────
 
 export interface MCPServer {

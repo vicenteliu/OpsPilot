@@ -1,4 +1,4 @@
-"""POST /api/doc/generate — vendor operational document generation."""
+"""Vendor document API routes: generate and list stored docs."""
 
 from __future__ import annotations
 
@@ -104,3 +104,28 @@ async def generate_vendor_doc(body: DocGenRequest, request: Request) -> ApiRunRe
             cost_usd=result.usage.cost_usd,
         ),
     )
+
+
+@router.get("/vendor-docs")
+async def list_vendor_docs(request: Request) -> dict[str, Any]:
+    """List all stored vendor docs from ~/.opspilot/vendor-docs/."""
+    cfg = request.app.state.cfg
+    vd_dir = cfg.home / "vendor-docs"
+
+    docs = []
+    if vd_dir.is_dir():
+        for json_file in sorted(vd_dir.glob("*.json")):
+            try:
+                data = json.loads(json_file.read_text(encoding="utf-8"))
+                docs.append({
+                    "filename": json_file.name,
+                    "doc_ref": data.get("doc_ref", ""),
+                    "template_id": data.get("template_id", ""),
+                    "title": data.get("title", ""),
+                    "scope_note": data.get("scope_note"),
+                    "sections_count": len(data.get("sections") or []),
+                    "citations_count": len(data.get("citations") or []),
+                })
+            except Exception:  # noqa: BLE001
+                pass
+    return {"docs": docs, "total": len(docs)}

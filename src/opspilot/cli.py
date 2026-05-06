@@ -617,6 +617,30 @@ def doc_generate(
         raise typer.Exit(code=2)
 
 
+@doc_app.command("import-dir")
+def doc_import_dir(
+    directory: Path = typer.Argument(  # noqa: B008
+        ..., help="Directory containing vendor doc .json files to import."
+    ),
+) -> None:
+    """Copy pre-authored vendor doc .json files into ~/.opspilot/vendor-docs/."""
+    cfg = load_config()
+    vd_dir = cfg.home / "vendor-docs"
+    vd_dir.mkdir(parents=True, exist_ok=True)
+
+    files = sorted(directory.rglob("*.json"))
+    if not files:
+        _err.print(f"[yellow]No .json files found under {directory}[/yellow]")
+        raise typer.Exit(code=1)
+
+    for json_file in files:
+        dest = vd_dir / json_file.name
+        dest.write_bytes(json_file.read_bytes())
+        _console.print(f"  [green]✓[/green] {json_file.name}")
+
+    _console.print(f"\n[bold]{len(files)}[/bold] vendor doc(s) imported to {vd_dir}")
+
+
 # ──────────────────────────────────────────────────────────────────────────
 #  harness (PR-8)
 # ──────────────────────────────────────────────────────────────────────────
@@ -1274,6 +1298,33 @@ def wiki_promote(
             f"  (v{result.new_version})"
         )
         _console.print(f"  path: {result.page_path}")
+
+
+@wiki_app.command("import-dir")
+def wiki_import_dir(
+    directory: Path = typer.Argument(  # noqa: B008
+        ..., help="Directory containing pre-authored wiki .md page files."
+    ),
+    wiki_root: Path = typer.Option(  # noqa: B008
+        None, "--wiki-root", help="Wiki root (default: ~/.opspilot/wiki)."
+    ),
+) -> None:
+    """Copy pre-authored wiki .md files into ~/.opspilot/wiki/pages/."""
+    cfg = load_config()
+    pages_dir = (wiki_root or cfg.home / "wiki") / "pages"
+    pages_dir.mkdir(parents=True, exist_ok=True)
+
+    files = sorted(directory.rglob("*.md"))
+    if not files:
+        _err.print(f"[yellow]No .md files found under {directory}[/yellow]")
+        raise typer.Exit(code=1)
+
+    for md_file in files:
+        dest = pages_dir / md_file.name
+        dest.write_bytes(md_file.read_bytes())
+        _console.print(f"  [green]✓[/green] {md_file.name}")
+
+    _console.print(f"\n[bold]{len(files)}[/bold] page(s) imported to {pages_dir}")
 
 
 # ──────────────────────────────────────────────────────────────────────────

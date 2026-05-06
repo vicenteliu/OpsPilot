@@ -4,9 +4,10 @@
     getConfig, getModels, runTicket, listSessions, getSession, getLineage,
     getKBStats, listKBDocs, searchKB, wikiIngest, wikiQueryToPage, wikiLint, wikiPromote, listMCPServers,
     listConflicts, resolveConflict, correctChunk, listCorrections, generateVendorDoc,
+    listWikiPages, listVendorDocs,
     type RunResponse, type TicketSummary, type NextAction, type SessionSummary, type ModelOption, type SkillLineage,
     type KBDoc, type KBHit, type KBConflict, type KBStats, type KBCorrection, type WikiLintIssue, type MCPServer,
-    type VendorDoc, type VendorDocSection
+    type VendorDoc, type VendorDocSection, type WikiPageSummary, type VendorDocSummary
   } from '$lib/api';
 
   // --- Theme ---
@@ -92,6 +93,10 @@
   let wikiError = $state<string | null>(null);
   let wikiLintIssues = $state<WikiLintIssue[]>([]);
   let wikiLintLoading = $state<boolean>(false);
+  let wikiPages = $state<WikiPageSummary[]>([]);
+  let wikiPagesLoading = $state<boolean>(false);
+  let vendorDocList = $state<VendorDocSummary[]>([]);
+  let vendorDocListLoading = $state<boolean>(false);
 
   // Vendor Doc state
   let vendorDocTopic = $state<string>('');
@@ -330,6 +335,18 @@
     } finally {
       wikiLoading = false;
     }
+  }
+
+  async function loadWikiPages() {
+    wikiPagesLoading = true;
+    try { wikiPages = await listWikiPages(); } catch { wikiPages = []; }
+    finally { wikiPagesLoading = false; }
+  }
+
+  async function loadVendorDocList() {
+    vendorDocListLoading = true;
+    try { vendorDocList = await listVendorDocs(); } catch { vendorDocList = []; }
+    finally { vendorDocListLoading = false; }
   }
 
   // ── Conflict handlers ───────────────────────────────────────────────────────
@@ -841,6 +858,31 @@
       {:else if !wikiLintLoading && wikiLintIssues !== null}
         <p class="section-empty">Run lint to check wiki pages.</p>
       {/if}
+
+      <div class="action-row" style="margin-top:1rem">
+        <button class="btn-action btn-secondary" onclick={loadWikiPages} disabled={wikiPagesLoading}>
+          {wikiPagesLoading ? '…' : 'List Pages'}
+        </button>
+      </div>
+
+      {#if wikiPages.length > 0}
+        <table class="data-table" style="margin-top:0.5rem">
+          <thead><tr><th>Slug</th><th>Kind</th><th>Title</th><th>State</th><th>Lang</th></tr></thead>
+          <tbody>
+            {#each wikiPages as p}
+              <tr>
+                <td class="mono">{p.slug}</td>
+                <td><span class="sev-badge sev-info">{p.kind}</span></td>
+                <td>{p.title}</td>
+                <td><span class="sev-badge sev-{p.lifecycle_state === 'live' ? 'ok' : 'warn'}">{p.lifecycle_state}</span></td>
+                <td class="mono dim">{p.language}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      {:else if !wikiPagesLoading && wikiPages !== null}
+        <p class="section-empty" style="margin-top:0.5rem">No pages yet — click List Pages.</p>
+      {/if}
     </section>
 
     <!-- Vendor Doc module -->
@@ -939,6 +981,31 @@
             </details>
           {/if}
         </div>
+      {/if}
+
+      <div class="action-row" style="margin-top:1rem">
+        <button class="btn-action btn-secondary" onclick={loadVendorDocList} disabled={vendorDocListLoading}>
+          {vendorDocListLoading ? '…' : 'List Saved Docs'}
+        </button>
+      </div>
+
+      {#if vendorDocList.length > 0}
+        <table class="data-table" style="margin-top:0.5rem">
+          <thead><tr><th>Doc Ref</th><th>Template</th><th>Title</th><th>Sections</th><th>Citations</th></tr></thead>
+          <tbody>
+            {#each vendorDocList as d}
+              <tr>
+                <td class="mono">{d.doc_ref}</td>
+                <td><span class="sev-badge sev-info">{d.template_id.replace('_', ' ')}</span></td>
+                <td>{d.title.slice(0, 60)}{d.title.length > 60 ? '…' : ''}</td>
+                <td class="mono">{d.sections_count}</td>
+                <td class="mono">{d.citations_count}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      {:else if !vendorDocListLoading && vendorDocList !== null}
+        <p class="section-empty" style="margin-top:0.5rem">No saved docs — click List Saved Docs.</p>
       {/if}
     </section>
 

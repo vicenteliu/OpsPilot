@@ -142,6 +142,35 @@ async def wiki_lint(request: Request) -> dict[str, Any]:
     }
 
 
+@router.get("/wiki/pages")
+async def list_wiki_pages(request: Request) -> dict[str, Any]:
+    """List all wiki pages from ~/.opspilot/wiki/pages/."""
+    cfg = request.app.state.cfg
+    pages_dir = cfg.home / "wiki" / "pages"
+
+    from ...wiki.page import read_page
+
+    pages = []
+    if pages_dir.is_dir():
+        for md_file in sorted(pages_dir.rglob("*.md")):
+            try:
+                page = read_page(md_file)
+                pages.append({
+                    "page_id": page.page_id,
+                    "slug": page.slug,
+                    "kind": page.kind,
+                    "title": page.title,
+                    "summary": page.summary,
+                    "lifecycle_state": page.lifecycle_state,
+                    "language": page.language,
+                    "tags": page.tags,
+                    "updated_at": page.updated_at,
+                })
+            except Exception:  # noqa: BLE001
+                pass
+    return {"pages": pages, "total": len(pages)}
+
+
 @router.post("/wiki/promote/{slug}")
 async def wiki_promote(slug: str, request: Request) -> dict[str, Any]:
     """Promote a draft/reviewed wiki page to live."""
