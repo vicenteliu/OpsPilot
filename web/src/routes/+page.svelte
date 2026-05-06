@@ -3,7 +3,7 @@
   import {
     getConfig, getModels, runTicketStream, listSessions, getSession, getLineage,
     getKBStats, listKBDocs, searchKB, wikiIngest, wikiQueryToPage, wikiLint, wikiPromote, listMCPServers,
-    listConflicts, resolveConflict, correctChunk, listCorrections, generateVendorDoc,
+    listConflicts, resolveConflict, correctChunk, listCorrections, generateVendorDoc, generateVendorDocStream,
     listWikiPages, listVendorDocs, getWikiPage, getVendorDoc,
     type RunResponse, type TicketSummary, type NextAction, type SessionSummary, type ModelOption, type SkillLineage,
     type KBDoc, type KBHit, type KBConflict, type KBStats, type KBCorrection, type WikiLintIssue, type MCPServer,
@@ -52,6 +52,7 @@
   let historyLoading = $state<boolean>(false);
   let expanded = $state<Record<string, boolean>>({});
   let sessionCache = $state<Record<string, RunResponse>>({});
+  let sessionLoadingId = $state<string | null>(null);
   let lineages = $state<SkillLineage[]>([]);
   let lineageLoading = $state<boolean>(false);
   let lineageError = $state<string | null>(null);
@@ -110,6 +111,7 @@
   let vendorDocTemplateId = $state<string>('sop_summary');
   let vendorDocVendorName = $state<string>('');
   let vendorDocLoading = $state<boolean>(false);
+  let vendorDocStatusLines = $state<string[]>([]);
   let vendorDocResult = $state<VendorDoc | null>(null);
   let vendorDocError = $state<string | null>(null);
   let vendorDocUsage = $state<RunResponse['usage'] | null>(null);
@@ -186,12 +188,15 @@
       return;
     }
     if (!sessionCache[sessionId]) {
+      sessionLoadingId = sessionId;
       try {
         const res = await getSession(sessionId);
         sessionCache = { ...sessionCache, [sessionId]: res };
       } catch {
+        sessionLoadingId = null;
         return;
       }
+      sessionLoadingId = null;
     }
     expanded = { ...expanded, [sessionId]: true };
   }
@@ -448,19 +453,27 @@
   async function handleGenerateVendorDoc() {
     if (!vendorDocTopic.trim()) return;
     vendorDocLoading = true;
+    vendorDocStatusLines = [];
     vendorDocError = null;
     vendorDocResult = null;
     vendorDocUsage = null;
     try {
-      const res = await generateVendorDoc({
+      for await (const event of generateVendorDocStream({
         topic: vendorDocTopic.trim(),
         template_id: vendorDocTemplateId,
         vendor_name: vendorDocVendorName.trim(),
         language: 'en',
-      });
-      vendorDocResult = res.result as VendorDoc;
-      vendorDocUsage = res.usage;
-      if (res.error) vendorDocError = res.error;
+      })) {
+        if (event.type === 'status') {
+          vendorDocStatusLines = [...vendorDocStatusLines, event.message];
+        } else if (event.type === 'result') {
+          vendorDocResult = event.data.result as unknown as VendorDoc;
+          vendorDocUsage = event.data.usage;
+          if (event.data.error) vendorDocError = event.data.error;
+        } else if (event.type === 'error') {
+          vendorDocError = event.message;
+        }
+      }
     } catch (e) {
       vendorDocError = e instanceof Error ? e.message : String(e);
     } finally {
@@ -635,6 +648,7 @@
             <thead>
               <tr>
                 <th>Time</th>
+                <th>Session ID</th>
                 <th>Status</th>
                 <th></th>
               </tr>
@@ -643,19 +657,48 @@
               {#each sessions as s}
                 <tr>
                   <td class="col-time">{new Date(s.created_at).toLocaleString()}</td>
+                  <td class="col-sid mono">{s.session_id.slice(0, 26)}…</td>
                   <td>
                     <span class="status-badge status-{s.status}">{s.status}</span>
                   </td>
                   <td>
-                    <button class="btn-view" onclick={() => toggleSession(s.session_id)}>
-                      {expanded[s.session_id] ? '▲ Hide' : '▼ View'}
+                    <button class="btn-view" onclick={() => toggleSession(s.session_id)}
+                      disabled={sessionLoadingId === s.session_id}>
+                      {#if sessionLoadingId === s.session_id}
+                        …
+                      {:else if expanded[s.session_id]}
+                        ▲ Hide
+                      {:else}
+                        ▼ View
+                      {/if}
                     </button>
                   </td>
                 </tr>
                 {#if expanded[s.session_id] && sessionCache[s.session_id]}
+                  {@const sd = sessionCache[s.session_id]}
                   <tr class="expanded-row">
-                    <td colspan="3">
-                      {@render outputCards(sessionCache[s.session_id].result as TicketSummary)}
+                    <td colspan="4">
+                      <div class="session-detail">
+                        <div class="session-detail-meta">
+                          <span class="mono dim">{sd.session_id}</span>
+                          {#if sd.artifact_id}
+                            <span class="dim">· artifact <span class="mono">{sd.artifact_id}</span></span>
+                          {/if}
+                          {#if sd.usage}
+                            <span class="usage-badge">
+                              ↑ {sd.usage.input_tokens.toLocaleString()} / ↓ {sd.usage.output_tokens.toLocaleString()} tokens
+                              {#if sd.usage.cost_usd > 0}· ${sd.usage.cost_usd.toFixed(4)}{/if}
+                            </span>
+                          {/if}
+                        </div>
+                        {#if sd.error}
+                          <div class="error-banner" style="margin:0.5rem 0">
+                            <strong>Error:</strong> {sd.error}
+                          </div>
+                        {:else if sd.result}
+                          {@render outputCards(sd.result as TicketSummary)}
+                        {/if}
+                      </div>
                     </td>
                   </tr>
                 {/if}
@@ -1038,6 +1081,17 @@
           {/if}
         </div>
       </div>
+
+      {#if vendorDocStatusLines.length > 0}
+        <div class="status-log" style="margin-top:0.75rem">
+          {#each vendorDocStatusLines as line}
+            <div class="status-line">› {line}</div>
+          {/each}
+          {#if vendorDocLoading}
+            <div class="status-line status-line--active">…</div>
+          {/if}
+        </div>
+      {/if}
 
       {#if vendorDocError}
         <p class="section-error" style="margin-top:0.5rem">{vendorDocError}</p>
@@ -1606,6 +1660,26 @@
     padding: 0;
     background: var(--bg-subtle);
     border-bottom: 2px solid var(--border-strong);
+  }
+
+  .col-sid {
+    font-family: 'Courier New', monospace;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+
+  .session-detail {
+    padding: 0.75rem 1.25rem 1rem;
+  }
+
+  .session-detail-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+    font-size: 0.82rem;
   }
 
   .wiki-detail { padding: 1rem 1.25rem; }
