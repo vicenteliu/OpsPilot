@@ -589,18 +589,24 @@ def _harness_dispatch(
         embedding_model=embedding_model,
     )
     redactor = Redactor.from_yaml()
-    provider = make_provider("ollama-local")
+    chat_provider = make_provider(
+        playbook.model.provider_id,
+        kind=playbook.model.kind,
+        api_key=cfg.anthropic_api_key if playbook.model.provider_id.startswith("anthropic") else None,
+    )
+    # Embed provider: always Ollama (other providers don't support embeddings)
+    embed_provider = make_provider("ollama-local")
     sm = __import__("opspilot.session", fromlist=["SessionManager"]).SessionManager(home=cfg.home)
 
     def embed_fn(text: str) -> list[float]:
-        return provider.embed([text], model=embed_model_short)[0]
+        return embed_provider.embed([text], model=embed_model_short)[0]
 
     result = run_harness(
         fixture=fixture,
         golden=golden,
         playbook=playbook,
         session_manager=sm,
-        provider=provider,
+        provider=chat_provider,
         redactor=redactor,
         embed_fn=embed_fn,
         sqlite_store=sqlite,

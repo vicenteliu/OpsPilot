@@ -1,0 +1,91 @@
+# Playbook: pb_ticket_summary_zh_openrouter
+# 中文工单摘要 via OpenRouter — Stage 4 golden test (PR-29)
+# 路径约定：playbooks/<id>/{playbook.yaml, prompt.md}
+
+id: "pb_ticket_summary_zh_openrouter"
+version: "1.4.0"
+
+description: |
+  Identical to pb_ticket_summary_zh but routes through OpenRouter.
+  Used for Stage 4 exit criterion: verify OpenRouter golden test
+  score is within delta < 0.1 of the Anthropic / Ollama baseline.
+
+  Uses retrieval.mode=prefetch (same as baseline playbook).
+
+# Path is resolved relative to this file.
+system_prompt: "prompt.md"
+
+# Output artifact schema (registered in opspilot.schemas registry).
+output_schema: "ticket_summary_v1"
+
+# Tools the orchestrator exposes to the LLM.
+tools:
+  - name: "kb_search"
+    description: "Hybrid (vector + FTS5) retrieval over the OpsPilot KB. Use it when the ticket mentions any system / error / SOP-eligible topic. Returns chunks with citation handles you can reference in your final JSON."
+
+# Primary model — OpenRouter routing to Claude Haiku for comparable baseline.
+model:
+  provider_id: "openrouter"
+  kind: "openai"
+  name: "anthropic/claude-haiku-4-5-20251001"
+  version: "current"
+  params:
+    temperature: 0.2
+    max_tokens: 4096
+
+# Additional selectable models (shown in the UI dropdown alongside the primary).
+# Weak local models (kind=ollama) automatically switch retrieval.mode to prefetch.
+extra_models:
+  - provider_id: "anthropic"
+    kind: "anthropic"
+    name: "claude-sonnet-4-5"
+    version: "2025-01"
+    params:
+      temperature: 0.2
+      top_p: 0.9
+      max_tokens: 8192
+  - provider_id: "anthropic"
+    kind: "anthropic"
+    name: "claude-opus-4-5"
+    version: "2025-01"
+    params:
+      temperature: 0.2
+      top_p: 0.9
+      max_tokens: 8192
+  - provider_id: "openrouter"
+    kind: "openai"
+    name: "google/gemini-2.0-flash-001"
+    version: "2025-01"
+    params:
+      temperature: 0.2
+      top_p: 0.9
+      max_tokens: 4096
+  - provider_id: "ollama-local"
+    kind: "ollama"
+    name: "gemma4:e4b"
+    version: "2026-04"
+    params:
+      temperature: 0.2
+      top_p: 0.9
+      max_tokens: 3000
+
+# Loop bounds.
+limits:
+  max_turns: 8           # tool-call rounds before giving up (mode=tool only)
+  max_kb_search_results: 5
+
+# Sensitivity defaults; CLI may override.
+defaults:
+  retention_class: "medium"
+  sensitivity: "internal"
+  kb_id: "opspilot:public-kb"
+
+# Retrieval strategy (PR-8.5).
+#   mode=tool     — model decides when to call kb_search (classic ReAct)
+#   mode=prefetch — orchestrator pre-runs kb_search and folds hits into
+#                   system prompt; chat runs once with tools=[]
+retrieval:
+  mode: "prefetch"
+  prefetch:
+    # top_k omitted ⇒ falls back to limits.max_kb_search_results (D5)
+    query_fields: ["subject", "body"]
