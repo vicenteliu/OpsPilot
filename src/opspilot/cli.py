@@ -567,6 +567,11 @@ GOLDEN_FIXTURE_PATH = REPO_ROOT / "examples" / "scn_ticket_summary_zh" / "harnes
 GOLDEN_GOLDEN_PATH = REPO_ROOT / "examples" / "scn_ticket_summary_zh" / "harness" / "golden.json"
 GOLDEN_PLAYBOOK_DIR = REPO_ROOT / "playbooks" / "pb_ticket_summary_zh"
 
+GEMINI_FIXTURE_PATH = GOLDEN_FIXTURE_PATH  # same ticket, same KB
+GEMINI_GOLDEN_PATH = GOLDEN_GOLDEN_PATH
+GEMINI_PLAYBOOK_DIR = REPO_ROOT / "playbooks" / "pb_ticket_summary_zh_gemini"
+GEMINI_RESULTS_PATH = REPO_ROOT / "examples" / "scn_ticket_summary_zh_gemini" / "harness" / "results.jsonl"
+
 
 def _harness_dispatch(
     *,
@@ -708,6 +713,43 @@ def harness_golden(
         embedding_dim=embedding_dim,
         embed_model_short=embed_model_short,
         output=output,
+    )
+    if code != 0:
+        raise typer.Exit(code=code)
+
+
+@harness_app.command("golden-gemini")
+def harness_golden_gemini(
+    embedding_model: str = typer.Option(
+        "ollama-local/nomic-embed-text-v2-moe@2026-04", "--embedding-model"
+    ),
+    embedding_dim: int = typer.Option(768, "--embedding-dim"),
+    embed_model_short: str = typer.Option("nomic-embed-text-v2-moe", "--ollama-embed-model"),
+    output: Path | None = typer.Option(  # noqa: B008
+        None,
+        "--output",
+        "-o",
+        help="Append result row to this results.jsonl path (default: examples/scn_ticket_summary_zh_gemini/harness/results.jsonl).",
+    ),
+) -> None:
+    """Run the Stage 5 Gemini golden test (scn_ticket_summary_zh via Gemini API).
+
+    Requires GEMINI_API_KEY to be set. Passes when weighted_score is within
+    delta < 0.1 of the Anthropic baseline (0.968).
+    """
+    if not GEMINI_FIXTURE_PATH.is_file():
+        _err.print(f"[red]fixture not found:[/red] {GEMINI_FIXTURE_PATH}")
+        raise typer.Exit(code=1)
+    resolved_output = output or GEMINI_RESULTS_PATH
+    code = _harness_dispatch(
+        fixture_path=GEMINI_FIXTURE_PATH,
+        golden_path=GEMINI_GOLDEN_PATH,
+        playbook_dir=GEMINI_PLAYBOOK_DIR,
+        owner="harness@opspilot",
+        embedding_model=embedding_model,
+        embedding_dim=embedding_dim,
+        embed_model_short=embed_model_short,
+        output=resolved_output,
     )
     if code != 0:
         raise typer.Exit(code=code)

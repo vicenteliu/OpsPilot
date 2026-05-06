@@ -1,0 +1,112 @@
+# Stage 5 Gemini golden test — PR-33
+# Reuses fixture fix_a1b2c3d4 and KB from scn_ticket_summary_zh.
+# Exit criterion: weighted_score within delta < 0.1 of baseline (0.968).
+
+version: "1.0.0"
+
+run:
+  id: "run_01KQXSM1VCHBXD5P2PKZF82N5G"
+  name: "gemini-golden-scn_ticket_summary_zh-pr33"
+  triggered_by: "manual"
+  ts: "2026-05-05T00:00:00Z"
+
+scenarios:
+  - id: "scn_ticket_summary_zh"
+    fixtures:
+      ids: ["fix_a1b2c3d4"]
+    rubric: "examples/scn_ticket_summary_zh/harness/rubric.md"
+
+playbooks:
+  - id: "pb_ticket_summary_zh_gemini"
+    versions: ["1.0.0"]
+
+models:
+  - "gemini/gemini-2.5-flash@2026-05"
+
+evaluators:
+  - id: "ev_pii_check"
+    type: "rule.pii_check"
+    weight: 0.0
+    hard_fail: true
+    rules_ref: "session/templates/redaction-rules.template.yaml"
+
+  - id: "ev_must_contain"
+    type: "rule.regex"
+    weight: 0.10
+    config:
+      from_golden: true
+      mode: "all"
+
+  - id: "ev_must_not_contain"
+    type: "rule.regex"
+    weight: 0.0
+    hard_fail: true
+    config:
+      from_golden: true
+      mode: "none"
+
+  - id: "ev_schema"
+    type: "rule.json_schema"
+    weight: 0.15
+    config:
+      schema_ref: "examples/scn_ticket_summary_zh/harness/golden.json#schema_check"
+
+  - id: "ev_rag_recall_at_k"
+    type: "rag.recall_at_k"
+    weight: 0.10
+    config:
+      k: 3
+      ground_truth_field: "extensions.rag_ground_truth.must_retrieve_doc_ids"
+      retrieval_response_ref: "examples/scn_ticket_summary_zh/retrieval/response.json"
+
+  - id: "ev_rag_precision_at_k"
+    type: "rag.precision_at_k"
+    weight: 0.05
+    config:
+      k: 3
+      ground_truth_field: "extensions.rag_ground_truth.must_retrieve_chunk_ids"
+      relevant_set_field: "extensions.rag_ground_truth.should_retrieve_chunk_ids"
+      retrieval_response_ref: "examples/scn_ticket_summary_zh/retrieval/response.json"
+
+  - id: "ev_rag_citation_validity"
+    type: "rag.citation_validity"
+    weight: 0.20
+    hard_fail: true
+    config:
+      check: "every citation must resolve to chunk_id in retrieval response AND line range matches kb chunks"
+      retrieval_response_ref: "examples/scn_ticket_summary_zh/retrieval/response.json"
+      chunks_ref: "examples/scn_ticket_summary_zh/kb/chunks.jsonl"
+
+  - id: "ev_judge"
+    type: "judge.llm"
+    weight: 0.40
+    config:
+      judge_model: "anthropic-claude/claude-haiku-4-5@2025-10"
+      judge_prompt_hash: "sha256:11d12e9f7c5a4b3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0c9d"
+      rubric_ref: "examples/scn_ticket_summary_zh/harness/rubric.md"
+
+thresholds:
+  pass_rate_min: 1.0
+  regression_delta_max: -0.03
+  cost_per_run_usd_max: 0.05
+  latency_p95_ms_max: 12000
+
+# Baseline for delta check (Stage 5 exit criterion 1).
+# delta = |gemini_score - baseline_score| < 0.1
+baseline:
+  model_ref: "anthropic-claude/claude-sonnet-4-6@2026-04"
+  weighted_score: 0.968
+
+retries:
+  on_evaluator_failure: 0
+  on_infra_error: 1
+
+report:
+  formats: ["md", "json"]
+  archive_to: "examples/scn_ticket_summary_zh_gemini/harness/"
+
+ci:
+  block_merge_on_gate_fail: true
+  notify:
+    on_regression: []
+    on_green: []

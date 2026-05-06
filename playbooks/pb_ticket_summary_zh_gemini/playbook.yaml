@@ -1,0 +1,70 @@
+# Playbook: pb_ticket_summary_zh_gemini
+# 中文工单摘要 via Google Gemini API — Stage 5 golden test (PR-33)
+# 路径约定：playbooks/<id>/{playbook.yaml, prompt.md}
+
+id: "pb_ticket_summary_zh_gemini"
+version: "1.0.0"
+
+description: |
+  Identical to pb_ticket_summary_zh but routes through Google Gemini API directly.
+  Used for Stage 5 exit criterion: verify Gemini golden test score is within
+  delta < 0.1 of the Anthropic / Ollama baseline (baseline weighted_score ≈ 0.968).
+
+  Uses retrieval.mode=prefetch (same as baseline playbook).
+  API key: GEMINI_API_KEY env var.
+
+# Path is resolved relative to this file.
+system_prompt: "prompt.md"
+
+# Output artifact schema (registered in opspilot.schemas registry).
+output_schema: "ticket_summary_v1"
+
+# Tools the orchestrator exposes to the LLM.
+tools:
+  - name: "kb_search"
+    description: "Hybrid (vector + FTS5) retrieval over the OpsPilot KB. Use it when the ticket mentions any system / error / SOP-eligible topic. Returns chunks with citation handles you can reference in your final JSON."
+
+# Primary model — Gemini 2.5 Flash (stable for new API keys as of 2026-05).
+model:
+  provider_id: "gemini"
+  kind: "openai"
+  name: "gemini-2.5-flash"
+  version: "2026-05"
+  params:
+    temperature: 0.2
+    max_tokens: 4096
+
+# Additional selectable models.
+extra_models:
+  - provider_id: "gemini"
+    kind: "openai"
+    name: "gemini-2.5-pro"
+    version: "2026-05"
+    params:
+      temperature: 0.2
+      max_tokens: 4096
+  - provider_id: "anthropic"
+    kind: "anthropic"
+    name: "claude-haiku-4-5"
+    version: "2025-10"
+    params:
+      temperature: 0.2
+      top_p: 0.9
+      max_tokens: 4096
+
+# Loop bounds.
+limits:
+  max_turns: 8
+  max_kb_search_results: 5
+
+# Sensitivity defaults; CLI may override.
+defaults:
+  retention_class: "medium"
+  sensitivity: "internal"
+  kb_id: "opspilot:public-kb"
+
+# Retrieval strategy: prefetch (model doesn't need native tool calling).
+retrieval:
+  mode: "prefetch"
+  prefetch:
+    query_fields: ["subject", "body"]
