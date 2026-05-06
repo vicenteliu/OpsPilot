@@ -8,10 +8,20 @@ from textual.widget import Widget
 from textual.widgets import DataTable, Label
 
 _PROVIDERS = [
-    ("ollama-local", "ollama", "Ollama (local)"),
-    ("anthropic", "anthropic", "Anthropic"),
-    ("openai", "openai", "OpenAI"),
+    ("ollama-local", "ollama",     "Ollama (local)"),
+    ("anthropic",   "anthropic",   "Anthropic"),
+    ("openai",      "openai",      "OpenAI"),
+    ("openrouter",  "openai",      "OpenRouter"),
+    ("gemini",      "openai",      "Gemini"),
 ]
+
+# Maps provider_id → env var name shown in the "no key" hint.
+_KEY_ENV: dict[str, str] = {
+    "anthropic":  "ANTHROPIC_API_KEY",
+    "openai":     "OPENAI_API_KEY",
+    "openrouter": "OPENROUTER_API_KEY",
+    "gemini":     "GEMINI_API_KEY",
+}
 
 
 class ProvidersScreen(Widget):
@@ -31,25 +41,25 @@ class ProvidersScreen(Widget):
 
     @work(thread=True)
     def probe_providers(self) -> None:
-        from ...config import load_config
+        from ...errors import ProviderError
         from ...providers import make_provider
 
-        cfg = load_config()
         rows: list[tuple[str, str, str, str]] = []
 
         for pid, kind, name in _PROVIDERS:
+            status = ""
             detail = ""
             try:
-                if kind == "anthropic" and not cfg.anthropic_api_key:
+                p = make_provider(pid, kind=kind)
+                ok = p.health_probe()
+                status = "● online" if ok else "○ offline"
+            except ProviderError as exc:
+                if exc.error_code == "missing_api_key":
                     status = "○ no key"
-                    detail = "set ANTHROPIC_API_KEY"
-                elif kind == "openai":
-                    status = "○ no key"
-                    detail = "set OPENAI_API_KEY"
+                    detail = f"set {_KEY_ENV.get(pid, 'API key')}"
                 else:
-                    p = make_provider(pid)
-                    ok = p.health_probe()
-                    status = "● online" if ok else "○ offline"
+                    status = "○ error"
+                    detail = str(exc)[:60]
             except Exception as exc:  # noqa: BLE001
                 status = "○ error"
                 detail = str(exc)[:60]

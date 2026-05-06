@@ -197,7 +197,7 @@ class TestProvidersScreen:
             await pilot.press("7")
             await pilot.pause(0.5)
             dt = pilot.app.query_one(ProvidersScreen).query_one(DataTable)
-            assert dt.row_count == 3  # ollama, anthropic, openai
+            assert dt.row_count == 5  # ollama, anthropic, openai, openrouter, gemini
 
 
 class TestConfigScreen:
