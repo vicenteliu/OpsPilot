@@ -21,6 +21,9 @@ OpsPilot turns raw IT tickets into structured, KB-cited summaries using a playbo
 - **Session history** — past runs listed inline with expandable output cards for side-by-side comparison
 - **Terminal UI (TUI)** — 8-module Textual workbench: dashboard, sessions, KB browser, wiki tree, harness, lint issues, providers, config; run playbooks inline with `R`; generate wiki pages from sessions with `W`; promote draft wiki pages with `P`
 - **Wiki layer** — compounding knowledge base built on top of the long-term KB: ingest KB docs into wiki summary pages, auto-generate synthesis pages from qualifying session responses, lint for orphans/broken links/redaction warnings, promote pages through a `draft → reviewed → live → stale → archived` lifecycle
+- **Sandbox (L2)** — Docker-hardened action execution with seccomp, cap-drop, read-only rootfs, and an approval gate that blocks destructive patterns (`rm -rf`, `DROP TABLE`, fork bombs, prod env mutations); dry-run preview before committing any action
+- **MCP client** — JSON-RPC 2.0 client for Model Context Protocol servers (stdio and HTTP transports); per-server allowlist/denylist tool filtering; secret detection blocks inline literals in env config
+- **Observability** — Prometheus-format `/metrics` endpoint, structured JSON logging (OTel-compatible), `/health` with uptime and version
 - **Rust extensions** — `opspilot_chunker` (9.6× faster than pure Python) and `opspilot_tokenizer` (45× faster BPE-ish token counter) compiled via PyO3/maturin
 
 ---
@@ -72,8 +75,9 @@ opspilot tui run --input ticket.json              # open run modal directly
 ### 6. Start the API server (optional web UI)
 
 ```bash
-source .env  # or: set -a && source .env && set +a
-uvicorn opspilot.api.app:app --reload
+source .env
+opspilot serve --reload                           # dev (hot-reload)
+opspilot serve --host 0.0.0.0 --workers 2 --json-logs   # production
 ```
 
 ### 7. Start the web UI (optional)
@@ -96,6 +100,7 @@ Browser (Svelte 5 / SvelteKit)
   │  GET  /api/models  ·  GET /api/sessions
   ▼
 FastAPI  (opspilot.api)
+  │  GET /health · GET /metrics (Prometheus)
   │  resolves playbook + provider from model_id
   ▼
 Orchestrator  (opspilot.orchestrator.ticket_summary)
@@ -129,7 +134,7 @@ Browser  — renders output cards + token count badge
 
 ```
 src/opspilot/
-  api/          FastAPI routes: /run  /config  /models  /sessions
+  api/          FastAPI routes: /run  /config  /models  /sessions  /health  /metrics
   orchestrator/ Playbook runner — chat loop, tool dispatch, schema validate
   providers/    AnthropicProvider · OpenAIProvider · OllamaProvider
   memory/       SqliteStore (FTS5) · LanceStore (vectors)
@@ -138,9 +143,12 @@ src/opspilot/
   schemas/      JSON Schema registry + validator
   wiki/         ingest · query_to_page · lint · promote — compounding KB layer
   tui/          Textual TUI shell + 8 screens + RunModal + WikiQueryModal
+  sandbox/      L2 Docker execution engine + approval gate
+  mcp/          MCP JSON-RPC 2.0 client — stdio + HTTP transports
 web/            Svelte 5 frontend (model selector, run, history)
 playbooks/      YAML playbook specs + system prompts
 kb/             Source documents for KB ingestion
+deploy/         systemd unit + nginx config for Linux production
 ```
 
 ### Full system design (Providers × Skills × Memory × Session × Sandbox × Harness)
@@ -175,7 +183,7 @@ The six layers form a closed AI task loop:
 - **memory/** — three-tier memory: short-term (in-trace summaries) / mid-term (SQLite + markdown) / long-term (LanceDB + markdown); RAG retrieval and reranking
 - **wiki/** — LLM-maintained synthesis layer on top of the long-term KB: 5 page kinds + cross-links + lint; query answers can be written back as new pages, forming a compounding insight loop
 - **session/** — "context + trace + artifact + audit" bundle for every AI task; the carrier for compliance
-- **sandbox/** — isolated execution layer for AI-proposed actions ("show me before committing"); default deny-all
+- **sandbox/** — isolated execution layer for AI-proposed actions ("show me before committing"); L2: Docker hardened (seccomp + cap-drop + RO rootfs); default deny-all
 - **harness/** — unit tests and regression gates for prompts and playbooks; required before model upgrades
 
 > The spec-only directories (`providers/`, `skills/`, `wiki/`, `session/`, `sandbox/`, `harness/` at repo root) define these contracts and templates. The working implementation lives under `src/opspilot/`.
@@ -229,6 +237,74 @@ opspilot tui run --input ticket.json --playbook playbooks/pb_ticket_summary_zh
 
 ---
 
+## Harness CLI
+
+```bash
+# Run a single fixture against a playbook
+opspilot harness run \
+  --fixture examples/scn_ticket_summary_zh/harness/fixture.json \
+  --golden  examples/scn_ticket_summary_zh/harness/golden.json \
+  --playbook playbooks/pb_ticket_summary_zh \
+  --output results.jsonl
+
+# Stage 1 golden test (Anthropic baseline, weighted_score ≈ 0.968)
+opspilot harness golden
+
+# Stage 5 Gemini golden test (gemini-2.5-flash, weighted_score ≈ 0.917, delta 0.051)
+opspilot harness golden-gemini    # requires GEMINI_API_KEY
+```
+
+Golden test scores vs baseline (threshold: delta < 0.1):
+
+| Provider | Model | weighted_score | delta |
+|---|---|---|---|
+| Anthropic | claude-sonnet-4-6 | 0.968 | — baseline |
+| OpenRouter | claude-haiku-4-5 (via OR) | 0.983 | 0.015 ✅ |
+| Gemini | gemini-2.5-flash | 0.917 | 0.051 ✅ |
+
+---
+
+## Sandbox CLI
+
+The sandbox runs AI-proposed shell actions in a Docker L2 container (seccomp + `--cap-drop=ALL` + read-only rootfs). An approval gate blocks patterns like `rm -rf`, `DROP TABLE`, `chmod 777`, and fork bombs.
+
+```bash
+# Preview an action (no execution)
+opspilot sandbox dry-run --action examples/sandbox_shell_l2/action.yaml
+
+# Execute (requires Docker; dangerous patterns require --force-approve)
+opspilot sandbox run --action examples/sandbox_shell_l2/action.yaml
+```
+
+---
+
+## MCP CLI
+
+```bash
+# List all enabled MCP servers and their available tools
+opspilot mcp list --config mcp-config.yaml
+
+# Connect to a single server and report health
+opspilot mcp probe --config mcp-config.yaml --server fs-readonly
+```
+
+MCP config example (`mcp-config.yaml`):
+
+```yaml
+version: "1"
+mcps:
+  - id: fs-readonly
+    name: "Filesystem (read-only)"
+    transport: stdio
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+    tools_prefix: "mcp__fs__"
+    tools_allowlist: ["read_file", "list_directory"]
+    enabled: true
+```
+
+---
+
 ## Wiki CLI
 
 The wiki layer converts KB documents and session responses into a browsable,
@@ -256,6 +332,41 @@ Pages are always written as `draft` by automated tools. Human review (CLI or TUI
 
 ---
 
+## Production deployment
+
+### Docker Compose
+
+```bash
+cp .env.example .env   # add API keys
+docker compose -f docker-compose.prod.yml up -d
+curl http://localhost:8000/health
+```
+
+### systemd (Linux)
+
+```bash
+sudo cp deploy/systemd/opspilot.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now opspilot
+```
+
+See [`deploy/systemd/README.md`](deploy/systemd/README.md) for full setup instructions.
+
+### Observability
+
+| Endpoint | Description |
+|---|---|
+| `GET /health` | Status, version, uptime |
+| `GET /metrics` | Prometheus-format counters and histograms |
+
+Structured JSON logging (OTel-compatible) is enabled with `--json-logs`:
+
+```bash
+opspilot serve --json-logs 2>&1 | jq .
+# {"ts":"2026-05-05T10:00:00Z","severity":"INFO","logger":"opspilot.api","msg":"GET /health 200 1ms"}
+```
+
+---
+
 ## Configuration
 
 All settings live in `~/.opspilot/config.yaml` (optional) or environment variables. See `.env.example` for the full list.
@@ -274,7 +385,7 @@ All settings live in `~/.opspilot/config.yaml` (optional) or environment variabl
 ## Running tests
 
 ```bash
-pytest                        # all tests
+pytest                        # all tests (644 tests, 84% coverage)
 pytest -m "not requires_ollama"  # skip tests that need a live Ollama instance
 ```
 
@@ -285,10 +396,21 @@ pytest -m "not requires_ollama"  # skip tests that need a live Ollama instance
 ```
 .
 ├── src/opspilot/       # Python package (API, orchestrator, providers, memory, …)
+│   ├── api/            #   FastAPI app + routes + middleware (health, metrics)
+│   ├── orchestrator/   #   Ticket summary playbook runner
+│   ├── providers/      #   Anthropic · OpenAI-compat (OpenAI/OpenRouter/Gemini) · Ollama
+│   ├── memory/         #   SqliteStore (FTS5) + LanceStore (vectors)
+│   ├── session/        #   SessionManager · TraceWriter · ArtifactStore
+│   ├── sandbox/        #   L2 Docker execution engine + approval gate
+│   ├── mcp/            #   MCP JSON-RPC 2.0 client (stdio + HTTP)
+│   ├── wiki/           #   Wiki ingest · query-to-page · lint · promote
+│   └── tui/            #   Textual terminal UI
 ├── web/                # Svelte 5 frontend
 ├── playbooks/          # Playbook YAML + system prompts
 ├── kb/                 # Source documents for KB ingestion
 ├── tests/              # pytest test suite
+├── deploy/             # systemd unit + nginx config
+├── docker-compose.prod.yml
 ├── .env.example        # Environment variable reference
 │
 │  # ── Spec-only directories (contracts and templates, no running implementation) ──
@@ -310,6 +432,7 @@ pytest -m "not requires_ollama"  # skip tests that need a live Ollama instance
 - **Never paste PII, credentials, or internal secrets** into any model or tool. The redaction layer handles structured tickets, but always sanitize manually first.
 - Cloud API keys are resolved from environment variables — never committed to the repository.
 - All session traces are stored locally in `~/.opspilot/sessions/`.
+- The sandbox approval gate blocks irreversible or destructive shell patterns by default; use `--force-approve` only when you have reviewed the dry-run output.
 
 ---
 
