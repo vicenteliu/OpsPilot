@@ -135,3 +135,123 @@ export async function getLineage(): Promise<SkillLineage[]> {
   const data = await res.json();
   return data.lineages;
 }
+
+// ── KB ──────────────────────────────────────────────────────────────────────
+
+export interface KBDoc {
+  doc_id: string;
+  title: string;
+  language: string;
+  chunk_count: number;
+  namespace: string;
+  ingested_at: string;
+}
+
+export interface KBHit {
+  chunk_id: string;
+  document_id: string;
+  score: number;
+  rank_vector: number | null;
+  rank_fts: number | null;
+  content: string;
+}
+
+export async function listKBDocs(): Promise<KBDoc[]> {
+  const res = await fetch('/api/kb/docs');
+  if (!res.ok) throw new Error(`KB docs fetch failed: ${res.status}`);
+  const data = await res.json();
+  return data.docs;
+}
+
+export async function searchKB(query: string, topK = 5): Promise<KBHit[]> {
+  const params = new URLSearchParams({ q: query, top_k: String(topK) });
+  const res = await fetch(`/api/kb/search?${params}`);
+  if (!res.ok) throw new Error(`KB search failed: ${res.status}`);
+  const data = await res.json();
+  return data.hits;
+}
+
+export async function ingestKB(paths: string[]): Promise<{ docs_succeeded: number; docs_failed: number; chunks_total: number }> {
+  const res = await fetch('/api/kb/ingest', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ paths })
+  });
+  if (!res.ok) throw new Error(`KB ingest failed: ${res.status}`);
+  return res.json();
+}
+
+// ── Wiki ─────────────────────────────────────────────────────────────────────
+
+export interface WikiIngestResult {
+  page_id: string;
+  slug: string;
+  page_path: string;
+  pages_created: number;
+  pages_updated: number;
+}
+
+export interface WikiPage {
+  slug: string;
+  page_id: string;
+}
+
+export interface WikiLintIssue {
+  id: string;
+  issue_type: string;
+  severity: string;
+  summary: string;
+  page_slug: string;
+}
+
+export async function wikiIngest(docId: string, model = 'qwen2.5:7b'): Promise<WikiIngestResult> {
+  const res = await fetch('/api/wiki/ingest', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ doc_id: docId, model })
+  });
+  if (!res.ok) throw new Error(`Wiki ingest failed: ${res.status}`);
+  return res.json();
+}
+
+export async function wikiQueryToPage(sessionId?: string): Promise<{ pages_created: number; pages: WikiPage[] }> {
+  const res = await fetch('/api/wiki/query-to-page', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: sessionId ?? null })
+  });
+  if (!res.ok) throw new Error(`Wiki query-to-page failed: ${res.status}`);
+  return res.json();
+}
+
+export async function wikiLint(): Promise<WikiLintIssue[]> {
+  const res = await fetch('/api/wiki/lint');
+  if (!res.ok) throw new Error(`Wiki lint failed: ${res.status}`);
+  const data = await res.json();
+  return data.issues;
+}
+
+export async function wikiPromote(slug: string): Promise<{ old_state: string; new_state: string; new_version: string; skipped: boolean; skip_reason: string }> {
+  const res = await fetch(`/api/wiki/promote/${encodeURIComponent(slug)}`, { method: 'POST' });
+  if (!res.ok) throw new Error(`Wiki promote failed: ${res.status}`);
+  return res.json();
+}
+
+// ── MCP ──────────────────────────────────────────────────────────────────────
+
+export interface MCPServer {
+  id: string;
+  name: string;
+  transport: string;
+  enabled: boolean;
+  tools_prefix: string;
+  trust: string;
+  tools: { name: string; description: string }[];
+}
+
+export async function listMCPServers(): Promise<MCPServer[]> {
+  const res = await fetch('/api/mcp/servers');
+  if (!res.ok) throw new Error(`MCP servers fetch failed: ${res.status}`);
+  const data = await res.json();
+  return data.servers;
+}

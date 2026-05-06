@@ -4,6 +4,18 @@ Exposes:
   GET  /api/config              — active model ref and enabled UI modules
   POST /api/run                 — run ticket summary playbook
   GET  /api/iteration/lineage   — skill lineage history (PR-28)
+  GET  /api/kb/docs             — list ingested KB documents
+  POST /api/kb/ingest           — ingest files into KB
+  GET  /api/kb/search           — hybrid search over KB
+  POST /api/wiki/ingest         — generate wiki page from KB doc
+  POST /api/wiki/query-to-page  — convert session to wiki page
+  GET  /api/wiki/lint           — lint wiki pages
+  POST /api/wiki/promote/{slug} — promote wiki page to live
+  POST /api/harness/run         — run eval harness on a fixture
+  GET  /api/mcp/servers         — list MCP servers
+  GET  /api/mcp/probe/{id}      — probe MCP server health
+  POST /api/sandbox/dry-run     — preview sandbox action
+  POST /api/sandbox/run         — execute sandbox action
 """
 
 from __future__ import annotations
@@ -26,12 +38,17 @@ from ..redaction import Redactor
 from ..session.manager import SessionManager
 from .middleware import ObservabilityMiddleware
 from .routes.config import router as config_router
+from .routes.harness import router as harness_router
 from .routes.health import router as health_router
 from .routes.iteration import router as iteration_router
+from .routes.kb import router as kb_router
+from .routes.mcp import router as mcp_router
 from .routes.metrics import router as metrics_router
 from .routes.models import router as models_router
 from .routes.run import router as run_router
+from .routes.sandbox import router as sandbox_router
 from .routes.sessions import router as sessions_router
+from .routes.wiki import router as wiki_router
 
 
 @asynccontextmanager
@@ -112,3 +129,8 @@ app.include_router(models_router, prefix="/api")
 app.include_router(run_router, prefix="/api")
 app.include_router(sessions_router, prefix="/api")
 app.include_router(iteration_router, prefix="/api")
+app.include_router(kb_router, prefix="/api")
+app.include_router(wiki_router, prefix="/api")
+app.include_router(harness_router, prefix="/api")
+app.include_router(mcp_router, prefix="/api")
+app.include_router(sandbox_router, prefix="/api")

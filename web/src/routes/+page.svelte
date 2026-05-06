@@ -1,6 +1,11 @@
 <script lang="ts">
   import '../app.css';
-  import { getConfig, getModels, runTicket, listSessions, getSession, getLineage, type RunResponse, type NextAction, type SessionSummary, type ModelOption, type SkillLineage } from '$lib/api';
+  import {
+    getConfig, getModels, runTicket, listSessions, getSession, getLineage,
+    listKBDocs, searchKB, wikiIngest, wikiQueryToPage, wikiLint, wikiPromote, listMCPServers,
+    type RunResponse, type NextAction, type SessionSummary, type ModelOption, type SkillLineage,
+    type KBDoc, type KBHit, type WikiLintIssue, type MCPServer
+  } from '$lib/api';
 
   // --- State ---
   let modelRef = $state<string | null>(null);
@@ -32,6 +37,29 @@
   let lineageError = $state<string | null>(null);
   let expandedSkill = $state<Record<string, boolean>>({});
 
+  // KB state
+  let kbDocs = $state<KBDoc[]>([]);
+  let kbDocsLoading = $state<boolean>(false);
+  let kbSearchQuery = $state<string>('');
+  let kbSearchResults = $state<KBHit[]>([]);
+  let kbSearchLoading = $state<boolean>(false);
+  let kbSearchError = $state<string | null>(null);
+  let kbSection = $state<'docs' | 'search'>('docs');
+
+  // Wiki state
+  let wikiDocId = $state<string>('');
+  let wikiSessionId = $state<string>('');
+  let wikiLoading = $state<boolean>(false);
+  let wikiMsg = $state<string | null>(null);
+  let wikiError = $state<string | null>(null);
+  let wikiLintIssues = $state<WikiLintIssue[]>([]);
+  let wikiLintLoading = $state<boolean>(false);
+
+  // MCP state
+  let mcpServers = $state<MCPServer[]>([]);
+  let mcpLoading = $state<boolean>(false);
+  let mcpError = $state<string | null>(null);
+
   // --- Derived ---
   let summary = $derived(result?.result ?? null);
   let runError = $derived(result?.error ?? null);
@@ -60,6 +88,7 @@
       }
       if (modules.history) await refreshHistory();
       if (modules.iteration !== false) await refreshLineage();
+      await loadKBDocs();
     })();
   });
 
@@ -137,6 +166,101 @@
     return actions
       .map((a, i) => `${i + 1}. **${a.action}**\n   ${a.rationale}`)
       .join('\n\n');
+  }
+
+  // ── KB handlers ────────────────────────────────────────────────────────────
+  async function loadKBDocs() {
+    kbDocsLoading = true;
+    try {
+      kbDocs = await listKBDocs();
+    } catch {
+      kbDocs = [];
+    } finally {
+      kbDocsLoading = false;
+    }
+  }
+
+  async function handleKBSearch() {
+    if (!kbSearchQuery.trim()) return;
+    kbSearchLoading = true;
+    kbSearchError = null;
+    kbSearchResults = [];
+    try {
+      kbSearchResults = await searchKB(kbSearchQuery.trim());
+    } catch (e) {
+      kbSearchError = e instanceof Error ? e.message : String(e);
+    } finally {
+      kbSearchLoading = false;
+    }
+  }
+
+  // ── Wiki handlers ───────────────────────────────────────────────────────────
+  async function handleWikiIngest() {
+    if (!wikiDocId.trim()) return;
+    wikiLoading = true;
+    wikiMsg = null;
+    wikiError = null;
+    try {
+      const r = await wikiIngest(wikiDocId.trim());
+      wikiMsg = `✓ Created wiki page: ${r.slug}`;
+    } catch (e) {
+      wikiError = e instanceof Error ? e.message : String(e);
+    } finally {
+      wikiLoading = false;
+    }
+  }
+
+  async function handleWikiQueryToPage() {
+    wikiLoading = true;
+    wikiMsg = null;
+    wikiError = null;
+    try {
+      const r = await wikiQueryToPage(wikiSessionId.trim() || undefined);
+      wikiMsg = `✓ ${r.pages_created} page(s) created`;
+    } catch (e) {
+      wikiError = e instanceof Error ? e.message : String(e);
+    } finally {
+      wikiLoading = false;
+    }
+  }
+
+  async function handleWikiLint() {
+    wikiLintLoading = true;
+    try {
+      wikiLintIssues = await wikiLint();
+    } catch {
+      wikiLintIssues = [];
+    } finally {
+      wikiLintLoading = false;
+    }
+  }
+
+  async function handleWikiPromote(slug: string) {
+    wikiLoading = true;
+    wikiMsg = null;
+    wikiError = null;
+    try {
+      const r = await wikiPromote(slug);
+      wikiMsg = r.skipped ? `Skipped: ${r.skip_reason}` : `✓ ${slug}: ${r.old_state} → ${r.new_state}`;
+    } catch (e) {
+      wikiError = e instanceof Error ? e.message : String(e);
+    } finally {
+      wikiLoading = false;
+    }
+  }
+
+  // ── MCP handlers ────────────────────────────────────────────────────────────
+  async function loadMCPServers() {
+    mcpLoading = true;
+    mcpError = null;
+    try {
+      mcpServers = await listMCPServers();
+    } catch (e) {
+      mcpError = e instanceof Error ? e.message : String(e);
+      mcpServers = [];
+    } finally {
+      mcpLoading = false;
+    }
   }
 </script>
 
@@ -296,6 +420,153 @@
         {/if}
       </section>
     {/if}
+
+    <!-- KB module -->
+    <section class="kb-section">
+      <div class="section-header">
+        <h2>Knowledge Base</h2>
+        <div class="section-tabs">
+          <button class="tab-btn {kbSection === 'docs' ? 'active' : ''}" onclick={() => kbSection = 'docs'}>Docs</button>
+          <button class="tab-btn {kbSection === 'search' ? 'active' : ''}" onclick={() => kbSection = 'search'}>Search</button>
+        </div>
+        <button class="btn-refresh" onclick={loadKBDocs} disabled={kbDocsLoading}>↻</button>
+      </div>
+
+      {#if kbSection === 'docs'}
+        {#if kbDocsLoading}
+          <p class="section-empty">Loading…</p>
+        {:else if kbDocs.length === 0}
+          <p class="section-empty">No documents ingested yet. Use <code>opspilot ingest &lt;file&gt;</code> or the TUI.</p>
+        {:else}
+          <table class="data-table">
+            <thead><tr><th>Doc ID</th><th>Title</th><th>Lang</th><th>Chunks</th><th>Ingested</th></tr></thead>
+            <tbody>
+              {#each kbDocs as doc}
+                <tr>
+                  <td class="mono">{doc.doc_id}</td>
+                  <td>{doc.title || '—'}</td>
+                  <td>{doc.language || '—'}</td>
+                  <td class="num">{doc.chunk_count}</td>
+                  <td class="dim">{doc.ingested_at.slice(0, 10)}</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        {/if}
+      {:else}
+        <div class="search-row">
+          <input
+            class="search-input"
+            bind:value={kbSearchQuery}
+            placeholder="Search KB…"
+            onkeydown={(e) => e.key === 'Enter' && handleKBSearch()}
+          />
+          <button class="btn-action" onclick={handleKBSearch} disabled={kbSearchLoading || !kbSearchQuery.trim()}>
+            {kbSearchLoading ? '…' : 'Search'}
+          </button>
+        </div>
+        {#if kbSearchError}
+          <p class="section-error">{kbSearchError}</p>
+        {:else if kbSearchResults.length > 0}
+          <table class="data-table">
+            <thead><tr><th>Chunk</th><th>Doc</th><th>Score</th><th>Snippet</th></tr></thead>
+            <tbody>
+              {#each kbSearchResults as h}
+                <tr>
+                  <td class="mono">{h.chunk_id.slice(0, 20)}</td>
+                  <td class="mono">{h.document_id.slice(0, 20)}</td>
+                  <td class="num">{h.score.toFixed(4)}</td>
+                  <td class="snippet">{h.content.slice(0, 100)}</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        {:else if !kbSearchLoading && kbSearchQuery}
+          <p class="section-empty">No results.</p>
+        {/if}
+      {/if}
+    </section>
+
+    <!-- Wiki module -->
+    <section class="wiki-section">
+      <div class="section-header">
+        <h2>Wiki</h2>
+      </div>
+
+      <div class="action-row">
+        <input class="short-input" bind:value={wikiDocId} placeholder="KB doc_id for ingest…" />
+        <button class="btn-action" onclick={handleWikiIngest} disabled={wikiLoading || !wikiDocId.trim()}>
+          Ingest KB Doc
+        </button>
+        <input class="short-input" bind:value={wikiSessionId} placeholder="Session ID (blank=scan all)" />
+        <button class="btn-action" onclick={handleWikiQueryToPage} disabled={wikiLoading}>
+          Query→Page
+        </button>
+        <button class="btn-action btn-secondary" onclick={handleWikiLint} disabled={wikiLintLoading}>
+          {wikiLintLoading ? '…' : 'Lint'}
+        </button>
+      </div>
+
+      {#if wikiMsg}
+        <p class="section-ok">{wikiMsg}</p>
+      {/if}
+      {#if wikiError}
+        <p class="section-error">{wikiError}</p>
+      {/if}
+
+      {#if wikiLintIssues.length > 0}
+        <table class="data-table">
+          <thead><tr><th>Severity</th><th>Type</th><th>Page</th><th>Summary</th><th></th></tr></thead>
+          <tbody>
+            {#each wikiLintIssues as issue}
+              <tr>
+                <td><span class="sev-badge sev-{issue.severity}">{issue.severity}</span></td>
+                <td class="mono">{issue.issue_type}</td>
+                <td class="mono">{issue.page_slug}</td>
+                <td>{issue.summary.slice(0, 60)}</td>
+                <td>
+                  {#if issue.page_slug}
+                    <button class="btn-sm" onclick={() => handleWikiPromote(issue.page_slug)}>Promote</button>
+                  {/if}
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      {:else if !wikiLintLoading && wikiLintIssues !== null}
+        <p class="section-empty">Run lint to check wiki pages.</p>
+      {/if}
+    </section>
+
+    <!-- MCP servers module -->
+    <section class="mcp-section">
+      <div class="section-header">
+        <h2>MCP Servers</h2>
+        <button class="btn-refresh" onclick={loadMCPServers} disabled={mcpLoading}>↻</button>
+      </div>
+      {#if mcpError}
+        <p class="section-error">{mcpError}</p>
+      {:else if mcpLoading}
+        <p class="section-empty">Loading…</p>
+      {:else if mcpServers.length === 0}
+        <p class="section-empty">Click ↻ to load MCP servers from mcp-config.yaml.</p>
+      {:else}
+        <table class="data-table">
+          <thead><tr><th>ID</th><th>Transport</th><th>Enabled</th><th>Trust</th><th>Tools</th></tr></thead>
+          <tbody>
+            {#each mcpServers as s}
+              <tr>
+                <td class="mono">{s.id}</td>
+                <td>{s.transport}</td>
+                <td>{s.enabled ? '✓' : '—'}</td>
+                <td>{s.trust}</td>
+                <td class="num">{s.tools.length}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      {/if}
+    </section>
 
     <!-- Iteration module -->
     {#if modules.iteration !== false}
@@ -825,4 +1096,178 @@
     margin-left: 0.5rem;
     font-size: 0.9rem;
   }
+
+  /* ── KB / Wiki / MCP sections ── */
+  .kb-section, .wiki-section, .mcp-section {
+    margin-top: 2rem;
+    border-top: 1px solid #e2e8f0;
+    padding-top: 1.5rem;
+  }
+
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
+
+  .section-header h2 {
+    font-size: 1.1rem;
+    color: #444;
+    margin: 0;
+    flex: 1;
+  }
+
+  .section-tabs {
+    display: flex;
+    gap: 0.25rem;
+  }
+
+  .tab-btn {
+    font-size: 0.8rem;
+    padding: 0.2rem 0.7rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    background: #f8fafc;
+    color: #475569;
+    cursor: pointer;
+  }
+
+  .tab-btn.active {
+    background: #1a56db;
+    color: #fff;
+    border-color: #1a56db;
+  }
+
+  .section-empty {
+    color: #94a3b8;
+    font-size: 0.9rem;
+  }
+
+  .section-error {
+    color: #b91c1c;
+    font-size: 0.9rem;
+  }
+
+  .section-ok {
+    color: #15803d;
+    font-size: 0.9rem;
+  }
+
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+  }
+
+  .data-table th {
+    text-align: left;
+    padding: 0.35rem 0.65rem;
+    color: #64748b;
+    font-weight: 600;
+    border-bottom: 1px solid #e2e8f0;
+  }
+
+  .data-table td {
+    padding: 0.4rem 0.65rem;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: top;
+  }
+
+  .mono {
+    font-family: 'Courier New', monospace;
+    font-size: 0.82rem;
+  }
+
+  .num {
+    text-align: right;
+    font-family: 'Courier New', monospace;
+  }
+
+  .dim {
+    color: #94a3b8;
+  }
+
+  .snippet {
+    color: #475569;
+    font-size: 0.82rem;
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .search-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+
+  .search-input {
+    flex: 1;
+    padding: 0.45rem 0.75rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 0.9rem;
+  }
+
+  .action-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    align-items: center;
+  }
+
+  .short-input {
+    padding: 0.4rem 0.7rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    width: 200px;
+  }
+
+  .btn-action {
+    padding: 0.4rem 1rem;
+    background: #1a56db;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .btn-action:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .btn-action.btn-secondary {
+    background: #f1f5f9;
+    color: #1a56db;
+    border: 1px solid #cbd5e1;
+  }
+
+  .btn-sm {
+    font-size: 0.75rem;
+    padding: 0.15rem 0.5rem;
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    color: #1a56db;
+    cursor: pointer;
+  }
+
+  .sev-badge {
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+  }
+
+  .sev-critical { background: #fee2e2; color: #991b1b; }
+  .sev-high { background: #fed7aa; color: #9a3412; }
+  .sev-medium { background: #fef9c3; color: #854d0e; }
+  .sev-low { background: #dcfce7; color: #15803d; }
 </style>
