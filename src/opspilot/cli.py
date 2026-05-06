@@ -8,8 +8,12 @@
 * ``opspilot run``          — run a playbook end-to-end (PR-7)
 * ``opspilot harness run``  — run a single fixture through harness (PR-8)
 * ``opspilot harness golden`` — run the Stage 1 golden test (PR-8)
-* ``opspilot wiki ingest``  — generate wiki page from KB document (PR-19)
-* ``opspilot tui``          — launch the terminal UI (PR-20)
+* ``opspilot wiki ingest``            — generate wiki page from KB document (PR-19)
+* ``opspilot tui``                    — launch the terminal UI (PR-20)
+* ``opspilot iteration sense``        — aggregate feedback weight (PR-27)
+* ``opspilot iteration evaluate``     — apply promotion gates to variant eval results (PR-27)
+* ``opspilot iteration promote``      — promote variant + update lineage (PR-27)
+* ``opspilot iteration validate``     — validate iteration directory invariants (PR-27)
 """
 
 from __future__ import annotations
@@ -46,6 +50,8 @@ from .schemas import (
     validate as schema_validate,
 )
 from .session import SessionManager
+from .iteration.engine import IterationEngine
+from .iteration.types import IterationPolicy
 from .wiki.ingest import WikiIngestConfig
 from .wiki.ingest import ingest as run_wiki_ingest
 
@@ -871,6 +877,128 @@ def wiki_promote(
             f"  (v{result.new_version})"
         )
         _console.print(f"  path: {result.page_path}")
+
+
+# ──────────────────────────────────────────────────────────────────────────
+#  iteration (PR-27)
+# ──────────────────────────────────────────────────────────────────────────
+
+iteration_app = typer.Typer(
+    name="iteration",
+    help="Skill iteration: feedback aggregation, variant evaluation, promotion.",
+    no_args_is_help=True,
+)
+app.add_typer(iteration_app)
+
+
+@iteration_app.command("sense")
+def iteration_sense(
+    signals: Path = typer.Argument(  # noqa: B008
+        ..., exists=True, help="Path to feedback/signals.jsonl."
+    ),
+    threshold: float = typer.Option(5.0, "--threshold", "-t", help="Trigger threshold (default: 5.0)."),
+    window_days: int = typer.Option(30, "--window-days", help="Feedback window in days."),
+) -> None:
+    """Compute aggregate feedback weight and report should_trigger."""
+    policy = IterationPolicy(feedback_min_weight_to_trigger=threshold, feedback_window_days=window_days)
+    engine = IterationEngine(policy=policy)
+    result = engine.sense(signals)
+
+    _console.print(f"skill_ref         : {result.skill_ref}")
+    _console.print(f"window_days       : {result.window_days}")
+    _console.print(f"signals_in_window : {result.signal_count}")
+    _console.print(f"aggregate_weight  : {result.aggregate_weight}")
+    _console.print(f"threshold         : {result.threshold}")
+    color = "green" if result.should_trigger else "yellow"
+    _console.print(f"should_trigger    : [{color}]{result.should_trigger}[/{color}]")
+    if not result.should_trigger:
+        raise typer.Exit(code=1)
+
+
+@iteration_app.command("evaluate")
+def iteration_evaluate(
+    iteration_dir: Path = typer.Argument(  # noqa: B008
+        ..., exists=True, help="Path to iteration example directory (contains iteration/ + eval/ + variants/)."
+    ),
+    min_delta: float = typer.Option(0.01, "--min-delta", help="Minimum weighted score delta to pass."),
+    max_cost_pct: float = typer.Option(10.0, "--max-cost-pct", help="Max cost increase % allowed."),
+) -> None:
+    """Apply promotion gates to pre-computed eval results and show verdicts."""
+    policy = IterationPolicy(min_delta_weighted=min_delta, max_cost_increase_pct=max_cost_pct)
+    engine = IterationEngine(policy=policy)
+    verdicts = engine.evaluate(iteration_dir)
+
+    table = Table(title="Variant verdicts", show_lines=False)
+    table.add_column("Variant ID")
+    table.add_column("Δweighted", justify="right")
+    table.add_column("Δcost %", justify="right")
+    table.add_column("Verdict")
+    table.add_column("Reasons", overflow="fold")
+
+    all_winning = True
+    for v in verdicts:
+        color = "green" if v.gate.verdict == "winning" else "red"
+        if v.gate.verdict != "winning":
+            all_winning = False
+        table.add_row(
+            v.variant_id,
+            f"{v.delta.weighted:+.3f}",
+            f"{v.delta.cost_pct:+.1f}",
+            f"[{color}]{v.gate.verdict}[/{color}]",
+            "; ".join(v.verdict_reasons),
+        )
+
+    _console.print(table)
+    if not all_winning:
+        raise typer.Exit(code=1)
+
+
+@iteration_app.command("promote")
+def iteration_promote(
+    iteration_dir: Path = typer.Argument(  # noqa: B008
+        ..., exists=True, help="Path to iteration example directory."
+    ),
+    variant_id: str = typer.Argument(..., help="Variant ID to promote (e.g. var_9930d615)."),
+    new_version: str = typer.Option(..., "--version", "-v", help="New skill version (e.g. 1.3.0)."),
+    summary: str = typer.Option(..., "--summary", "-s", help="Summary sentence for lineage entry."),
+    actor: str = typer.Option("human@opspilot", "--actor", help="Approver identity."),
+    lineage_file: Path | None = typer.Option(  # noqa: B008
+        None,
+        "--lineage",
+        "-l",
+        help="Path to lineage YAML to update. Skipped if omitted.",
+    ),
+) -> None:
+    """Promote a variant: copy SKILL.md → promoted/ and append lineage entry."""
+    engine = IterationEngine()
+    engine.promote(
+        iteration_dir=iteration_dir,
+        variant_id=variant_id,
+        actor=actor,
+        new_version=new_version,
+        summary=summary,
+        lineage_file=lineage_file,
+    )
+    _console.print(f"[green]✓[/green] Promoted {variant_id} → v{new_version}")
+    _console.print(f"  promoted/SKILL.md written to {iteration_dir / 'promoted' / 'SKILL.md'}")
+    if lineage_file:
+        _console.print(f"  lineage entry appended to {lineage_file}")
+
+
+@iteration_app.command("validate")
+def iteration_validate(
+    iteration_dir: Path = typer.Argument(  # noqa: B008
+        ..., exists=True, help="Path to iteration example directory."
+    ),
+) -> None:
+    """Validate all invariants in an iteration directory (checksums, IDs, lineage)."""
+    engine = IterationEngine()
+    violations = engine.validate(iteration_dir)
+    if violations:
+        for v in violations:
+            _err.print(f"[red]✗[/red] {v}")
+        raise typer.Exit(code=1)
+    _console.print(f"[green]✓[/green] All invariants pass for {iteration_dir}")
 
 
 # ──────────────────────────────────────────────────────────────────────────
