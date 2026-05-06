@@ -171,6 +171,36 @@ async def list_wiki_pages(request: Request) -> dict[str, Any]:
     return {"pages": pages, "total": len(pages)}
 
 
+@router.get("/wiki/pages/{slug}")
+async def get_wiki_page(slug: str, request: Request) -> dict[str, Any]:
+    """Return full wiki page (frontmatter + body) for the given slug."""
+    cfg = request.app.state.cfg
+    pages_dir = cfg.home / "wiki" / "pages"
+
+    from fastapi import HTTPException
+    from ...wiki.page import read_page
+
+    md_file = pages_dir / f"{slug}.md"
+    if not md_file.is_file():
+        raise HTTPException(status_code=404, detail=f"Page '{slug}' not found")
+    page = read_page(md_file)
+    return {
+        "page_id": page.page_id,
+        "slug": page.slug,
+        "kind": page.kind,
+        "title": page.title,
+        "summary": page.summary,
+        "lifecycle_state": page.lifecycle_state,
+        "language": page.language,
+        "tags": page.tags,
+        "updated_at": page.updated_at,
+        "body": page.body,
+        "outbound_links": page.outbound_links,
+        "derived_from": page.derived_from,
+        "owner": page.owner,
+    }
+
+
 @router.post("/wiki/promote/{slug}")
 async def wiki_promote(slug: str, request: Request) -> dict[str, Any]:
     """Promote a draft/reviewed wiki page to live."""

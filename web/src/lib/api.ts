@@ -381,6 +381,19 @@ export async function listWikiPages(): Promise<WikiPageSummary[]> {
   return data.pages;
 }
 
+export interface WikiPageDetail extends WikiPageSummary {
+  body: string;
+  outbound_links: string[];
+  derived_from: Record<string, unknown>;
+  owner: string;
+}
+
+export async function getWikiPage(slug: string): Promise<WikiPageDetail> {
+  const res = await fetch(`/api/wiki/pages/${encodeURIComponent(slug)}`);
+  if (!res.ok) throw new Error(`Wiki page fetch failed: ${res.status}`);
+  return res.json();
+}
+
 export interface VendorDocSummary {
   filename: string;
   doc_ref: string;
@@ -396,6 +409,12 @@ export async function listVendorDocs(): Promise<VendorDocSummary[]> {
   if (!res.ok) throw new Error(`Vendor docs fetch failed: ${res.status}`);
   const data = await res.json();
   return data.docs;
+}
+
+export async function getVendorDoc(filename: string): Promise<VendorDoc> {
+  const res = await fetch(`/api/vendor-docs/${encodeURIComponent(filename)}`);
+  if (!res.ok) throw new Error(`Vendor doc fetch failed: ${res.status}`);
+  return res.json();
 }
 
 // ── MCP ──────────────────────────────────────────────────────────────────────

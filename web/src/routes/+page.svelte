@@ -4,10 +4,10 @@
     getConfig, getModels, runTicket, listSessions, getSession, getLineage,
     getKBStats, listKBDocs, searchKB, wikiIngest, wikiQueryToPage, wikiLint, wikiPromote, listMCPServers,
     listConflicts, resolveConflict, correctChunk, listCorrections, generateVendorDoc,
-    listWikiPages, listVendorDocs,
+    listWikiPages, listVendorDocs, getWikiPage, getVendorDoc,
     type RunResponse, type TicketSummary, type NextAction, type SessionSummary, type ModelOption, type SkillLineage,
     type KBDoc, type KBHit, type KBConflict, type KBStats, type KBCorrection, type WikiLintIssue, type MCPServer,
-    type VendorDoc, type VendorDocSection, type WikiPageSummary, type VendorDocSummary
+    type VendorDoc, type VendorDocSection, type WikiPageSummary, type VendorDocSummary, type WikiPageDetail
   } from '$lib/api';
 
   // --- Theme ---
@@ -95,8 +95,14 @@
   let wikiLintLoading = $state<boolean>(false);
   let wikiPages = $state<WikiPageSummary[]>([]);
   let wikiPagesLoading = $state<boolean>(false);
+  let wikiPageDetail = $state<WikiPageDetail | null>(null);
+  let wikiPageDetailSlug = $state<string | null>(null);
+  let wikiPageDetailLoading = $state<boolean>(false);
   let vendorDocList = $state<VendorDocSummary[]>([]);
   let vendorDocListLoading = $state<boolean>(false);
+  let vendorDocDetail = $state<VendorDoc | null>(null);
+  let vendorDocDetailFilename = $state<string | null>(null);
+  let vendorDocDetailLoading = $state<boolean>(false);
 
   // Vendor Doc state
   let vendorDocTopic = $state<string>('');
@@ -343,10 +349,63 @@
     finally { wikiPagesLoading = false; }
   }
 
+  async function openWikiPage(slug: string) {
+    if (wikiPageDetailSlug === slug) { wikiPageDetail = null; wikiPageDetailSlug = null; return; }
+    wikiPageDetailLoading = true;
+    wikiPageDetailSlug = slug;
+    try { wikiPageDetail = await getWikiPage(slug); }
+    catch { wikiPageDetail = null; }
+    finally { wikiPageDetailLoading = false; }
+  }
+
   async function loadVendorDocList() {
     vendorDocListLoading = true;
     try { vendorDocList = await listVendorDocs(); } catch { vendorDocList = []; }
     finally { vendorDocListLoading = false; }
+  }
+
+  async function openVendorDoc(filename: string) {
+    if (vendorDocDetailFilename === filename) { vendorDocDetail = null; vendorDocDetailFilename = null; return; }
+    vendorDocDetailLoading = true;
+    vendorDocDetailFilename = filename;
+    try { vendorDocDetail = await getVendorDoc(filename); }
+    catch { vendorDocDetail = null; }
+    finally { vendorDocDetailLoading = false; }
+  }
+
+  function downloadVendorDocJson() {
+    if (!vendorDocDetail) return;
+    const blob = new Blob([JSON.stringify(vendorDocDetail, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${vendorDocDetail.doc_ref}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  function vendorDocToMarkdown(doc: VendorDoc): string {
+    const lines: string[] = [`# ${doc.title}`, ''];
+    if (doc.scope_note) lines.push(`> ${doc.scope_note}`, '');
+    for (const s of doc.sections) {
+      lines.push(`## ${s.heading}`, '', s.content, '');
+    }
+    if (doc.citations.length > 0) {
+      lines.push('## Sources', '');
+      for (const c of doc.citations) {
+        lines.push(`- **${c.id}** — ${c.source_path || c.document_id}${c.line_start ? ` L${c.line_start}–${c.line_end}` : ''}`);
+      }
+    }
+    return lines.join('\n');
+  }
+
+  function downloadVendorDocMarkdown() {
+    if (!vendorDocDetail) return;
+    const blob = new Blob([vendorDocToMarkdown(vendorDocDetail)], { type: 'text/markdown' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${vendorDocDetail.doc_ref}.md`;
+    a.click();
+    URL.revokeObjectURL(a.href);
   }
 
   // ── Conflict handlers ───────────────────────────────────────────────────────
@@ -870,13 +929,35 @@
           <thead><tr><th>Slug</th><th>Kind</th><th>Title</th><th>State</th><th>Lang</th></tr></thead>
           <tbody>
             {#each wikiPages as p}
-              <tr>
+              <tr class="clickable-row" onclick={() => openWikiPage(p.slug)}
+                  class:expanded-row={wikiPageDetailSlug === p.slug}>
                 <td class="mono">{p.slug}</td>
                 <td><span class="sev-badge sev-info">{p.kind}</span></td>
                 <td>{p.title}</td>
                 <td><span class="sev-badge sev-{p.lifecycle_state === 'live' ? 'ok' : 'warn'}">{p.lifecycle_state}</span></td>
                 <td class="mono dim">{p.language}</td>
               </tr>
+              {#if wikiPageDetailSlug === p.slug}
+                <tr class="detail-row">
+                  <td colspan="5">
+                    {#if wikiPageDetailLoading}
+                      <p class="dim" style="padding:0.5rem">Loading…</p>
+                    {:else if wikiPageDetail}
+                      <div class="wiki-detail">
+                        <p class="wiki-detail-summary dim">{wikiPageDetail.summary}</p>
+                        {#if wikiPageDetail.tags.length > 0}
+                          <div class="wiki-detail-tags">
+                            {#each wikiPageDetail.tags as tag}
+                              <span class="sev-badge sev-info">{tag}</span>
+                            {/each}
+                          </div>
+                        {/if}
+                        <pre class="wiki-detail-body">{wikiPageDetail.body}</pre>
+                      </div>
+                    {/if}
+                  </td>
+                </tr>
+              {/if}
             {/each}
           </tbody>
         </table>
@@ -991,16 +1072,64 @@
 
       {#if vendorDocList.length > 0}
         <table class="data-table" style="margin-top:0.5rem">
-          <thead><tr><th>Doc Ref</th><th>Template</th><th>Title</th><th>Sections</th><th>Citations</th></tr></thead>
+          <thead><tr><th>Doc Ref</th><th>Template</th><th>Title</th><th>§</th><th>Cit.</th></tr></thead>
           <tbody>
             {#each vendorDocList as d}
-              <tr>
+              <tr class="clickable-row" onclick={() => openVendorDoc(d.filename)}
+                  class:expanded-row={vendorDocDetailFilename === d.filename}>
                 <td class="mono">{d.doc_ref}</td>
-                <td><span class="sev-badge sev-info">{d.template_id.replace('_', ' ')}</span></td>
-                <td>{d.title.slice(0, 60)}{d.title.length > 60 ? '…' : ''}</td>
+                <td><span class="sev-badge sev-info">{d.template_id.replace(/_/g, ' ')}</span></td>
+                <td>{d.title.slice(0, 55)}{d.title.length > 55 ? '…' : ''}</td>
                 <td class="mono">{d.sections_count}</td>
                 <td class="mono">{d.citations_count}</td>
               </tr>
+              {#if vendorDocDetailFilename === d.filename}
+                <tr class="detail-row">
+                  <td colspan="5">
+                    {#if vendorDocDetailLoading}
+                      <p class="dim" style="padding:0.5rem">Loading…</p>
+                    {:else if vendorDocDetail}
+                      <div class="vd-output" style="margin:0;border-radius:0">
+                        <div class="vd-doc-header">
+                          <div>
+                            <div class="vd-title">{vendorDocDetail.title}</div>
+                            <div class="vd-meta">
+                              <span class="vd-ref mono dim">{vendorDocDetail.doc_ref}</span>
+                              <span class="vd-template-badge">{vendorDocDetail.template_id.replace(/_/g, ' ')}</span>
+                            </div>
+                          </div>
+                          <div style="display:flex;gap:0.5rem;align-items:center">
+                            <button class="btn-sm" onclick={downloadVendorDocJson}>↓ JSON</button>
+                            <button class="btn-sm" onclick={downloadVendorDocMarkdown}>↓ Markdown</button>
+                          </div>
+                        </div>
+                        {#if vendorDocDetail.scope_note}
+                          <p class="vd-scope-note">{vendorDocDetail.scope_note}</p>
+                        {/if}
+                        {#each vendorDocDetail.sections as section}
+                          <div class="vd-section">
+                            <h4 class="vd-section-heading">{section.heading}</h4>
+                            <p class="vd-section-content">{section.content}</p>
+                          </div>
+                        {/each}
+                        {#if vendorDocDetail.citations.length > 0}
+                          <details class="vd-citations">
+                            <summary class="vd-cit-summary">Sources ({vendorDocDetail.citations.length})</summary>
+                            <ul class="vd-cit-list">
+                              {#each vendorDocDetail.citations as c}
+                                <li class="mono dim" style="font-size:0.78rem">
+                                  <strong>{c.id}</strong> — {c.source_path || c.document_id}
+                                  {#if c.line_start} L{c.line_start}–{c.line_end}{/if}
+                                </li>
+                              {/each}
+                            </ul>
+                          </details>
+                        {/if}
+                      </div>
+                    {/if}
+                  </td>
+                </tr>
+              {/if}
             {/each}
           </tbody>
         </table>
@@ -1423,6 +1552,34 @@
     padding: 0.75rem;
     background: var(--bg-subtle);
     border-bottom: 2px solid var(--border);
+  }
+
+  .clickable-row { cursor: pointer; }
+  .clickable-row:hover td { background: var(--bg-hover); }
+
+  .detail-row td {
+    padding: 0;
+    background: var(--bg-subtle);
+    border-bottom: 2px solid var(--border-strong);
+  }
+
+  .wiki-detail { padding: 1rem 1.25rem; }
+  .wiki-detail-summary { margin: 0 0 0.5rem; font-style: italic; }
+  .wiki-detail-tags { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-bottom: 0.75rem; }
+  .wiki-detail-body {
+    margin: 0;
+    padding: 0.75rem 1rem;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.82rem;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 480px;
+    overflow-y: auto;
+    font-family: 'Courier New', monospace;
+    color: var(--text);
   }
 
   /* ── Iteration module ── */

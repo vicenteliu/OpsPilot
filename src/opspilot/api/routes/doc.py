@@ -129,3 +129,16 @@ async def list_vendor_docs(request: Request) -> dict[str, Any]:
             except Exception:  # noqa: BLE001
                 pass
     return {"docs": docs, "total": len(docs)}
+
+
+@router.get("/vendor-docs/{filename}")
+async def get_vendor_doc(filename: str, request: Request) -> dict[str, Any]:
+    """Return full vendor doc JSON for the given filename."""
+    from fastapi import HTTPException
+
+    cfg = request.app.state.cfg
+    vd_dir = cfg.home / "vendor-docs"
+    json_file = vd_dir / filename
+    if not json_file.is_file() or json_file.suffix != ".json":
+        raise HTTPException(status_code=404, detail=f"Vendor doc '{filename}' not found")
+    return json.loads(json_file.read_text(encoding="utf-8"))
