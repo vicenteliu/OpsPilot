@@ -2,10 +2,10 @@
   import '../app.css';
   import {
     getConfig, getModels, runTicket, listSessions, getSession, getLineage,
-    listKBDocs, searchKB, wikiIngest, wikiQueryToPage, wikiLint, wikiPromote, listMCPServers,
-    listConflicts, resolveConflict, correctChunk,
+    getKBStats, listKBDocs, searchKB, wikiIngest, wikiQueryToPage, wikiLint, wikiPromote, listMCPServers,
+    listConflicts, resolveConflict, correctChunk, listCorrections,
     type RunResponse, type NextAction, type SessionSummary, type ModelOption, type SkillLineage,
-    type KBDoc, type KBHit, type KBConflict, type WikiLintIssue, type MCPServer
+    type KBDoc, type KBHit, type KBConflict, type KBStats, type KBCorrection, type WikiLintIssue, type MCPServer
   } from '$lib/api';
 
   // --- State ---
@@ -39,13 +39,19 @@
   let expandedSkill = $state<Record<string, boolean>>({});
 
   // KB state
+  let kbStats = $state<KBStats | null>(null);
   let kbDocs = $state<KBDoc[]>([]);
   let kbDocsLoading = $state<boolean>(false);
   let kbSearchQuery = $state<string>('');
   let kbSearchResults = $state<KBHit[]>([]);
   let kbSearchLoading = $state<boolean>(false);
   let kbSearchError = $state<string | null>(null);
-  let kbSection = $state<'docs' | 'search' | 'conflicts'>('docs');
+  let kbSection = $state<'docs' | 'search' | 'conflicts' | 'corrections'>('docs');
+
+  // Corrections state
+  let kbCorrections = $state<KBCorrection[]>([]);
+  let correctionsLoading = $state<boolean>(false);
+  let correctionsError = $state<string | null>(null);
 
   // Conflict state
   let kbConflicts = $state<KBConflict[]>([]);
@@ -184,14 +190,31 @@
   }
 
   // ── KB handlers ────────────────────────────────────────────────────────────
+  async function loadKBStats() {
+    try { kbStats = await getKBStats(); } catch { /* stats are non-critical */ }
+  }
+
   async function loadKBDocs() {
     kbDocsLoading = true;
     try {
-      kbDocs = await listKBDocs();
+      [kbDocs] = await Promise.all([listKBDocs(), loadKBStats()]);
     } catch {
       kbDocs = [];
     } finally {
       kbDocsLoading = false;
+    }
+  }
+
+  async function loadCorrections() {
+    correctionsLoading = true;
+    correctionsError = null;
+    try {
+      kbCorrections = await listCorrections();
+      await loadKBStats();
+    } catch (e) {
+      correctionsError = e instanceof Error ? e.message : String(e);
+    } finally {
+      correctionsLoading = false;
     }
   }
 
@@ -215,8 +238,9 @@
     correctError = null;
     try {
       await correctChunk(chunkId, correctContent.trim(), correctReason.trim());
-      // Refresh search results so the updated content shows
+      // Refresh search results and stats so the updated content shows
       if (kbSearchQuery.trim()) kbSearchResults = await searchKB(kbSearchQuery.trim());
+      await loadKBStats();
       correctingChunkId = null;
       correctReason = '';
       correctContent = '';
@@ -488,11 +512,28 @@
           <button class="tab-btn {kbSection === 'docs' ? 'active' : ''}" onclick={() => kbSection = 'docs'}>Docs</button>
           <button class="tab-btn {kbSection === 'search' ? 'active' : ''}" onclick={() => kbSection = 'search'}>Search</button>
           <button class="tab-btn {kbSection === 'conflicts' ? 'active' : ''}" onclick={() => { kbSection = 'conflicts'; loadConflicts(); }}>
-            Conflicts {#if kbConflicts.filter(c => c.status === 'open').length > 0}<span class="conflict-badge">{kbConflicts.filter(c => c.status === 'open').length}</span>{/if}
+            Conflicts {#if kbStats && kbStats.open_conflicts > 0}<span class="conflict-badge">{kbStats.open_conflicts}</span>{/if}
+          </button>
+          <button class="tab-btn {kbSection === 'corrections' ? 'active' : ''}" onclick={() => { kbSection = 'corrections'; loadCorrections(); }}>
+            Corrections {#if kbStats && kbStats.corrections_total > 0}<span class="corr-badge">{kbStats.corrections_total}</span>{/if}
           </button>
         </div>
         <button class="btn-refresh" onclick={loadKBDocs} disabled={kbDocsLoading}>↻</button>
       </div>
+
+      {#if kbStats}
+        <div class="kb-stats-bar">
+          <span class="stat-item"><strong>{kbStats.docs_total}</strong> docs</span>
+          <span class="stat-sep">·</span>
+          <span class="stat-item"><strong>{kbStats.chunks_total}</strong> chunks</span>
+          <span class="stat-sep">·</span>
+          <span class="stat-item {kbStats.open_conflicts > 0 ? 'stat-warn' : ''}">
+            <strong>{kbStats.open_conflicts}</strong> open conflicts
+          </span>
+          <span class="stat-sep">·</span>
+          <span class="stat-item"><strong>{kbStats.corrections_total}</strong> corrections</span>
+        </div>
+      {/if}
 
       {#if kbSection === 'docs'}
         {#if kbDocsLoading}
@@ -583,7 +624,7 @@
         {:else if !kbSearchLoading && kbSearchQuery}
           <p class="section-empty">No results.</p>
         {/if}
-      {:else}
+      {:else if kbSection === 'conflicts'}
         <!-- Conflicts tab -->
         <div class="conflict-toolbar">
           <label class="filter-label">
@@ -640,6 +681,45 @@
                       <span class="dim" style="font-size:0.8rem">{c.resolved_by || '—'}</span>
                     {/if}
                   </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        {/if}
+      {:else}
+        <!-- Corrections tab -->
+        <div class="conflict-toolbar">
+          <button class="btn-refresh" onclick={loadCorrections} disabled={correctionsLoading}>↻ Refresh</button>
+        </div>
+        {#if correctionsError}
+          <p class="section-error">{correctionsError}</p>
+        {:else if correctionsLoading}
+          <p class="section-empty">Loading…</p>
+        {:else if kbCorrections.length === 0}
+          <p class="section-empty">No corrections recorded.</p>
+        {:else}
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Chunk</th>
+                <th>By</th>
+                <th>Reason</th>
+                <th>Old content</th>
+                <th>New content</th>
+                <th>Created</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each kbCorrections as corr}
+                <tr>
+                  <td class="mono dim">{corr.id}</td>
+                  <td class="mono">{corr.chunk_id}</td>
+                  <td class="dim">{corr.corrected_by}</td>
+                  <td>{corr.reason}</td>
+                  <td class="chunk-preview dim">{corr.old_content.slice(0, 80)}</td>
+                  <td class="chunk-preview">{corr.new_content.slice(0, 80)}</td>
+                  <td class="dim">{corr.created_at.slice(0, 19)}</td>
                 </tr>
               {/each}
             </tbody>
@@ -1534,6 +1614,21 @@
   .status-b_wins { background: #dbeafe; color: #1e40af; }
   .status-merged { background: #f3e8ff; color: #7e22ce; }
   .status-dismissed { background: #f1f5f9; color: #64748b; }
+
+  .kb-stats-bar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 10px; background: #f8fafc; border: 1px solid #e2e8f0;
+    border-radius: 6px; font-size: 0.8rem; color: #475569; margin-bottom: 10px;
+  }
+  .stat-item strong { color: #1e293b; }
+  .stat-sep { color: #cbd5e1; }
+  .stat-warn strong { color: #b45309; }
+
+  .corr-badge {
+    display: inline-block; background: #dbeafe; color: #1e40af;
+    border-radius: 10px; font-size: 0.7rem; padding: 0 6px; margin-left: 4px;
+    font-weight: 600; line-height: 1.6;
+  }
 
   .btn-correct-toggle {
     background: none; border: 1px solid #cbd5e1; border-radius: 4px;

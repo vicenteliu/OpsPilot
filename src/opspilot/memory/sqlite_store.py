@@ -433,6 +433,24 @@ class SqliteStore:
             )
         return [dict(r) for r in cur.fetchall()]
 
+    def kb_stats(self) -> dict[str, int]:
+        """Return aggregate KB health counts."""
+        rows = self._conn.execute(
+            """
+            SELECT
+              (SELECT COUNT(*) FROM kb_documents)                       AS docs_total,
+              (SELECT COUNT(*) FROM kb_chunks)                          AS chunks_total,
+              (SELECT COUNT(*) FROM kb_conflicts WHERE status = 'open') AS open_conflicts,
+              (SELECT COUNT(*) FROM kb_corrections)                     AS corrections_total
+            """
+        ).fetchone()
+        return {
+            "docs_total":        int(rows["docs_total"]),
+            "chunks_total":      int(rows["chunks_total"]),
+            "open_conflicts":    int(rows["open_conflicts"]),
+            "corrections_total": int(rows["corrections_total"]),
+        }
+
     # ── memory_records (D3 — minimal CRUD) ───────────────────────────
 
     def write_memory(self, record: dict[str, Any]) -> None:

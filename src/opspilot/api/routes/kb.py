@@ -1,5 +1,5 @@
-"""KB API routes: GET /api/kb/docs, POST /api/kb/ingest, GET /api/kb/search,
-GET /api/kb/conflicts, PATCH /api/kb/conflicts/{id}/resolve,
+"""KB API routes: GET /api/kb/docs, GET /api/kb/stats, POST /api/kb/ingest,
+GET /api/kb/search, GET /api/kb/conflicts, PATCH /api/kb/conflicts/{id}/resolve,
 POST /api/kb/chunks/{id}/correct, GET /api/kb/corrections."""
 
 from __future__ import annotations
@@ -13,6 +13,15 @@ from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel
 
 router = APIRouter()
+
+
+@router.get("/kb/stats")
+async def kb_stats(request: Request) -> dict[str, Any]:
+    """Return aggregate KB health counts (docs, chunks, open conflicts, corrections)."""
+    state = request.app.state
+    loop = asyncio.get_event_loop()
+    stats = await loop.run_in_executor(None, state.sqlite.kb_stats)
+    return stats
 
 
 @router.get("/kb/docs")

@@ -138,6 +138,23 @@ export async function getLineage(): Promise<SkillLineage[]> {
 
 // ── KB ──────────────────────────────────────────────────────────────────────
 
+export interface KBStats {
+  docs_total: number;
+  chunks_total: number;
+  open_conflicts: number;
+  corrections_total: number;
+}
+
+export interface KBCorrection {
+  id: string;
+  chunk_id: string;
+  corrected_by: string;
+  reason: string;
+  old_content: string;
+  new_content: string;
+  created_at: string;
+}
+
 export interface KBDoc {
   doc_id: string;
   title: string;
@@ -176,11 +193,26 @@ export interface KBConflict {
   resolution_note: string | null;
 }
 
+export async function getKBStats(): Promise<KBStats> {
+  const res = await fetch('/api/kb/stats');
+  if (!res.ok) throw new Error(`KB stats fetch failed: ${res.status}`);
+  return res.json();
+}
+
 export async function listKBDocs(): Promise<KBDoc[]> {
   const res = await fetch('/api/kb/docs');
   if (!res.ok) throw new Error(`KB docs fetch failed: ${res.status}`);
   const data = await res.json();
   return data.docs;
+}
+
+export async function listCorrections(chunkId?: string, limit = 50): Promise<KBCorrection[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (chunkId) params.set('chunk_id', chunkId);
+  const res = await fetch(`/api/kb/corrections?${params}`);
+  if (!res.ok) throw new Error(`Corrections fetch failed: ${res.status}`);
+  const data = await res.json();
+  return data.corrections;
 }
 
 export async function searchKB(query: string, topK = 5): Promise<KBHit[]> {
