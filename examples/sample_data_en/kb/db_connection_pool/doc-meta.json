@@ -1,0 +1,22 @@
+{
+  "id": "doc_c9d0e1f2",
+  "source_path": "examples/sample_data_en/kb/db_connection_pool/sop.md",
+  "source_url": null,
+  "title": "Database Connection Pool Exhaustion SOP",
+  "classification": "internal",
+  "content_hash": "sha256:c9d0e1f2c9d0e1f2c9d0e1f2c9d0e1f2c9d0e1f2c9d0e1f2c9d0e1f2c9d0e1f2",
+  "version": "1.0.0",
+  "ingested_at": "2026-05-06T10:00:00Z",
+  "last_modified": "2026-02-15T08:00:00Z",
+  "language": "en",
+  "tags": ["database", "postgresql", "mysql", "pgbouncer", "sop", "connection-pool"],
+  "namespace": "opspilot:public-kb",
+  "chunk_strategy": "headings_then_size",
+  "chunk_count": 2,
+  "embedding_model": "ollama-local/nomic-embed-text-v2-moe@2026-04",
+  "embedding_dim": 768,
+  "redaction_passed": true,
+  "redaction_rules_version": "1.0.0",
+  "license": null,
+  "extensions": {}
+}

@@ -684,6 +684,67 @@ def kb_load_fixture(
     _console.print(table)
 
 
+@kb_app.command("load-dir")
+def kb_load_dir(
+    directory: Path = typer.Argument(  # noqa: B008
+        ..., help="Root directory to search for doc-meta.json + chunks.jsonl pairs."
+    ),
+    embedding_model: str = typer.Option(
+        "ollama-local/nomic-embed-text-v2-moe@2026-04", "--embedding-model"
+    ),
+    embedding_dim: int = typer.Option(768, "--embedding-dim"),
+    embed_model_short: str = typer.Option("nomic-embed-text-v2-moe", "--ollama-embed-model"),
+) -> None:
+    """Recursively find and load all KB fixture pairs (doc-meta.json + chunks.jsonl) under DIRECTORY."""
+    pairs: list[tuple[Path, Path]] = []
+    for meta in sorted(directory.rglob("doc-meta.json")):
+        chunks_path = meta.parent / "chunks.jsonl"
+        if chunks_path.is_file():
+            pairs.append((meta, chunks_path))
+
+    if not pairs:
+        _err.print(f"[yellow]No doc-meta.json + chunks.jsonl pairs found under {directory}[/yellow]")
+        raise typer.Exit(code=1)
+
+    cfg = load_config()
+    sqlite, lance = _open_kb_stores(
+        home=cfg.home,
+        embedding_dim=embedding_dim,
+        embedding_model=embedding_model,
+    )
+    provider = make_provider("ollama-local")
+
+    def embed_fn(text: str) -> list[float]:
+        return provider.embed([text], model=embed_model_short)[0]
+
+    table = Table(title=f"KB fixtures loaded from {directory}", show_lines=False)
+    table.add_column("Doc ID", overflow="fold")
+    table.add_column("Source", overflow="fold")
+    table.add_column("Chunks", justify="right")
+    table.add_column("Vectors", justify="right")
+
+    failed = 0
+    for meta, chunks_path in pairs:
+        try:
+            stats = load_kb_fixture(
+                sqlite=sqlite,
+                lance=lance,
+                doc_meta_path=meta,
+                chunks_jsonl_path=chunks_path,
+                embed_fn=embed_fn,
+            )
+            rel = str(chunks_path.relative_to(REPO_ROOT) if chunks_path.is_relative_to(REPO_ROOT) else chunks_path)
+            table.add_row(stats.document_id, rel, str(stats.chunk_count), str(stats.vector_count))
+        except Exception as e:  # noqa: BLE001
+            _err.print(f"[red]failed:[/red] {meta} — {e}")
+            failed += 1
+
+    _console.print(table)
+    if failed:
+        _err.print(f"[red]{failed} fixture(s) failed[/red]")
+        raise typer.Exit(code=1)
+
+
 @kb_app.command("conflicts")
 def kb_conflicts_cmd(
     status: str = typer.Option("open", "--status", "-s", help="Filter by status (open/all)."),

@@ -1,0 +1,22 @@
+{
+  "id": "doc_d7e8f9a0",
+  "source_path": "examples/sample_data_en/kb/oncall_escalation/runbook.md",
+  "source_url": null,
+  "title": "On-call Incident Escalation Runbook",
+  "classification": "internal",
+  "content_hash": "sha256:d7e8f9a0d7e8f9a0d7e8f9a0d7e8f9a0d7e8f9a0d7e8f9a0d7e8f9a0d7e8f9a0",
+  "version": "1.0.0",
+  "ingested_at": "2026-05-06T10:00:00Z",
+  "last_modified": "2026-03-15T08:00:00Z",
+  "language": "en",
+  "tags": ["oncall", "escalation", "incident", "sre", "runbook", "communication"],
+  "namespace": "opspilot:public-kb",
+  "chunk_strategy": "headings_then_size",
+  "chunk_count": 2,
+  "embedding_model": "ollama-local/nomic-embed-text-v2-moe@2026-04",
+  "embedding_dim": 768,
+  "redaction_passed": true,
+  "redaction_rules_version": "1.0.0",
+  "license": null,
+  "extensions": {}
+}

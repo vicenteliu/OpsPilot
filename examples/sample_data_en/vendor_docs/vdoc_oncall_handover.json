@@ -1,0 +1,51 @@
+{
+  "schema_version": "vendor_doc_v1",
+  "doc_ref": "VDOC-20260506-005",
+  "template_id": "handover",
+  "title": "On-call Shift Handover Document — SRE Partners",
+  "scope_note": "Completed by the outgoing on-call engineer at the end of each 12-hour shift; shared with the incoming engineer and the engineering manager.",
+  "sections": [
+    {
+      "heading": "Shift Summary",
+      "content": "**Shift period**: ___ UTC to ___ UTC\n**Outgoing engineer**: ___\n**Incoming engineer**: ___\n\n**Overall status**: [ ] Stable  [ ] Degraded  [ ] Active incident\n\n**Incidents opened this shift**:\n\n| Incident ID | Severity | Title | Status | Owner |\n|---|---|---|---|---|\n| INC-___ | P___ | ___ | Open / Resolved | ___ |\n\n**Alerts fired** (non-incident): ___\n**Deployments during shift**: ___",
+      "citations": ["kb-1"]
+    },
+    {
+      "heading": "Open Items for Incoming Engineer",
+      "content": "List every item requiring action or monitoring:\n\n1. **Active incidents**: _(list each with current hypothesis and last update time)_\n2. **Pending deployments**: _(list any deployments scheduled in the next 2 h)_\n3. **Degraded services**: _(list any services not at 100% with current impact)_\n4. **Monitoring anomalies to watch**: _(list any non-alerting metrics showing unusual trends)_\n5. **Scheduled maintenance**: _(list any maintenance windows in the next 8 h)_\n\n**Recommended first action for incoming engineer**: ___",
+      "citations": ["kb-1"]
+    },
+    {
+      "heading": "Escalation Contacts Active This Shift",
+      "content": "Contacts engaged or on standby:\n\n| Team | Contact | Status |\n|---|---|---|\n| Platform / K8s | On-call via `svc-platform-oncall` | [ ] Engaged  [ ] Standby |\n| Backend / API | On-call via `svc-backend-oncall` | [ ] Engaged  [ ] Standby |\n| Security | On-call via `svc-security-oncall` | [ ] Engaged  [ ] Standby |\n| Database / DBA | On-call via `svc-dba-oncall` | [ ] Engaged  [ ] Standby |\n\n**Any severity escalations this shift** (P1 → P0 or P2 → P1): ___\n**Engineering Manager aware**: [ ] Yes  [ ] No — notify before handover if any P0/P1 open",
+      "citations": ["kb-1", "kb-2"]
+    },
+    {
+      "heading": "Post-Incident Follow-ups Due",
+      "content": "PIRs and follow-up actions to track:\n\n| Incident | PIR Due Date | Owner | Status |\n|---|---|---|---|\n| INC-___ | ___ | ___ | [ ] Scheduled  [ ] Drafted  [ ] Published |\n\n**Communication templates used this shift**: Record which templates were sent and to which channels so the incoming engineer can continue the cadence:\n\n- [ ] Initial alert sent for INC-___ at ___ to `#oncall-___`\n- [ ] Status updates sent at ___-minute intervals\n- [ ] Resolution notice sent at ___ to `#oncall-___`\n\n**Handover complete**: Outgoing engineer signature: ___ | Time: ___",
+      "citations": ["kb-2"]
+    }
+  ],
+  "citations": [
+    {
+      "id": "kb-1",
+      "chunk_id": "chk_d7e80001",
+      "document_id": "doc_d7e8f9a0",
+      "source_path": "examples/sample_data_en/kb/oncall_escalation/runbook.md",
+      "line_start": 8,
+      "line_end": 36,
+      "anchor": "#1-severity-tiers-and-escalation-matrix",
+      "heading_path": ["On-call Incident Escalation Runbook", "1. Severity Tiers and Escalation Matrix"]
+    },
+    {
+      "id": "kb-2",
+      "chunk_id": "chk_d7e80002",
+      "document_id": "doc_d7e8f9a0",
+      "source_path": "examples/sample_data_en/kb/oncall_escalation/runbook.md",
+      "line_start": 37,
+      "line_end": 72,
+      "anchor": "#2-communication-templates",
+      "heading_path": ["On-call Incident Escalation Runbook", "2. Communication Templates"]
+    }
+  ]
+}

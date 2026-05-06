@@ -1,0 +1,51 @@
+{
+  "schema_version": "vendor_doc_v1",
+  "doc_ref": "VDOC-20260506-003",
+  "template_id": "maintenance_window",
+  "title": "TLS Certificate Renewal — Maintenance Window Runbook for SecureNet Ltd",
+  "scope_note": "For use during scheduled quarterly certificate renewal windows; assumes Let's Encrypt or DigiCert as the issuing CA.",
+  "sections": [
+    {
+      "heading": "Maintenance Window Summary",
+      "content": "**Purpose**: Renew expiring TLS certificates for all public-facing HTTPS endpoints before the 30-day alert threshold.\n\n**Scheduled duration**: 60 minutes (30 min active work + 30 min validation buffer).\n\n**Impact**: Zero downtime for Let's Encrypt renewals (automated). Brief nginx reload (< 1 s) for DigiCert manual renewals.\n\n**Rollback**: Revert symlink to previous cert file; reload nginx.",
+      "citations": ["kb-1"]
+    },
+    {
+      "heading": "Pre-Maintenance Checklist",
+      "content": "Complete before the window begins:\n\n1. Confirm cert expiry dates: `openssl x509 -noout -dates -in /etc/ssl/certs/<domain>.pem`\n2. Verify Certbot version: `certbot --version` (must be ≥ 2.6)\n3. Check DNS / HTTP-01 challenge reachability: `certbot renew --dry-run --cert-name <domain>`\n4. Back up current cert and key to `/etc/ssl/backup/<domain>-$(date +%Y%m%d)/`\n5. Confirm staging test environment is available for DigiCert validation",
+      "citations": ["kb-2"]
+    },
+    {
+      "heading": "Execution Steps",
+      "content": "**Let's Encrypt (Certbot)**:\n1. `certbot renew --cert-name <domain>` — automatic renewal + nginx reload via deploy hook\n2. Verify: `openssl x509 -noout -dates -in /etc/letsencrypt/live/<domain>/cert.pem`\n3. Confirm `notAfter` is > 60 days from today\n\n**DigiCert / Internal CA**:\n1. Generate new CSR: `openssl req -new -key <domain>.key -out <domain>.csr`\n2. Submit to CA portal; download cert + intermediate chain\n3. Test on staging: copy files, reload nginx, run `curl -vI https://<staging-domain>`\n4. Deploy to prod: `ln -sfn /etc/ssl/certs/<domain>-new.pem /etc/ssl/certs/<domain>.pem`\n5. Reload nginx: `systemctl reload nginx`\n6. Final check: `echo | openssl s_client -connect <domain>:443 2>/dev/null | openssl x509 -noout -dates`",
+      "citations": ["kb-2"]
+    },
+    {
+      "heading": "Post-Maintenance Validation",
+      "content": "After renewal:\n\n1. External check: use SSL Labs or `curl -vI https://<domain>` from outside the network\n2. Confirm certificate chain is complete (no intermediate missing)\n3. Update monitoring alert threshold: reset 30-day expiry alert to new expiry date\n4. Document in the maintenance log: old expiry, new expiry, renewal method, operator",
+      "citations": ["kb-1", "kb-2"]
+    }
+  ],
+  "citations": [
+    {
+      "id": "kb-1",
+      "chunk_id": "chk_f3a40001",
+      "document_id": "doc_f3a4b5c6",
+      "source_path": "examples/sample_data_en/kb/tls_cert_mgmt/sop.md",
+      "line_start": 8,
+      "line_end": 29,
+      "anchor": "#1-certificate-lifecycle",
+      "heading_path": ["TLS Certificate Management SOP", "1. Certificate Lifecycle"]
+    },
+    {
+      "id": "kb-2",
+      "chunk_id": "chk_f3a40002",
+      "document_id": "doc_f3a4b5c6",
+      "source_path": "examples/sample_data_en/kb/tls_cert_mgmt/sop.md",
+      "line_start": 30,
+      "line_end": 47,
+      "anchor": "#2-renewal-procedure",
+      "heading_path": ["TLS Certificate Management SOP", "2. Renewal Procedure"]
+    }
+  ]
+}

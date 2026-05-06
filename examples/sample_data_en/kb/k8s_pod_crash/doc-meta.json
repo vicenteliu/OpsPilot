@@ -1,0 +1,22 @@
+{
+  "id": "doc_a1b2c3d4",
+  "source_path": "examples/sample_data_en/kb/k8s_pod_crash/sop.md",
+  "source_url": null,
+  "title": "Kubernetes Pod Crash Troubleshooting SOP",
+  "classification": "internal",
+  "content_hash": "sha256:a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4",
+  "version": "1.0.0",
+  "ingested_at": "2026-05-06T10:00:00Z",
+  "last_modified": "2026-01-15T08:00:00Z",
+  "language": "en",
+  "tags": ["kubernetes", "sop", "k8s", "crashloopbackoff", "oomkilled", "platform"],
+  "namespace": "opspilot:public-kb",
+  "chunk_strategy": "headings_then_size",
+  "chunk_count": 3,
+  "embedding_model": "ollama-local/nomic-embed-text-v2-moe@2026-04",
+  "embedding_dim": 768,
+  "redaction_passed": true,
+  "redaction_rules_version": "1.0.0",
+  "license": null,
+  "extensions": {}
+}

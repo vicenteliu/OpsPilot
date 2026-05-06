@@ -1,0 +1,22 @@
+{
+  "id": "doc_f3a4b5c6",
+  "source_path": "examples/sample_data_en/kb/tls_cert_mgmt/sop.md",
+  "source_url": null,
+  "title": "TLS Certificate Management SOP",
+  "classification": "internal",
+  "content_hash": "sha256:f3a4b5c6f3a4b5c6f3a4b5c6f3a4b5c6f3a4b5c6f3a4b5c6f3a4b5c6f3a4b5c6",
+  "version": "1.0.0",
+  "ingested_at": "2026-05-06T10:00:00Z",
+  "last_modified": "2026-03-01T08:00:00Z",
+  "language": "en",
+  "tags": ["tls", "ssl", "certificates", "letsencrypt", "digicert", "sop", "security"],
+  "namespace": "opspilot:public-kb",
+  "chunk_strategy": "headings_then_size",
+  "chunk_count": 3,
+  "embedding_model": "ollama-local/nomic-embed-text-v2-moe@2026-04",
+  "embedding_dim": 768,
+  "redaction_passed": true,
+  "redaction_rules_version": "1.0.0",
+  "license": null,
+  "extensions": {}
+}

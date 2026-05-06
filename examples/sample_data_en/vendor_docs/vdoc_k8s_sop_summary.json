@@ -1,0 +1,56 @@
+{
+  "schema_version": "vendor_doc_v1",
+  "doc_ref": "VDOC-20260506-001",
+  "template_id": "sop_summary",
+  "title": "Kubernetes Pod Failure — SOP Summary for CloudOps Partners",
+  "scope_note": "Applies to Kubernetes 1.27+ clusters managed by the platform team; intended for L1/L2 support engineers at partner organizations.",
+  "sections": [
+    {
+      "heading": "Overview",
+      "content": "This document summarises the standard operating procedure for diagnosing and resolving Kubernetes pod failures. The three most common failure modes are CrashLoopBackOff, OOMKilled (exit 137), and ImagePullBackOff. Each requires a distinct first-response action and may require escalation to different teams.",
+      "citations": ["kb-1"]
+    },
+    {
+      "heading": "Symptom Classification",
+      "content": "Use `kubectl describe pod <name>` and `kubectl logs <name> --previous` to identify the failure category:\n\n- **CrashLoopBackOff** (non-zero exit): Application error, missing environment variable, or misconfigured liveness probe. Start with previous logs.\n- **OOMKilled** (exit 137): Container memory limit exceeded. Double `resources.limits.memory` and redeploy.\n- **ImagePullBackOff** (ErrImagePull): Wrong image tag, missing `imagePullSecrets`, or registry network issue. Verify credentials and tag existence.\n- **Pending / Unschedulable**: Insufficient cluster resources or node selector mismatch. Check cluster autoscaler.",
+      "citations": ["kb-1"]
+    },
+    {
+      "heading": "Escalation Policy",
+      "content": "Escalate to the Platform Team via PagerDuty (`svc-platform-oncall`) if:\n- CrashLoopBackOff persists after log inspection and env-var correction\n- OOMKilled recurs after memory limit has already been doubled\n- Pod remains Unschedulable for more than 15 minutes\n\nEscalate to the Security Team if ImagePullBackOff persists despite correct registry credentials (possible ACL or registry policy issue).",
+      "citations": ["kb-2", "kb-3"]
+    }
+  ],
+  "citations": [
+    {
+      "id": "kb-1",
+      "chunk_id": "chk_a1b20001",
+      "document_id": "doc_a1b2c3d4",
+      "source_path": "examples/sample_data_en/kb/k8s_pod_crash/sop.md",
+      "line_start": 8,
+      "line_end": 22,
+      "anchor": "#1-symptom-classification",
+      "heading_path": ["Kubernetes Pod Crash Troubleshooting SOP", "1. Symptom Classification"]
+    },
+    {
+      "id": "kb-2",
+      "chunk_id": "chk_a1b20002",
+      "document_id": "doc_a1b2c3d4",
+      "source_path": "examples/sample_data_en/kb/k8s_pod_crash/sop.md",
+      "line_start": 23,
+      "line_end": 40,
+      "anchor": "#2-troubleshooting-steps",
+      "heading_path": ["Kubernetes Pod Crash Troubleshooting SOP", "2. Troubleshooting Steps"]
+    },
+    {
+      "id": "kb-3",
+      "chunk_id": "chk_a1b20003",
+      "document_id": "doc_a1b2c3d4",
+      "source_path": "examples/sample_data_en/kb/k8s_pod_crash/sop.md",
+      "line_start": 41,
+      "line_end": 48,
+      "anchor": "#3-escalation-policy",
+      "heading_path": ["Kubernetes Pod Crash Troubleshooting SOP", "3. Escalation Policy"]
+    }
+  ]
+}

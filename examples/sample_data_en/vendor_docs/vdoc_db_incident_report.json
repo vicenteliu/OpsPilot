@@ -1,0 +1,51 @@
+{
+  "schema_version": "vendor_doc_v1",
+  "doc_ref": "VDOC-20260506-004",
+  "template_id": "incident_report",
+  "title": "Database Connection Pool Exhaustion — Incident Report Template for DataBridge Partners",
+  "scope_note": "Template for filing a post-incident report when a production database connection pool exhaustion event occurs; to be completed by the on-call engineer within 24 hours of resolution.",
+  "sections": [
+    {
+      "heading": "Incident Summary",
+      "content": "**Incident type**: Database connection pool exhaustion\n**Affected system**: Production PostgreSQL / MySQL (RDS or self-managed) with PgBouncer / ProxySQL pooler\n**Severity**: P1 (partial outage) or P2 (degraded) depending on user impact\n\n**Key indicators observed** (check all that apply):\n- [ ] Application error: `too many connections` or `connection timeout`\n- [ ] `FATAL: remaining connection slots are reserved` in DB logs\n- [ ] `pg_stat_activity` count ≈ `max_connections`\n- [ ] PgBouncer `cl_waiting > 0` in `SHOW POOLS`\n- [ ] Query latency spike with no CPU/disk pressure",
+      "citations": ["kb-1"]
+    },
+    {
+      "heading": "Root Cause Analysis",
+      "content": "Identify which root cause applied:\n\n| Root Cause | Evidence | Confirmed? |\n|---|---|---|\n| Connection leak | Idle connections > 1 h in `pg_stat_activity` | [ ] |\n| Traffic spike | Request rate + connection count correlated | [ ] |\n| Long-running idle-in-transaction | `xact_start` age > 5 min | [ ] |\n| Pool size misconfiguration | `pool_size` < peak concurrency | [ ] |\n| Missing connection pooler | App connecting directly to DB | [ ] |\n\n**Commands used for diagnosis**:\n```sql\n-- Idle connections\nSELECT count(*), state FROM pg_stat_activity GROUP BY state;\n\n-- Long-running idle-in-transaction\nSELECT pid, now() - xact_start AS duration, query\nFROM pg_stat_activity WHERE state = 'idle in transaction'\nORDER BY duration DESC LIMIT 10;\n```",
+      "citations": ["kb-1"]
+    },
+    {
+      "heading": "Mitigation Actions Taken",
+      "content": "Document the exact commands and changes applied during the incident:\n\n1. **Killed idle connections**: `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE state = 'idle' AND state_change < now() - interval '10 minutes';` — terminated ___ connections\n2. **Killed idle-in-transaction**: `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE state = 'idle in transaction' AND xact_start < now() - interval '5 minutes';` — terminated ___ connections\n3. **Temporary config change**: [ ] max_connections increased to ___ (requires DB restart, confirmed with DBA)\n4. **PgBouncer pool_size adjusted**: from ___ to ___ per database\n\n**Time to mitigation**: ___ minutes from detection",
+      "citations": ["kb-2"]
+    },
+    {
+      "heading": "Permanent Fix and Follow-up",
+      "content": "Permanent remediation committed:\n\n- [ ] Connection leak fixed: added `finally` / `defer` close in application code (PR: ___)\n- [ ] `idle_in_transaction_session_timeout = 120s` added to DB config\n- [ ] PgBouncer scaled horizontally (added ___ instances)\n- [ ] Application `max_pool_size` reduced to 5–10 per instance\n- [ ] `pool_size` formula applied: `(max_connections - superuser_reserved) / num_app_instances`\n\n**PIR review date**: ___\n**Owner**: ___",
+      "citations": ["kb-2"]
+    }
+  ],
+  "citations": [
+    {
+      "id": "kb-1",
+      "chunk_id": "chk_c9d00001",
+      "document_id": "doc_c9d0e1f2",
+      "source_path": "examples/sample_data_en/kb/db_connection_pool/sop.md",
+      "line_start": 8,
+      "line_end": 30,
+      "anchor": "#1-symptoms-and-root-causes",
+      "heading_path": ["Database Connection Pool Exhaustion SOP", "1. Symptoms and Root Causes"]
+    },
+    {
+      "id": "kb-2",
+      "chunk_id": "chk_c9d00002",
+      "document_id": "doc_c9d0e1f2",
+      "source_path": "examples/sample_data_en/kb/db_connection_pool/sop.md",
+      "line_start": 31,
+      "line_end": 57,
+      "anchor": "#2-resolution-steps",
+      "heading_path": ["Database Connection Pool Exhaustion SOP", "2. Resolution Steps"]
+    }
+  ]
+}

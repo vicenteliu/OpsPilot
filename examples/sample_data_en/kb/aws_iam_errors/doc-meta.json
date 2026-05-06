@@ -1,0 +1,22 @@
+{
+  "id": "doc_e5f6a7b8",
+  "source_path": "examples/sample_data_en/kb/aws_iam_errors/sop.md",
+  "source_url": null,
+  "title": "AWS IAM Permission Error Troubleshooting SOP",
+  "classification": "internal",
+  "content_hash": "sha256:e5f6a7b8e5f6a7b8e5f6a7b8e5f6a7b8e5f6a7b8e5f6a7b8e5f6a7b8e5f6a7b8",
+  "version": "1.0.0",
+  "ingested_at": "2026-05-06T10:00:00Z",
+  "last_modified": "2026-02-01T08:00:00Z",
+  "language": "en",
+  "tags": ["aws", "iam", "sop", "accessdenied", "cloud", "security"],
+  "namespace": "opspilot:public-kb",
+  "chunk_strategy": "headings_then_size",
+  "chunk_count": 3,
+  "embedding_model": "ollama-local/nomic-embed-text-v2-moe@2026-04",
+  "embedding_dim": 768,
+  "redaction_passed": true,
+  "redaction_rules_version": "1.0.0",
+  "license": null,
+  "extensions": {}
+}

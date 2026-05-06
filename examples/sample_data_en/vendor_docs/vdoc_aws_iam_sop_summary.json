@@ -1,0 +1,56 @@
+{
+  "schema_version": "vendor_doc_v1",
+  "doc_ref": "VDOC-20260506-002",
+  "template_id": "sop_summary",
+  "title": "AWS IAM Permission Errors — SOP Summary for Cloud Integration Partners",
+  "scope_note": "Intended for partner engineers with AWS console read access; covers AccessDenied diagnosis and credential rotation without requiring AWS Organizations access.",
+  "sections": [
+    {
+      "heading": "Overview",
+      "content": "AWS IAM permission errors are the leading cause of failed deployments and integration failures in multi-account environments. This document covers the five most frequent error codes, a structured diagnosis workflow, and the two most common remediation actions.",
+      "citations": ["kb-1"]
+    },
+    {
+      "heading": "Common Error Codes and First Actions",
+      "content": "| Error | Immediate Action |\n|---|---|\n| `AccessDenied` | Run `aws iam simulate-principal-policy` with the exact resource ARN |\n| `UnauthorizedOperation` | Check the role's attached policies for the missing EC2/S3 action |\n| `InvalidClientTokenId` | The access key is deactivated — rotate credentials immediately |\n| `ExpiredTokenException` | Re-assume the IAM role; STS tokens have a 1–12 h TTL |\n| `NoCredentialProviders` | Check env vars (`AWS_ACCESS_KEY_ID`), instance profile, or `~/.aws/credentials` |",
+      "citations": ["kb-1"]
+    },
+    {
+      "heading": "Diagnosis and Remediation",
+      "content": "**Step 1 — Identify the principal**: `aws sts get-caller-identity` confirms which role or user is making the call.\n\n**Step 2 — Simulate the policy**: `aws iam simulate-principal-policy --policy-source-arn <role-arn> --action-names <action> --resource-arns <arn>` — output shows ALLOW or DENY with the matching policy.\n\n**Step 3 — Add the missing permission**: Attach an inline policy with the minimum required Allow statement. Policy changes propagate within 60 seconds.\n\n**Step 4 — Rotate expired credentials**: Create a new access key, update application config or Secrets Manager, then delete the old key.\n\nEscalate to the AWS Account Owner if a Service Control Policy (SCP) is the source of the deny.",
+      "citations": ["kb-2", "kb-3"]
+    }
+  ],
+  "citations": [
+    {
+      "id": "kb-1",
+      "chunk_id": "chk_e5f60001",
+      "document_id": "doc_e5f6a7b8",
+      "source_path": "examples/sample_data_en/kb/aws_iam_errors/sop.md",
+      "line_start": 8,
+      "line_end": 21,
+      "anchor": "#1-common-error-codes",
+      "heading_path": ["AWS IAM Permission Error Troubleshooting SOP", "1. Common Error Codes"]
+    },
+    {
+      "id": "kb-2",
+      "chunk_id": "chk_e5f60002",
+      "document_id": "doc_e5f6a7b8",
+      "source_path": "examples/sample_data_en/kb/aws_iam_errors/sop.md",
+      "line_start": 22,
+      "line_end": 32,
+      "anchor": "#2-diagnosis-steps",
+      "heading_path": ["AWS IAM Permission Error Troubleshooting SOP", "2. Diagnosis Steps"]
+    },
+    {
+      "id": "kb-3",
+      "chunk_id": "chk_e5f60003",
+      "document_id": "doc_e5f6a7b8",
+      "source_path": "examples/sample_data_en/kb/aws_iam_errors/sop.md",
+      "line_start": 33,
+      "line_end": 48,
+      "anchor": "#3-remediation",
+      "heading_path": ["AWS IAM Permission Error Troubleshooting SOP", "3. Remediation"]
+    }
+  ]
+}
