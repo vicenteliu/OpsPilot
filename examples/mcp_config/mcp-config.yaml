@@ -1,0 +1,64 @@
+version: "1.0.0"
+
+mcps:
+  - id: "fs-readonly"
+    name: "Filesystem (read-only)"
+    description: "Read files under workspace root via @modelcontextprotocol/server-filesystem."
+    transport: "stdio"
+    command: "npx"
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "${WORKSPACE_ROOT:-/workspace}"]
+    env: {}
+    tools_prefix: "mcp__fs__"
+    tools_allowlist: ["read_file", "list_directory"]
+    tools_denylist: null
+    enabled: true
+    trust: "trusted"
+    auth:
+      type: "none"
+    compliance:
+      data_residency: "unspecified"
+      pii_allowed: false
+      telemetry_optout: true
+    health_probe:
+      interval_seconds: 600
+      method: "list_tools"
+      failure_threshold: 3
+    limits:
+      rpm: 60
+      concurrent: 4
+      monthly_budget_usd: 0
+
+  - id: "notion-main"
+    name: "Notion (main workspace)"
+    description: "Read pages and databases in the main Notion workspace."
+    transport: "stdio"
+    command: "npx"
+    args: ["-y", "@notionhq/mcp-server"]
+    env:
+      NOTION_TOKEN: "${NOTION_API_KEY}"
+    tools_prefix: "mcp__notion__"
+    tools_allowlist: null
+    tools_denylist: ["delete_page", "delete_database"]
+    enabled: false
+    trust: "trusted"
+    auth:
+      type: "bearer_env"
+      env: "NOTION_API_KEY"
+      header: "Authorization"
+    compliance:
+      data_residency: "us"
+      pii_allowed: false
+      telemetry_optout: true
+    health_probe:
+      interval_seconds: 600
+      method: "list_tools"
+      failure_threshold: 3
+    limits:
+      rpm: 30
+      concurrent: 4
+      monthly_budget_usd: 5
+
+global_policy:
+  default_deny_on_disabled: true
+  block_secrets_in_env_literals: true
+  audit_every_call: true

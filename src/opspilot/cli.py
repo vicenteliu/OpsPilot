@@ -16,6 +16,8 @@
 * ``opspilot iteration validate``     — validate iteration directory invariants (PR-27)
 * ``opspilot sandbox dry-run``        — preview action without executing (PR-30)
 * ``opspilot sandbox run``            — execute action in Docker L2 hardened container (PR-30)
+* ``opspilot mcp list``               — list MCP servers and their tools (PR-31)
+* ``opspilot mcp probe <id>``         — health-check a single MCP server (PR-31)
 """
 
 from __future__ import annotations
@@ -1007,6 +1009,103 @@ def iteration_validate(
             _err.print(f"[red]✗[/red] {v}")
         raise typer.Exit(code=1)
     _console.print(f"[green]✓[/green] All invariants pass for {iteration_dir}")
+
+
+# ──────────────────────────────────────────────────────────────────────────
+#  mcp (PR-31)
+# ──────────────────────────────────────────────────────────────────────────
+
+_DEFAULT_MCP_CONFIG = Path("mcp-config.yaml")
+
+mcp_app = typer.Typer(
+    name="mcp",
+    help="MCP client — list servers/tools and probe health (PR-31).",
+    no_args_is_help=True,
+)
+app.add_typer(mcp_app)
+
+
+@mcp_app.command("list")
+def mcp_list(
+    config: Path = typer.Option(  # noqa: B008
+        _DEFAULT_MCP_CONFIG, "--config", "-c", help="Path to mcp-config.yaml."
+    ),
+) -> None:
+    """List registered MCP servers and their tools (connects to enabled servers)."""
+    from .mcp import McpRegistry, load_mcp_config
+
+    cfg = load_mcp_config(config)
+    registry = McpRegistry.from_config(cfg)
+
+    table = Table(title=f"MCP servers ({config})", show_lines=True)
+    table.add_column("ID", style="cyan")
+    table.add_column("Transport")
+    table.add_column("Enabled")
+    table.add_column("Tools prefix")
+    table.add_column("Trust")
+
+    for srv in cfg.mcps:
+        table.add_row(
+            srv.id,
+            srv.transport,
+            "[green]yes[/green]" if srv.enabled else "[dim]no[/dim]",
+            srv.tools_prefix,
+            srv.trust,
+        )
+    _console.print(table)
+
+    enabled = [s for s in cfg.mcps if s.enabled]
+    if not enabled:
+        _console.print("[dim]No enabled servers.[/dim]")
+        return
+
+    _console.print("\n[bold]Connecting to enabled servers to list tools…[/bold]")
+    try:
+        tools_by_server = registry.refresh_all_tools()
+    except Exception as exc:  # noqa: BLE001
+        _err.print(f"[yellow]Warning:[/yellow] {exc}")
+        return
+    finally:
+        registry.close_all()
+
+    for server_id, tools in tools_by_server.items():
+        if not tools:
+            _console.print(f"  [dim]{server_id}: no tools (or allowlist filtered all)[/dim]")
+            continue
+        _console.print(f"  [cyan]{server_id}[/cyan]: {len(tools)} tool(s)")
+        for t in tools:
+            _console.print(f"    • {t.name}  {t.description[:60]}")
+
+
+@mcp_app.command("probe")
+def mcp_probe(
+    server_id: str = typer.Argument(..., help="Server ID to probe."),
+    config: Path = typer.Option(  # noqa: B008
+        _DEFAULT_MCP_CONFIG, "--config", "-c", help="Path to mcp-config.yaml."
+    ),
+) -> None:
+    """Probe a single MCP server — connect, list tools, and report health."""
+    from .mcp import McpRegistry, load_mcp_config
+    from .mcp.registry import McpServerClient
+
+    cfg = load_mcp_config(config)
+    srv_cfg = next((s for s in cfg.mcps if s.id == server_id), None)
+    if srv_cfg is None:
+        _err.print(f"[red]Server '{server_id}' not found in config.[/red]")
+        raise typer.Exit(1)
+
+    client = McpServerClient(srv_cfg)
+    try:
+        tools = client.refresh_tools()
+        color = "green"
+        _console.print(f"[{color}]✓[/{color}] {server_id}: {len(tools)} tool(s) available")
+        for t in tools:
+            _console.print(f"  • {t.name}  {t.description[:72]}")
+    except Exception as exc:  # noqa: BLE001
+        _err.print(f"[red]✗[/red] {server_id}: {exc}")
+        raise typer.Exit(1) from exc
+    finally:
+        client.close()
 
 
 # ──────────────────────────────────────────────────────────────────────────
