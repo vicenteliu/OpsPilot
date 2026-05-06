@@ -60,8 +60,10 @@ def run_ticket_summary(
     sqlite_store: Any,  # SqliteStore — typed Any to avoid PR-4 import cycle
     lance_store: Any,  # LanceStore
     user_msg_fn: Callable[[dict[str, Any]], str] | None = None,
+    on_progress: Callable[[str], None] | None = None,
 ) -> RunResult:
     """Run the playbook end-to-end. Returns a :class:`RunResult`."""
+    _prog = on_progress or (lambda _: None)
     pb = request.playbook
 
     # ── 1. Load + redact input ──────────────────────────────────────
@@ -80,6 +82,7 @@ def run_ticket_summary(
         sensitivity=request.classification or pb.defaults.sensitivity,
     )
     session_manager.transition(sess.id, "active")
+    _prog("Session created")
 
     # ── 3. Build tools ──────────────────────────────────────────────
     namespace = request.namespace or request.kb_id or pb.defaults.kb_id
@@ -122,6 +125,7 @@ def run_ticket_summary(
             prefetch_chunk_ids: set[str] = set()
             prefetch_hits: list[dict[str, Any]] = []
             if pb.retrieval.mode == "prefetch":
+                _prog("Searching knowledge base…")
                 effective_system_prompt, prefetch_chunk_ids, prefetch_hits = _do_prefetch(
                     pb=pb,
                     ticket=ticket,
@@ -175,6 +179,7 @@ def run_ticket_summary(
                     )
 
             for _ in range(effective_max_turns):
+                _prog("Calling LLM…")
                 try:
                     resp = provider.chat(
                         messages,
@@ -232,6 +237,7 @@ def run_ticket_summary(
                             status = "failed"
                         else:
                             try:
+                                _prog("Searching knowledge base…")
                                 payload = tool_handler(tc.arguments)
                                 status = "ok"
                             except Exception as e:  # noqa: BLE001 — surface tool errors

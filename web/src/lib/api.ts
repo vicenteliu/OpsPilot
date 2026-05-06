@@ -91,6 +91,53 @@ export async function runTicket(
   return res.json();
 }
 
+export type StreamEvent =
+  | { type: 'status'; message: string }
+  | { type: 'result'; data: RunResponse }
+  | { type: 'error'; message: string };
+
+export async function* runTicketStream(
+  input: Record<string, unknown>,
+  modelId?: string
+): AsyncGenerator<StreamEvent> {
+  const res = await fetch('/api/run/stream', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ input, model_id: modelId ?? null })
+  });
+  if (!res.ok) throw new Error(`Run stream failed: ${res.status}`);
+
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let currentEvent = 'message';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+
+    for (const line of lines) {
+      if (line.startsWith('event: ')) {
+        currentEvent = line.slice(7).trim();
+      } else if (line.startsWith('data: ')) {
+        const payload = JSON.parse(line.slice(6));
+        if (currentEvent === 'status') {
+          yield { type: 'status', message: payload.message };
+        } else if (currentEvent === 'result') {
+          yield { type: 'result', data: payload };
+        } else if (currentEvent === 'error') {
+          yield { type: 'error', message: payload.message };
+        }
+        currentEvent = 'message';
+      }
+    }
+  }
+}
+
 export interface SessionSummary {
   session_id: string;
   created_at: string;

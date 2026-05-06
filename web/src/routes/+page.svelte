@@ -1,7 +1,7 @@
 <script lang="ts">
   import '../app.css';
   import {
-    getConfig, getModels, runTicket, listSessions, getSession, getLineage,
+    getConfig, getModels, runTicketStream, listSessions, getSession, getLineage,
     getKBStats, listKBDocs, searchKB, wikiIngest, wikiQueryToPage, wikiLint, wikiPromote, listMCPServers,
     listConflicts, resolveConflict, correctChunk, listCorrections, generateVendorDoc,
     listWikiPages, listVendorDocs, getWikiPage, getVendorDoc,
@@ -45,6 +45,7 @@
     2
   ));
   let loading = $state<boolean>(false);
+  let statusLines = $state<string[]>([]);
   let result = $state<RunResponse | null>(null);
   let fetchError = $state<string | null>(null);
   let sessions = $state<SessionSummary[]>([]);
@@ -198,6 +199,7 @@
   async function handleRun() {
     fetchError = null;
     result = null;
+    statusLines = [];
     let input: Record<string, unknown>;
     try {
       input = JSON.parse(ticketInput);
@@ -207,8 +209,16 @@
     }
     loading = true;
     try {
-      result = await runTicket(input, selectedModelId || undefined);
-      if (modules.history) await refreshHistory();
+      for await (const event of runTicketStream(input, selectedModelId || undefined)) {
+        if (event.type === 'status') {
+          statusLines = [...statusLines, event.message];
+        } else if (event.type === 'result') {
+          result = event.data;
+          if (modules.history) await refreshHistory();
+        } else if (event.type === 'error') {
+          fetchError = event.message;
+        }
+      }
     } catch (e) {
       fetchError = e instanceof Error ? e.message : String(e);
     } finally {
@@ -532,6 +542,18 @@
         {/if}
       </div>
     </section>
+
+    <!-- Streaming progress log -->
+    {#if statusLines.length > 0}
+      <div class="status-log">
+        {#each statusLines as line}
+          <div class="status-line">› {line}</div>
+        {/each}
+        {#if loading}
+          <div class="status-line status-line--active">…</div>
+        {/if}
+      </div>
+    {/if}
 
     <!-- Error display -->
     {#if fetchError}
@@ -1357,6 +1379,29 @@
     to {
       transform: rotate(360deg);
     }
+  }
+
+  .status-log {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin-bottom: 12px;
+    font-family: monospace;
+    font-size: 0.82rem;
+  }
+
+  .status-line {
+    color: var(--text-muted, #888);
+    line-height: 1.6;
+  }
+
+  .status-line--active {
+    animation: blink 1s step-start infinite;
+  }
+
+  @keyframes blink {
+    50% { opacity: 0; }
   }
 
   .error-banner {
