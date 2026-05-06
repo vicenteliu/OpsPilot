@@ -58,15 +58,26 @@ _COLUMN_MIGRATIONS: Final[tuple[tuple[str, str, str], ...]] = (
 )
 
 
+def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
+    cur = conn.execute(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?", (table,)
+    )
+    return bool(cur.fetchone()[0])
+
+
 def _col_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
     cur = conn.execute(f"SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name=?", (column,))
     return bool(cur.fetchone()[0])
 
 
 def _apply_column_migrations(conn: sqlite3.Connection) -> None:
-    """Add new columns to existing tables (idempotent via presence check)."""
+    """Add new columns to existing tables (idempotent via presence check).
+
+    Safe to call before the schema script on an empty database — the table
+    existence check prevents ALTER TABLE on non-existent tables.
+    """
     for table, column, definition in _COLUMN_MIGRATIONS:
-        if not _col_exists(conn, table, column):
+        if _table_exists(conn, table) and not _col_exists(conn, table, column):
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
 
@@ -75,6 +86,10 @@ def init_sqlite(db_path: Path) -> sqlite3.Connection:
 
     Creates parent directories as needed. Idempotent — safe to call on a
     pre-existing file.
+
+    Column migrations run BEFORE the schema script so that ``CREATE INDEX``
+    statements on new columns (e.g. ``valid_from``) succeed on databases
+    created before those columns were added.
     """
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -86,8 +101,13 @@ def init_sqlite(db_path: Path) -> sqlite3.Connection:
     for name, value in _PRAGMAS:
         cur.execute(f"PRAGMA {name} = {value}")
 
-    cur.executescript(_read_schema_sql())
+    # Migrate columns before running the full schema: on old databases this
+    # ensures the new columns exist before the schema tries to create indexes
+    # on them.  On a fresh database the table-existence check makes this a
+    # no-op, and executescript creates everything from scratch.
     _apply_column_migrations(conn)
+    conn.commit()  # make column additions visible to the subsequent executescript
+    cur.executescript(_read_schema_sql())
     conn.commit()
     return conn
 
