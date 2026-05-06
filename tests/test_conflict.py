@@ -569,3 +569,79 @@ def test_kb_search_sets_has_open_conflicts(tmp_path: Path) -> None:
     assert hits_by_doc["doc_bbbbbbbb"].has_open_conflicts is True
     # Unrelated doc is clean
     assert hits_by_doc["doc_cccccccc"].has_open_conflicts is False
+
+
+# ── add_correction / list_corrections ─────────────────────────────────
+
+
+def test_add_correction_updates_chunk_content(sqlite: SqliteStore) -> None:
+    _upsert_doc(sqlite, "doc_aaaaaaaa")
+    _upsert_chunk(sqlite, "chk_aaaaaaaa", "doc_aaaaaaaa", content="old content here")
+    corr_id = sqlite.add_correction(
+        "chk_aaaaaaaa",
+        corrected_by="tester",
+        reason="typo fix",
+        new_content="new content here",
+    )
+    assert corr_id.startswith("corr_")
+    row = sqlite.get_chunk("chk_aaaaaaaa")
+    assert row is not None
+    assert row["content"] == "new content here"
+
+
+def test_add_correction_records_old_content(sqlite: SqliteStore) -> None:
+    _upsert_doc(sqlite, "doc_aaaaaaaa")
+    _upsert_chunk(sqlite, "chk_aaaaaaaa", "doc_aaaaaaaa", content="original text")
+    corr_id = sqlite.add_correction(
+        "chk_aaaaaaaa",
+        corrected_by="tester",
+        reason="wrong info",
+        new_content="corrected text",
+    )
+    corrections = sqlite.list_corrections(chunk_id="chk_aaaaaaaa")
+    assert len(corrections) == 1
+    assert corrections[0]["id"] == corr_id
+    assert corrections[0]["old_content"] == "original text"
+    assert corrections[0]["new_content"] == "corrected text"
+    assert corrections[0]["reason"] == "wrong info"
+    assert corrections[0]["corrected_by"] == "tester"
+
+
+def test_add_correction_raises_for_unknown_chunk(sqlite: SqliteStore) -> None:
+    with pytest.raises(KeyError, match="chk_aaaaaaaa"):
+        sqlite.add_correction(
+            "chk_aaaaaaaa",
+            corrected_by="tester",
+            reason="x",
+            new_content="y",
+        )
+
+
+def test_list_corrections_returns_both_for_chunk(sqlite: SqliteStore) -> None:
+    _upsert_doc(sqlite, "doc_aaaaaaaa")
+    _upsert_chunk(sqlite, "chk_aaaaaaaa", "doc_aaaaaaaa", content="v0")
+    sqlite.add_correction("chk_aaaaaaaa", corrected_by="a", reason="r1", new_content="v1")
+    sqlite.add_correction("chk_aaaaaaaa", corrected_by="b", reason="r2", new_content="v2")
+    corrections = sqlite.list_corrections(chunk_id="chk_aaaaaaaa")
+    assert len(corrections) == 2
+    new_contents = {c["new_content"] for c in corrections}
+    assert new_contents == {"v1", "v2"}
+
+
+def test_list_corrections_without_filter(sqlite: SqliteStore) -> None:
+    _upsert_doc(sqlite, "doc_aaaaaaaa")
+    _upsert_doc(sqlite, "doc_bbbbbbbb")
+    _upsert_chunk(sqlite, "chk_aaaaaaaa", "doc_aaaaaaaa", content="x")
+    _upsert_chunk(sqlite, "chk_bbbbbbbb", "doc_bbbbbbbb", content="y")
+    sqlite.add_correction("chk_aaaaaaaa", corrected_by="u", reason="r", new_content="x2")
+    sqlite.add_correction("chk_bbbbbbbb", corrected_by="u", reason="r", new_content="y2")
+    all_corrections = sqlite.list_corrections()
+    assert len(all_corrections) == 2
+
+
+def test_list_corrections_respects_limit(sqlite: SqliteStore) -> None:
+    _upsert_doc(sqlite, "doc_aaaaaaaa")
+    _upsert_chunk(sqlite, "chk_aaaaaaaa", "doc_aaaaaaaa", content="start")
+    for i in range(5):
+        sqlite.add_correction("chk_aaaaaaaa", corrected_by="u", reason="r", new_content=f"v{i}")
+    assert len(sqlite.list_corrections(limit=3)) == 3

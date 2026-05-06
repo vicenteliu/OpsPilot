@@ -3,7 +3,7 @@
   import {
     getConfig, getModels, runTicket, listSessions, getSession, getLineage,
     listKBDocs, searchKB, wikiIngest, wikiQueryToPage, wikiLint, wikiPromote, listMCPServers,
-    listConflicts, resolveConflict,
+    listConflicts, resolveConflict, correctChunk,
     type RunResponse, type NextAction, type SessionSummary, type ModelOption, type SkillLineage,
     type KBDoc, type KBHit, type KBConflict, type WikiLintIssue, type MCPServer
   } from '$lib/api';
@@ -53,6 +53,13 @@
   let conflictsError = $state<string | null>(null);
   let conflictStatusFilter = $state<'open' | 'all'>('open');
   let resolving = $state<Record<string, boolean>>({});
+
+  // Correction state
+  let correctingChunkId = $state<string | null>(null);
+  let correctReason = $state<string>('');
+  let correctContent = $state<string>('');
+  let correctLoading = $state<boolean>(false);
+  let correctError = $state<string | null>(null);
 
   // Wiki state
   let wikiDocId = $state<string>('');
@@ -199,6 +206,24 @@
       kbSearchError = e instanceof Error ? e.message : String(e);
     } finally {
       kbSearchLoading = false;
+    }
+  }
+
+  async function handleCorrect(chunkId: string) {
+    if (!correctReason.trim() || !correctContent.trim()) return;
+    correctLoading = true;
+    correctError = null;
+    try {
+      await correctChunk(chunkId, correctContent.trim(), correctReason.trim());
+      // Refresh search results so the updated content shows
+      if (kbSearchQuery.trim()) kbSearchResults = await searchKB(kbSearchQuery.trim());
+      correctingChunkId = null;
+      correctReason = '';
+      correctContent = '';
+    } catch (e) {
+      correctError = e instanceof Error ? e.message : String(e);
+    } finally {
+      correctLoading = false;
     }
   }
 
@@ -506,7 +531,7 @@
           <p class="section-error">{kbSearchError}</p>
         {:else if kbSearchResults.length > 0}
           <table class="data-table">
-            <thead><tr><th>Chunk</th><th>Doc</th><th>Score</th><th>Valid From</th><th>Snippet</th></tr></thead>
+            <thead><tr><th>Chunk</th><th>Doc</th><th>Score</th><th>Valid From</th><th>Snippet</th><th></th></tr></thead>
             <tbody>
               {#each kbSearchResults as h}
                 <tr class="{h.has_open_conflicts ? 'row-conflict' : ''}">
@@ -518,7 +543,40 @@
                   <td class="num">{h.score.toFixed(4)}</td>
                   <td class="dim">{h.valid_from ? h.valid_from.slice(0, 10) : '—'}</td>
                   <td class="snippet">{h.content.slice(0, 100)}</td>
+                  <td>
+                    <button class="btn-correct-toggle" title="Correct this chunk"
+                      onclick={() => {
+                        correctingChunkId = correctingChunkId === h.chunk_id ? null : h.chunk_id;
+                        correctReason = '';
+                        correctContent = h.content;
+                        correctError = null;
+                      }}>
+                      {correctingChunkId === h.chunk_id ? '✕' : '✎'}
+                    </button>
+                  </td>
                 </tr>
+                {#if correctingChunkId === h.chunk_id}
+                  <tr class="correct-row">
+                    <td colspan="6">
+                      <div class="correct-form">
+                        <label class="correct-label">Reason
+                          <input class="correct-input" bind:value={correctReason} placeholder="Why is this content incorrect?" />
+                        </label>
+                        <label class="correct-label">Corrected content
+                          <textarea class="correct-textarea" bind:value={correctContent} rows="4"></textarea>
+                        </label>
+                        {#if correctError}<p class="section-error">{correctError}</p>{/if}
+                        <div class="correct-actions">
+                          <button class="btn-action" onclick={() => handleCorrect(h.chunk_id)}
+                            disabled={correctLoading || !correctReason.trim() || !correctContent.trim()}>
+                            {correctLoading ? '…' : 'Apply correction'}
+                          </button>
+                          <button class="btn-secondary" onclick={() => correctingChunkId = null}>Cancel</button>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                {/if}
               {/each}
             </tbody>
           </table>
@@ -1476,4 +1534,18 @@
   .status-b_wins { background: #dbeafe; color: #1e40af; }
   .status-merged { background: #f3e8ff; color: #7e22ce; }
   .status-dismissed { background: #f1f5f9; color: #64748b; }
+
+  .btn-correct-toggle {
+    background: none; border: 1px solid #cbd5e1; border-radius: 4px;
+    cursor: pointer; padding: 1px 6px; font-size: 0.85rem; color: #475569;
+  }
+  .btn-correct-toggle:hover { background: #f1f5f9; }
+
+  .correct-row td { background: #f8fafc; padding: 8px 12px; }
+  .correct-form { display: flex; flex-direction: column; gap: 8px; max-width: 700px; }
+  .correct-label { display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; color: #64748b; }
+  .correct-input { padding: 4px 8px; border: 1px solid #e2e8f0; border-radius: 4px; font-size: 0.85rem; }
+  .correct-textarea { padding: 6px 8px; border: 1px solid #e2e8f0; border-radius: 4px; font-size: 0.8rem; font-family: monospace; resize: vertical; }
+  .correct-actions { display: flex; gap: 8px; }
+  .btn-secondary { padding: 4px 10px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 4px; cursor: pointer; font-size: 0.8rem; }
 </style>

@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import secrets
 import sqlite3
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
@@ -375,6 +376,62 @@ class SqliteStore:
             tuple(chunk_ids),
         )
         return {str(r["id"]) for r in cur.fetchall()}
+
+    # ── kb_corrections ───────────────────────────────────────────────
+
+    def add_correction(
+        self,
+        chunk_id: str,
+        corrected_by: str,
+        reason: str,
+        new_content: str,
+    ) -> str:
+        """Record an inline correction and update the chunk content.
+
+        Returns the new ``corr_id``.  Raises ``KeyError`` if the chunk
+        does not exist.
+        """
+        from ..timeutil import now_rfc3339
+
+        row = self.get_chunk(chunk_id)
+        if row is None:
+            raise KeyError(f"Chunk {chunk_id!r} not found")
+        old_content = str(row.get("content") or "")
+        corr_id = "corr_" + secrets.token_hex(4)
+        now = now_rfc3339()
+        self._conn.execute(
+            """INSERT INTO kb_corrections
+               (id, chunk_id, corrected_by, reason, old_content, new_content, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (corr_id, chunk_id, corrected_by, reason, old_content, new_content, now),
+        )
+        self._conn.execute(
+            "UPDATE kb_chunks SET content=? WHERE id=?",
+            (new_content, chunk_id),
+        )
+        self._conn.commit()
+        return corr_id
+
+    def list_corrections(
+        self,
+        chunk_id: str | None = None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        """Return correction records, newest first.
+
+        Optionally filtered to a single *chunk_id*.
+        """
+        if chunk_id:
+            cur = self._conn.execute(
+                "SELECT * FROM kb_corrections WHERE chunk_id=? ORDER BY created_at DESC LIMIT ?",
+                (chunk_id, limit),
+            )
+        else:
+            cur = self._conn.execute(
+                "SELECT * FROM kb_corrections ORDER BY created_at DESC LIMIT ?",
+                (limit,),
+            )
+        return [dict(r) for r in cur.fetchall()]
 
     # ── memory_records (D3 — minimal CRUD) ───────────────────────────
 

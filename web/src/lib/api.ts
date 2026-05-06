@@ -223,6 +223,21 @@ export async function resolveConflict(
   if (!res.ok) throw new Error(`Resolve failed: ${res.status}`);
 }
 
+export async function correctChunk(
+  chunkId: string,
+  newContent: string,
+  reason: string,
+  correctedBy = 'web-user'
+): Promise<{ corr_id: string; chunk_id: string; ok: boolean }> {
+  const res = await fetch(`/api/kb/chunks/${encodeURIComponent(chunkId)}/correct`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ new_content: newContent, reason, corrected_by: correctedBy })
+  });
+  if (!res.ok) throw new Error(`Correct failed: ${res.status}`);
+  return res.json();
+}
+
 // ── Wiki ─────────────────────────────────────────────────────────────────────
 
 export interface WikiIngestResult {

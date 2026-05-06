@@ -12,6 +12,9 @@ from textual.widgets import DataTable, Input, Label, Static
 
 _MODE_SEARCH = "search"
 _MODE_INGEST = "ingest"
+_MODE_CORRECT_ID = "correct_id"
+_MODE_CORRECT_REASON = "correct_reason"
+_MODE_CORRECT_CONTENT = "correct_content"
 
 
 class KBBrowserScreen(Widget):
@@ -27,14 +30,17 @@ class KBBrowserScreen(Widget):
         Binding("s", "start_search", "Search KB", show=True),
         Binding("r", "reload_docs", "Reload", show=True),
         Binding("c", "show_conflicts", "Conflicts", show=True),
+        Binding("e", "start_correct", "Correct chunk", show=True),
     ]
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._pending_mode = ""
+        self._correct_chunk_id = ""
+        self._correct_reason = ""
 
     def compose(self) -> ComposeResult:
-        yield Label("[b]KB Browser[/b] — [dim]I: ingest  S: search  R: reload  C: conflicts[/dim]")
+        yield Label("[b]KB Browser[/b] — [dim]I: ingest  S: search  R: reload  C: conflicts  E: correct chunk[/dim]")
         yield Static(id="kb-input-row")
         yield DataTable(id="kb-table", zebra_stripes=True)
 
@@ -75,6 +81,11 @@ class KBBrowserScreen(Widget):
     def action_show_conflicts(self) -> None:
         self.show_conflicts()
 
+    def action_start_correct(self) -> None:
+        self._correct_chunk_id = ""
+        self._correct_reason = ""
+        self._show_input("Enter chunk ID to correct (e.g. chk_xxxxxxxx)…", _MODE_CORRECT_ID)
+
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id != "kb-cmd-input":
             return
@@ -87,6 +98,14 @@ class KBBrowserScreen(Widget):
             self.do_ingest(value)
         elif mode == _MODE_SEARCH:
             self.run_search(value)
+        elif mode == _MODE_CORRECT_ID:
+            self._correct_chunk_id = value
+            self._show_input("Enter reason for correction…", _MODE_CORRECT_REASON)
+        elif mode == _MODE_CORRECT_REASON:
+            self._correct_reason = value
+            self._show_input("Enter corrected content…", _MODE_CORRECT_CONTENT)
+        elif mode == _MODE_CORRECT_CONTENT:
+            self.do_correct(self._correct_chunk_id, self._correct_reason, value)
 
     def on_key(self, event: Any) -> None:
         if not self.has_class("input-hidden") and getattr(event, "key", "") == "escape":
@@ -284,3 +303,31 @@ class KBBrowserScreen(Widget):
                 dt.add_row("(no open conflicts)", "", "", "", "", "")
 
         self.app.call_from_thread(update)
+
+    # ── correct worker ─────────────────────────────────────────────────────
+
+    @work(thread=True)
+    def do_correct(self, chunk_id: str, reason: str, new_content: str) -> None:
+        from ...config import load_config
+        from ...memory.sqlite_store import SqliteStore
+        from ...memory.storage_init import init_sqlite
+
+        cfg = load_config()
+        db_path = cfg.home / "kb" / "sqlite.db"
+        if not db_path.exists():
+            self.app.call_from_thread(self.notify, "KB not initialised yet", severity="warning")
+            return
+
+        sqlite = SqliteStore(init_sqlite(db_path))
+        try:
+            corr_id = sqlite.add_correction(
+                chunk_id,
+                corrected_by="tui-user",
+                reason=reason,
+                new_content=new_content,
+            )
+            self.app.call_from_thread(
+                self.notify, f"Correction {corr_id} applied to {chunk_id}", severity="information"
+            )
+        except KeyError as exc:
+            self.app.call_from_thread(self.notify, str(exc), severity="error")

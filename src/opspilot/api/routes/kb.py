@@ -1,5 +1,6 @@
 """KB API routes: GET /api/kb/docs, POST /api/kb/ingest, GET /api/kb/search,
-GET /api/kb/conflicts, PATCH /api/kb/conflicts/{id}/resolve."""
+GET /api/kb/conflicts, PATCH /api/kb/conflicts/{id}/resolve,
+POST /api/kb/chunks/{id}/correct, GET /api/kb/corrections."""
 
 from __future__ import annotations
 
@@ -204,3 +205,54 @@ async def resolve_conflict_route(
         raise HTTPException(status_code=400, detail=str(e)) from e
 
     return {"conflict_id": conflict_id, "resolution": body.resolution, "ok": True}
+
+
+# ── Corrections ──────────────────────────────────────────────────────────────
+
+
+class CorrectRequest(BaseModel):
+    new_content: str
+    reason: str
+    corrected_by: str = "api-user"
+
+
+@router.post("/kb/chunks/{chunk_id}/correct")
+async def correct_chunk(
+    chunk_id: str, body: CorrectRequest, request: Request
+) -> dict[str, Any]:
+    """Apply an inline content correction to a KB chunk."""
+    state = request.app.state
+    loop = asyncio.get_event_loop()
+
+    def _run() -> str:
+        return state.sqlite.add_correction(
+            chunk_id,
+            corrected_by=body.corrected_by,
+            reason=body.reason,
+            new_content=body.new_content,
+        )
+
+    try:
+        corr_id = await loop.run_in_executor(None, _run)
+    except KeyError as e:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+    return {"corr_id": corr_id, "chunk_id": chunk_id, "ok": True}
+
+
+@router.get("/kb/corrections")
+async def list_corrections_route(
+    request: Request,
+    chunk_id: str | None = Query(None, description="Filter to a specific chunk"),
+    limit: int = Query(50, description="Max rows"),
+) -> dict[str, Any]:
+    """List KB correction records, newest first."""
+    state = request.app.state
+    loop = asyncio.get_event_loop()
+
+    def _run() -> list[dict[str, Any]]:
+        return state.sqlite.list_corrections(chunk_id=chunk_id, limit=limit)
+
+    rows = await loop.run_in_executor(None, _run)
+    return {"corrections": rows, "total": len(rows)}

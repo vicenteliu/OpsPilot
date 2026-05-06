@@ -616,6 +616,58 @@ def kb_resolve_cmd(
         raise typer.Exit(1) from e
 
 
+@kb_app.command("correct")
+def kb_correct_cmd(
+    chunk_id: str = typer.Argument(..., help="Chunk ID (chk_xxxxxxxx)."),
+    new_content: str = typer.Option(..., "--content", "-c", help="Corrected chunk content."),
+    reason: str = typer.Option(..., "--reason", "-m", help="Why this correction is needed."),
+    corrected_by: str = typer.Option("cli-user", "--by", help="Who is applying the correction."),
+) -> None:
+    """Apply an inline content correction to a KB chunk."""
+    cfg = load_config()
+    sqlite, _ = _open_kb_stores(home=cfg.home, embedding_dim=768, embedding_model="")
+    try:
+        corr_id = sqlite.add_correction(
+            chunk_id,
+            corrected_by=corrected_by,
+            reason=reason,
+            new_content=new_content,
+        )
+        _console.print(f"[green]Correction {corr_id} applied to {chunk_id}.[/green]")
+    except KeyError as e:
+        _console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1) from e
+
+
+@kb_app.command("corrections")
+def kb_corrections_cmd(
+    chunk_id: str = typer.Option("", "--chunk", "-c", help="Filter to a specific chunk ID."),
+    limit: int = typer.Option(50, "--limit", "-n", help="Max rows to display."),
+) -> None:
+    """List KB correction records."""
+    cfg = load_config()
+    sqlite, _ = _open_kb_stores(home=cfg.home, embedding_dim=768, embedding_model="")
+    rows = sqlite.list_corrections(chunk_id=chunk_id or None, limit=limit)
+    if not rows:
+        _console.print("[green]No corrections recorded.[/green]")
+        return
+    table = Table(title="KB Corrections", show_lines=True)
+    table.add_column("ID")
+    table.add_column("Chunk")
+    table.add_column("By")
+    table.add_column("Reason")
+    table.add_column("Created")
+    for r in rows:
+        table.add_row(
+            r["id"],
+            r["chunk_id"],
+            r["corrected_by"],
+            (r["reason"] or "")[:60],
+            (r["created_at"] or "")[:19],
+        )
+    _console.print(table)
+
+
 harness_app = typer.Typer(
     name="harness",
     help="Evaluation harness: run fixtures, compute scores, emit results.jsonl.",
