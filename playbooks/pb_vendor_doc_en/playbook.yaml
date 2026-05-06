@@ -1,0 +1,51 @@
+# Playbook: pb_vendor_doc_en
+# Generate operational documents for external vendors from KB content.
+# Output schema = vendor_doc_v1
+
+id: "pb_vendor_doc_en"
+version: "1.0.0"
+
+description: |
+  Given a document request (topic, template_id, vendor_name), retrieve
+  relevant KB content and produce a professional vendor-facing operational
+  document conforming to vendor_doc_v1.
+
+system_prompt: "prompt.md"
+
+output_schema: "vendor_doc_v1"
+
+tools:
+  - name: "kb_search"
+    description: "Hybrid (vector + FTS5) retrieval over the OpsPilot KB. Use it to find SOPs, runbooks, and procedures relevant to the document topic."
+
+model:
+  provider_id: "anthropic"
+  kind: "anthropic"
+  name: "claude-haiku-4-5-20251001"
+  version: "2025-01"
+  params:
+    temperature: 0.2
+    top_p: 0.9
+    max_tokens: 4096
+
+extra_models:
+  - provider_id: "anthropic"
+    kind: "anthropic"
+    name: "claude-sonnet-4-5"
+    version: "2025-01"
+    params:
+      temperature: 0.2
+      top_p: 0.9
+      max_tokens: 8192
+
+limits:
+  max_turns: 6
+  max_kb_search_results: 8
+
+defaults:
+  retention_class: "medium"
+  sensitivity: "internal"
+  kb_id: "opspilot:public-kb"
+
+retrieval:
+  mode: "tool"

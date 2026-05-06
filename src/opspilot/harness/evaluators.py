@@ -42,15 +42,16 @@ class EvalContext:
 
 
 def evaluate_schema_check(ctx: EvalContext) -> EvaluatorResult:
-    """artifact must validate against ``ticket_summary_v1``."""
+    """artifact must validate against the schema named in golden.schema_check."""
+    schema_name = ctx.golden.schema_check.get("name", "ticket_summary_v1")
     try:
-        schema_validate("ticket_summary_v1", ctx.artifact)
+        schema_validate(schema_name, ctx.artifact)
         return EvaluatorResult(
             id="ev_schema_check",
             type="rule.json_schema",
             score=1.0,
             passed=True,
-            details={"schema": "ticket_summary_v1"},
+            details={"schema": schema_name},
         )
     except Exception as e:  # noqa: BLE001
         return EvaluatorResult(
@@ -58,7 +59,7 @@ def evaluate_schema_check(ctx: EvalContext) -> EvaluatorResult:
             type="rule.json_schema",
             score=0.0,
             passed=False,
-            details={"schema": "ticket_summary_v1", "error": str(e)[:300]},
+            details={"schema": schema_name, "error": str(e)[:300]},
         )
 
 
@@ -66,13 +67,22 @@ def evaluate_schema_check(ctx: EvalContext) -> EvaluatorResult:
 
 
 def _summary_text(artifact: dict[str, Any]) -> str:
-    """Concatenate the textual fields of a ticket_summary_v1 artifact.
+    """Concatenate narrative text fields from the artifact for must_contain checks.
 
-    Searches across summary + symptoms + tried_steps + missing_fields +
-    next_actions[*].action / .rationale + escalation_hint. Citations are
-    excluded — they're metadata, not narrative.
+    Handles both ticket_summary_v1 and vendor_doc_v1 schemas. Citations
+    and metadata fields are excluded — only human-readable narrative text.
     """
-    parts: list[str] = [str(artifact.get("summary") or "")]
+    if artifact.get("schema_version") == "vendor_doc_v1":
+        parts: list[str] = [str(artifact.get("title") or "")]
+        for s in artifact.get("sections") or []:
+            parts.append(str(s.get("heading") or ""))
+            parts.append(str(s.get("content") or ""))
+        if artifact.get("scope_note"):
+            parts.append(str(artifact["scope_note"]))
+        return "\n".join(parts)
+
+    # ticket_summary_v1 (default)
+    parts = [str(artifact.get("summary") or "")]
     parts.extend(str(s) for s in artifact.get("symptoms") or [])
     parts.extend(str(s) for s in artifact.get("tried_steps") or [])
     parts.extend(str(s) for s in artifact.get("missing_fields") or [])

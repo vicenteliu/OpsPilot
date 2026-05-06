@@ -1,0 +1,7 @@
+{
+  "_comment": "Example vendor doc generation request",
+  "topic": "VPN authentication failure troubleshooting",
+  "template_id": "sop_summary",
+  "vendor_name": "SecureNet Ltd",
+  "language": "en"
+}

@@ -60,6 +60,7 @@ def run_harness(
     weights: dict[str, float] | None = None,
     pass_threshold: float = WEIGHTED_SCORE_PASS_THRESHOLD,
     tmp_dir: Path | None = None,
+    user_msg_fn: Callable[[dict], str] | None = None,
 ) -> EvalResult:
     """Run one fixture end-to-end and return its :class:`EvalResult`."""
     weights = weights or DEFAULT_EVALUATOR_WEIGHTS
@@ -88,6 +89,7 @@ def run_harness(
         embed_fn=embed_fn,
         sqlite_store=sqlite_store,
         lance_store=lance_store,
+        user_msg_fn=user_msg_fn,
     )
 
     # ── 3. Extract retrieved chunk_ids from trace.jsonl ─────────────

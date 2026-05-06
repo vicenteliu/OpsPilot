@@ -24,6 +24,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 
 import typer
@@ -44,6 +45,7 @@ from .memory.retrieval import kb_search
 from .memory.sqlite_store import SqliteStore
 from .memory.storage_init import init_sqlite
 from .orchestrator import RunRequest, load_playbook, run_ticket_summary
+from .orchestrator.ticket_summary import _format_doc_request
 from .providers import make_provider
 from .redaction import Redactor
 from .schemas import (
@@ -60,6 +62,8 @@ from .iteration.engine import IterationEngine
 from .iteration.types import IterationPolicy
 from .wiki.ingest import WikiIngestConfig
 from .wiki.ingest import ingest as run_wiki_ingest
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 app = typer.Typer(
     name="opspilot",
@@ -489,6 +493,131 @@ def run(
 
 
 # ──────────────────────────────────────────────────────────────────────────
+#  doc (vendor document generation)
+# ──────────────────────────────────────────────────────────────────────────
+
+doc_app = typer.Typer(
+    name="doc",
+    help="Vendor document generation from KB.",
+    no_args_is_help=True,
+)
+app.add_typer(doc_app)
+
+_VENDOR_DOC_PLAYBOOK_DIR = REPO_ROOT / "playbooks" / "pb_vendor_doc_en"
+
+
+@doc_app.command("generate")
+def doc_generate(
+    topic: str = typer.Option(..., "--topic", "-t", help="Document topic."),
+    template: str = typer.Option(
+        "sop_summary",
+        "--template",
+        help="Template: sop_summary | maintenance_window | incident_report | handover",
+    ),
+    vendor: str = typer.Option("", "--vendor", "-v", help="Vendor name (optional)."),
+    playbook: Path = typer.Option(  # noqa: B008
+        _VENDOR_DOC_PLAYBOOK_DIR,
+        "--playbook",
+        "-p",
+        help="Path to the playbook directory.",
+    ),
+    output: Path | None = typer.Option(  # noqa: B008
+        None, "--output", "-o", help="Save result JSON to this path."
+    ),
+    owner: str = typer.Option("cli-user", "--owner"),
+    embedding_model: str = typer.Option(
+        "ollama-local/nomic-embed-text-v2-moe@2026-04", "--embedding-model"
+    ),
+    embedding_dim: int = typer.Option(768, "--embedding-dim"),
+    embed_model_short: str = typer.Option("nomic-embed-text-v2-moe", "--ollama-embed-model"),
+) -> None:
+    """Generate a vendor-facing operational document from KB content."""
+    cfg = load_config()
+    pb = load_playbook(playbook)
+    sqlite, lance = _open_kb_stores(
+        home=cfg.home,
+        embedding_dim=embedding_dim,
+        embedding_model=embedding_model,
+    )
+    redactor = Redactor.from_yaml()
+    provider = make_provider(
+        pb.model.provider_id,
+        kind=pb.model.kind,
+        api_key=cfg.anthropic_api_key if pb.model.provider_id.startswith("anthropic") else None,
+    )
+    embed_provider = make_provider("ollama-local")
+
+    def embed_fn(text: str) -> list[float]:
+        return embed_provider.embed([text], model=embed_model_short)[0]
+
+    sm = SessionManager(home=cfg.home)
+
+    input_dict = {
+        "topic": topic,
+        "template_id": template,
+        "vendor_name": vendor,
+        "language": "en",
+    }
+
+    import tempfile
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".json", delete=False, encoding="utf-8"
+    ) as f:
+        json.dump(input_dict, f, ensure_ascii=False)
+        input_path = Path(f.name)
+
+    try:
+        request = RunRequest(
+            playbook=pb,
+            input_path=input_path,
+            owner=owner,
+        )
+        result = run_ticket_summary(
+            request,
+            session_manager=sm,
+            provider=provider,
+            redactor=redactor,
+            embed_fn=embed_fn,
+            sqlite_store=sqlite,
+            lance_store=lance,
+            user_msg_fn=_format_doc_request,
+        )
+    finally:
+        input_path.unlink(missing_ok=True)
+
+    table = Table(title=f"Vendor Doc · session {result.session_id}")
+    table.add_column("Field")
+    table.add_column("Value", overflow="fold")
+    table.add_row("playbook", f"{pb.id}@{pb.version}")
+    table.add_row("session_id", result.session_id)
+    table.add_row("artifact_id", result.artifact_id or "-")
+    table.add_row(
+        "schema_valid",
+        "[green]yes[/green]" if result.schema_valid else "[red]no[/red]",
+    )
+    if result.summary:
+        table.add_row("doc_ref", str(result.summary.get("doc_ref", "?")))
+        table.add_row("title", (result.summary.get("title") or "")[:120])
+        sections = result.summary.get("sections") or []
+        table.add_row("sections", str(len(sections)))
+        citations = result.summary.get("citations") or []
+        table.add_row("citations", str(len(citations)))
+    if result.error:
+        table.add_row("error", f"[red]{result.error}[/red]")
+    _console.print(table)
+
+    if output is not None and result.summary:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(
+            json.dumps(result.summary, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        _console.print(f"\n[dim]Saved to {output}[/dim]")
+
+    if not result.schema_valid:
+        raise typer.Exit(code=2)
+
+
+# ──────────────────────────────────────────────────────────────────────────
 #  harness (PR-8)
 # ──────────────────────────────────────────────────────────────────────────
 
@@ -676,7 +805,6 @@ harness_app = typer.Typer(
 app.add_typer(harness_app)
 
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
 GOLDEN_FIXTURE_PATH = REPO_ROOT / "examples" / "scn_ticket_summary_zh" / "harness" / "fixture.json"
 GOLDEN_GOLDEN_PATH = REPO_ROOT / "examples" / "scn_ticket_summary_zh" / "harness" / "golden.json"
 GOLDEN_PLAYBOOK_DIR = REPO_ROOT / "playbooks" / "pb_ticket_summary_zh"
@@ -685,6 +813,11 @@ GEMINI_FIXTURE_PATH = GOLDEN_FIXTURE_PATH  # same ticket, same KB
 GEMINI_GOLDEN_PATH = GOLDEN_GOLDEN_PATH
 GEMINI_PLAYBOOK_DIR = REPO_ROOT / "playbooks" / "pb_ticket_summary_zh_gemini"
 GEMINI_RESULTS_PATH = REPO_ROOT / "examples" / "scn_ticket_summary_zh_gemini" / "harness" / "results.jsonl"
+
+VENDOR_DOC_FIXTURE_PATH = REPO_ROOT / "examples" / "scn_vendor_doc_en" / "harness" / "fixture.json"
+VENDOR_DOC_GOLDEN_PATH = REPO_ROOT / "examples" / "scn_vendor_doc_en" / "harness" / "golden.json"
+VENDOR_DOC_PLAYBOOK_DIR = REPO_ROOT / "playbooks" / "pb_vendor_doc_en"
+VENDOR_DOC_RESULTS_PATH = REPO_ROOT / "examples" / "scn_vendor_doc_en" / "harness" / "results.jsonl"
 
 
 def _harness_dispatch(
@@ -697,6 +830,7 @@ def _harness_dispatch(
     embedding_dim: int,
     embed_model_short: str,
     output: Path | None,
+    user_msg_fn: Callable[[dict], str] | None = None,
 ) -> int:
     """Shared entrypoint for both ``run`` and ``golden`` subcommands.
 
@@ -736,6 +870,7 @@ def _harness_dispatch(
         sqlite_store=sqlite,
         lance_store=lance,
         owner=owner,
+        user_msg_fn=user_msg_fn,
     )
 
     render_result_table(result, console=_console)
@@ -864,6 +999,40 @@ def harness_golden_gemini(
         embedding_dim=embedding_dim,
         embed_model_short=embed_model_short,
         output=resolved_output,
+    )
+    if code != 0:
+        raise typer.Exit(code=code)
+
+
+@harness_app.command("golden-vendor-doc")
+def harness_golden_vendor_doc(
+    embedding_model: str = typer.Option(
+        "ollama-local/nomic-embed-text-v2-moe@2026-04", "--embedding-model"
+    ),
+    embedding_dim: int = typer.Option(768, "--embedding-dim"),
+    embed_model_short: str = typer.Option("nomic-embed-text-v2-moe", "--ollama-embed-model"),
+    output: Path | None = typer.Option(  # noqa: B008
+        None,
+        "--output",
+        "-o",
+        help="Append result row to this results.jsonl path.",
+    ),
+) -> None:
+    """Run the vendor-doc golden test (scn_vendor_doc_en)."""
+    if not VENDOR_DOC_FIXTURE_PATH.is_file():
+        _err.print(f"[red]fixture not found:[/red] {VENDOR_DOC_FIXTURE_PATH}")
+        raise typer.Exit(code=1)
+    resolved_output = output or VENDOR_DOC_RESULTS_PATH
+    code = _harness_dispatch(
+        fixture_path=VENDOR_DOC_FIXTURE_PATH,
+        golden_path=VENDOR_DOC_GOLDEN_PATH,
+        playbook_dir=VENDOR_DOC_PLAYBOOK_DIR,
+        owner="harness@opspilot",
+        embedding_model=embedding_model,
+        embedding_dim=embedding_dim,
+        embed_model_short=embed_model_short,
+        output=resolved_output,
+        user_msg_fn=_format_doc_request,
     )
     if code != 0:
         raise typer.Exit(code=code)

@@ -1,0 +1,36 @@
+{
+  "id": "fix_b1c2d3e4",
+  "scenario_id": "scn_vendor_doc_en",
+  "version": "1.0.0",
+  "content_hash": "sha256:b1c2d3e4b1c2d3e4b1c2d3e4b1c2d3e4b1c2d3e4b1c2d3e4b1c2d3e4b1c2d3e4",
+  "title": "Vendor doc: VPN auth failure SOP summary (English)",
+  "description": "Generate an sop_summary vendor document covering VPN authentication failure troubleshooting from the English KB. Validates vendor_doc_v1 schema, key content terms, and KB chunk citations.",
+  "tags": ["vendor_doc", "vpn", "auth", "sop", "en"],
+  "language": "en",
+
+  "input": {
+    "topic": "VPN authentication failure troubleshooting",
+    "template_id": "sop_summary",
+    "vendor_name": "SecureNet Ltd",
+    "language": "en"
+  },
+
+  "redacted": false,
+  "redaction_rules_version": "1.0.0",
+
+  "source": {
+    "type": "manual",
+    "ref": "constructed-from-scn_vendor_doc_en-kb"
+  },
+
+  "expected_difficulty": "easy",
+
+  "extensions": {
+    "rag_ground_truth": {
+      "must_retrieve_doc_ids": ["doc_b1c2d3e4"],
+      "must_retrieve_chunk_ids": ["chk_e5f6a7b8"],
+      "should_retrieve_chunk_ids": ["chk_b1c2d3e4", "chk_c9d0e1f2"],
+      "irrelevant_chunk_ids": []
+    }
+  }
+}

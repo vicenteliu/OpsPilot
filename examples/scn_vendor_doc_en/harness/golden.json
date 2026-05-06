@@ -1,0 +1,33 @@
+{
+  "id": "gold_b1c2d3e4",
+  "fixture_id": "fix_b1c2d3e4",
+  "scenario_id": "scn_vendor_doc_en",
+  "version": "1.0.0",
+
+  "expected_structured": {
+    "schema_version": "vendor_doc_v1",
+    "template_id": "sop_summary",
+    "must_have_citation_to_chunk": "chk_e5f6a7b8",
+    "relevant_chunk_ids": ["chk_e5f6a7b8", "chk_b1c2d3e4", "chk_c9d0e1f2"],
+    "sections_min_count": 2
+  },
+
+  "must_contain": [
+    "authentication",
+    "RADIUS",
+    "SecureNet"
+  ],
+  "must_not_contain": ["[REDACTED:", "internal use only", "draft"],
+
+  "schema_check": {
+    "name": "vendor_doc_v1",
+    "rules": {
+      "required_keys": [
+        "schema_version", "doc_ref", "template_id", "title",
+        "sections", "citations"
+      ],
+      "sections_min_items": 2,
+      "citations_min_items": 1
+    }
+  }
+}

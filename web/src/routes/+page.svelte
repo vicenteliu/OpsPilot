@@ -3,10 +3,27 @@
   import {
     getConfig, getModels, runTicket, listSessions, getSession, getLineage,
     getKBStats, listKBDocs, searchKB, wikiIngest, wikiQueryToPage, wikiLint, wikiPromote, listMCPServers,
-    listConflicts, resolveConflict, correctChunk, listCorrections,
-    type RunResponse, type NextAction, type SessionSummary, type ModelOption, type SkillLineage,
-    type KBDoc, type KBHit, type KBConflict, type KBStats, type KBCorrection, type WikiLintIssue, type MCPServer
+    listConflicts, resolveConflict, correctChunk, listCorrections, generateVendorDoc,
+    type RunResponse, type TicketSummary, type NextAction, type SessionSummary, type ModelOption, type SkillLineage,
+    type KBDoc, type KBHit, type KBConflict, type KBStats, type KBCorrection, type WikiLintIssue, type MCPServer,
+    type VendorDoc, type VendorDocSection
   } from '$lib/api';
+
+  // --- Theme ---
+  let theme = $state<'light' | 'dark'>(
+    typeof localStorage !== 'undefined'
+      ? (localStorage.getItem('theme') as 'light' | 'dark') ?? 'light'
+      : 'light'
+  );
+
+  $effect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+  });
+
+  function toggleTheme() {
+    theme = theme === 'dark' ? 'light' : 'dark';
+  }
 
   // --- State ---
   let modelRef = $state<string | null>(null);
@@ -75,6 +92,15 @@
   let wikiError = $state<string | null>(null);
   let wikiLintIssues = $state<WikiLintIssue[]>([]);
   let wikiLintLoading = $state<boolean>(false);
+
+  // Vendor Doc state
+  let vendorDocTopic = $state<string>('');
+  let vendorDocTemplateId = $state<string>('sop_summary');
+  let vendorDocVendorName = $state<string>('');
+  let vendorDocLoading = $state<boolean>(false);
+  let vendorDocResult = $state<VendorDoc | null>(null);
+  let vendorDocError = $state<string | null>(null);
+  let vendorDocUsage = $state<RunResponse['usage'] | null>(null);
 
   // MCP state
   let mcpServers = $state<MCPServer[]>([]);
@@ -332,6 +358,41 @@
     }
   }
 
+  // ── Vendor Doc handlers ──────────────────────────────────────────────────────
+  async function handleGenerateVendorDoc() {
+    if (!vendorDocTopic.trim()) return;
+    vendorDocLoading = true;
+    vendorDocError = null;
+    vendorDocResult = null;
+    vendorDocUsage = null;
+    try {
+      const res = await generateVendorDoc({
+        topic: vendorDocTopic.trim(),
+        template_id: vendorDocTemplateId,
+        vendor_name: vendorDocVendorName.trim(),
+        language: 'en',
+      });
+      vendorDocResult = res.result as VendorDoc;
+      vendorDocUsage = res.usage;
+      if (res.error) vendorDocError = res.error;
+    } catch (e) {
+      vendorDocError = e instanceof Error ? e.message : String(e);
+    } finally {
+      vendorDocLoading = false;
+    }
+  }
+
+  function copyVendorDoc() {
+    if (!vendorDocResult) return;
+    const text = [
+      `# ${vendorDocResult.title}`,
+      vendorDocResult.scope_note ? `\n_${vendorDocResult.scope_note}_` : '',
+      '',
+      ...vendorDocResult.sections.map(s => `## ${s.heading}\n\n${s.content}`),
+    ].join('\n\n');
+    navigator.clipboard.writeText(text).catch(() => {});
+  }
+
   // ── MCP handlers ────────────────────────────────────────────────────────────
   async function loadMCPServers() {
     mcpLoading = true;
@@ -362,6 +423,9 @@
     {:else}
       <span class="model-ref" title="Active model">{selectedModelId || modelRef || '—'}</span>
     {/if}
+    <button class="theme-toggle" onclick={toggleTheme} title="Toggle dark mode" aria-label="Toggle dark mode">
+      {theme === 'dark' ? '☀' : '☾'}
+    </button>
   </header>
 
   <!-- Ticket input section -->
@@ -779,6 +843,105 @@
       {/if}
     </section>
 
+    <!-- Vendor Doc module -->
+    <section class="vendordoc-section">
+      <div class="section-header">
+        <h2>Vendor Document</h2>
+        {#if vendorDocResult}
+          <button class="btn-action btn-secondary" onclick={copyVendorDoc}>Copy as Markdown</button>
+        {/if}
+      </div>
+
+      <div class="vd-form">
+        <div class="vd-row">
+          <label class="vd-label">
+            Topic
+            <input class="vd-input" bind:value={vendorDocTopic}
+              placeholder="e.g. VPN authentication failure troubleshooting"
+              disabled={vendorDocLoading} />
+          </label>
+          <label class="vd-label">
+            Template
+            <select class="vd-select" bind:value={vendorDocTemplateId} disabled={vendorDocLoading}>
+              <option value="sop_summary">SOP Summary</option>
+              <option value="maintenance_window">Maintenance Window</option>
+              <option value="incident_report">Incident Report</option>
+              <option value="handover">Handover Checklist</option>
+            </select>
+          </label>
+          <label class="vd-label">
+            Vendor (optional)
+            <input class="vd-input vd-input-sm" bind:value={vendorDocVendorName}
+              placeholder="e.g. SecureNet Ltd"
+              disabled={vendorDocLoading} />
+          </label>
+        </div>
+        <div class="vd-actions">
+          <button class="btn-run" onclick={handleGenerateVendorDoc}
+            disabled={vendorDocLoading || !vendorDocTopic.trim()}>
+            {#if vendorDocLoading}
+              <span class="spinner"></span> Generating…
+            {:else}
+              Generate
+            {/if}
+          </button>
+          {#if vendorDocUsage}
+            <span class="usage-badge">
+              ↑ {vendorDocUsage.input_tokens.toLocaleString()} / ↓ {vendorDocUsage.output_tokens.toLocaleString()} tokens
+              {#if vendorDocUsage.cost_usd > 0}· ${vendorDocUsage.cost_usd.toFixed(4)}{/if}
+            </span>
+          {/if}
+        </div>
+      </div>
+
+      {#if vendorDocError}
+        <p class="section-error" style="margin-top:0.5rem">{vendorDocError}</p>
+      {/if}
+
+      {#if vendorDocResult}
+        <div class="vd-output">
+          <div class="vd-doc-header">
+            <div>
+              <div class="vd-title">{vendorDocResult.title}</div>
+              <div class="vd-meta">
+                <span class="vd-ref mono dim">{vendorDocResult.doc_ref}</span>
+                <span class="vd-template-badge">{vendorDocResult.template_id.replace('_', ' ')}</span>
+              </div>
+            </div>
+          </div>
+          {#if vendorDocResult.scope_note}
+            <p class="vd-scope-note">{vendorDocResult.scope_note}</p>
+          {/if}
+          {#each vendorDocResult.sections as section}
+            <div class="vd-section">
+              <h4 class="vd-section-heading">{section.heading}</h4>
+              <p class="vd-section-content">{section.content}</p>
+              {#if section.citations.length > 0}
+                <div class="vd-section-cits">
+                  {#each section.citations as cit}
+                    <span class="vd-cit-tag">{cit}</span>
+                  {/each}
+                </div>
+              {/if}
+            </div>
+          {/each}
+          {#if vendorDocResult.citations.length > 0}
+            <details class="vd-citations">
+              <summary class="vd-cit-summary">Sources ({vendorDocResult.citations.length})</summary>
+              <ul class="vd-cit-list">
+                {#each vendorDocResult.citations as c}
+                  <li class="mono dim" style="font-size:0.78rem">
+                    <strong>{c.id}</strong> — {c.source_path || c.document_id}
+                    {#if c.line_start} L{c.line_start}–{c.line_end}{/if}
+                  </li>
+                {/each}
+              </ul>
+            </details>
+          {/if}
+        </div>
+      {/if}
+    </section>
+
     <!-- MCP servers module -->
     <section class="mcp-section">
       <div class="section-header">
@@ -878,39 +1041,56 @@
     align-items: center;
     justify-content: space-between;
     margin-bottom: 1.5rem;
-    border-bottom: 2px solid #ddd;
+    border-bottom: 2px solid var(--border);
     padding-bottom: 0.75rem;
   }
 
   header h1 {
     font-size: 1.8rem;
-    color: #1a56db;
+    color: var(--primary);
   }
 
   .model-ref {
     font-family: 'Courier New', Courier, monospace;
     font-size: 0.8rem;
-    background: #e8f4fd;
-    color: #1a56db;
+    background: var(--primary-bg);
+    color: var(--primary);
     padding: 0.25rem 0.6rem;
     border-radius: 4px;
-    border: 1px solid #bee3f8;
+    border: 1px solid var(--primary-border);
   }
 
   .model-select {
     font-family: 'Courier New', Courier, monospace;
     font-size: 0.8rem;
-    background: #e8f4fd;
-    color: #1a56db;
+    background: var(--primary-bg);
+    color: var(--primary);
     padding: 0.25rem 0.6rem;
     border-radius: 4px;
-    border: 1px solid #bee3f8;
+    border: 1px solid var(--primary-border);
     cursor: pointer;
   }
 
   .model-select:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+  }
+
+  .theme-toggle {
+    background: none;
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    padding: 0.25rem 0.55rem;
+    font-size: 1rem;
+    color: var(--text-muted);
+    line-height: 1;
+    cursor: pointer;
+    margin-left: 0.5rem;
+  }
+
+  .theme-toggle:hover {
+    background: var(--bg-muted);
+    color: var(--text);
   }
 
   .input-section {
@@ -920,15 +1100,15 @@
   .input-section h2 {
     margin-bottom: 0.5rem;
     font-size: 1.1rem;
-    color: #444;
+    color: var(--text);
   }
 
   textarea {
     width: 100%;
     padding: 0.75rem;
-    border: 1px solid #ccc;
+    border: 1px solid var(--border-strong);
     border-radius: 6px;
-    background: #fff;
+    background: var(--bg-surface);
     margin-bottom: 0.75rem;
   }
 
@@ -940,7 +1120,7 @@
 
   .btn-run {
     padding: 0.6rem 1.5rem;
-    background: #1a56db;
+    background: var(--primary);
     color: #fff;
     border: none;
     border-radius: 6px;
@@ -959,9 +1139,9 @@
   .usage-badge {
     font-family: 'Courier New', Courier, monospace;
     font-size: 0.78rem;
-    color: #64748b;
-    background: #f1f5f9;
-    border: 1px solid #e2e8f0;
+    color: var(--text-muted);
+    background: var(--bg-muted);
+    border: 1px solid var(--border);
     border-radius: 4px;
     padding: 0.2rem 0.6rem;
     white-space: nowrap;
@@ -984,9 +1164,9 @@
   }
 
   .error-banner {
-    background: #fee2e2;
-    color: #991b1b;
-    border: 1px solid #fca5a5;
+    background: var(--error-bg);
+    color: var(--error-text);
+    border: 1px solid var(--error-border);
     border-radius: 6px;
     padding: 0.75rem 1rem;
     margin-bottom: 1rem;
@@ -1005,8 +1185,8 @@
   }
 
   .card {
-    background: #fff;
-    border: 1px solid #e2e8f0;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
     border-radius: 8px;
     padding: 1rem;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
@@ -1023,20 +1203,20 @@
     font-size: 0.95rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: #64748b;
+    color: var(--text-muted);
   }
 
   .btn-copy {
     font-size: 0.75rem;
     padding: 0.2rem 0.6rem;
-    background: #f1f5f9;
-    border: 1px solid #cbd5e1;
+    background: var(--bg-muted);
+    border: 1px solid var(--border-strong);
     border-radius: 4px;
-    color: #475569;
+    color: var(--text-sub);
   }
 
   .btn-copy:hover {
-    background: #e2e8f0;
+    background: var(--bg-hover);
   }
 
   .card ul,
@@ -1052,7 +1232,7 @@
 
   .rationale {
     margin: 0.2rem 0 0.6rem;
-    color: #64748b;
+    color: var(--text-muted);
     font-size: 0.88rem;
   }
 
@@ -1062,20 +1242,20 @@
     border-radius: 9999px;
     font-weight: 700;
     font-size: 1.1rem;
-    background: #fef3c7;
-    color: #92400e;
-    border: 1px solid #fcd34d;
+    background: var(--warn-bg);
+    color: var(--warn-text);
+    border: 1px solid var(--warn-border);
   }
 
   .escalation {
     margin-top: 0.5rem;
     font-size: 0.9rem;
-    color: #b45309;
+    color: var(--warn-text2);
   }
 
   .history-section {
     margin-top: 2rem;
-    border-top: 1px solid #e2e8f0;
+    border-top: 1px solid var(--border);
     padding-top: 1.5rem;
   }
 
@@ -1088,26 +1268,26 @@
 
   .history-header h2 {
     font-size: 1.1rem;
-    color: #444;
+    color: var(--text);
     margin: 0;
   }
 
   .btn-refresh {
     background: none;
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--border-strong);
     border-radius: 4px;
     padding: 0.15rem 0.5rem;
     font-size: 1rem;
-    color: #64748b;
+    color: var(--text-muted);
     line-height: 1;
   }
 
   .btn-refresh:hover {
-    background: #f1f5f9;
+    background: var(--bg-muted);
   }
 
   .history-empty {
-    color: #94a3b8;
+    color: var(--text-faint);
     font-size: 0.9rem;
   }
 
@@ -1120,19 +1300,19 @@
   .history-table th {
     text-align: left;
     padding: 0.4rem 0.75rem;
-    color: #64748b;
+    color: var(--text-muted);
     font-weight: 600;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--border);
   }
 
   .history-table td {
     padding: 0.5rem 0.75rem;
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid var(--border-faint);
     vertical-align: middle;
   }
 
   .col-time {
-    color: #475569;
+    color: var(--text-sub);
     white-space: nowrap;
   }
 
@@ -1145,43 +1325,43 @@
   }
 
   .status-archived {
-    background: #dcfce7;
-    color: #15803d;
+    background: var(--success-bg);
+    color: var(--success-text);
   }
 
   .status-aborted {
-    background: #fee2e2;
-    color: #b91c1c;
+    background: var(--error-bg);
+    color: var(--error-text);
   }
 
   .status-active {
-    background: #fef9c3;
-    color: #854d0e;
+    background: var(--sev-medium-bg);
+    color: var(--warn-text);
   }
 
   .btn-view {
     font-size: 0.8rem;
     padding: 0.2rem 0.6rem;
-    background: #f1f5f9;
-    border: 1px solid #cbd5e1;
+    background: var(--bg-muted);
+    border: 1px solid var(--border-strong);
     border-radius: 4px;
-    color: #1a56db;
+    color: var(--primary);
   }
 
   .btn-view:hover {
-    background: #e2e8f0;
+    background: var(--bg-hover);
   }
 
   .expanded-row td {
     padding: 0.75rem;
-    background: #f8fafc;
-    border-bottom: 2px solid #e2e8f0;
+    background: var(--bg-subtle);
+    border-bottom: 2px solid var(--border);
   }
 
   /* ── Iteration module ── */
   .iteration-section {
     margin-top: 2rem;
-    border-top: 1px solid #e2e8f0;
+    border-top: 1px solid var(--border);
     padding-top: 1.5rem;
   }
 
@@ -1194,22 +1374,22 @@
 
   .iteration-header h2 {
     font-size: 1.1rem;
-    color: #444;
+    color: var(--text);
     margin: 0;
   }
 
   .iteration-empty,
   .iteration-error {
-    color: #94a3b8;
+    color: var(--text-faint);
     font-size: 0.9rem;
   }
 
   .iteration-error {
-    color: #b91c1c;
+    color: var(--error-text);
   }
 
   .skill-block {
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--border);
     border-radius: 8px;
     margin-bottom: 0.75rem;
     overflow: hidden;
@@ -1221,7 +1401,7 @@
     align-items: center;
     gap: 0.75rem;
     padding: 0.65rem 1rem;
-    background: #f8fafc;
+    background: var(--bg-subtle);
     border: none;
     cursor: pointer;
     text-align: left;
@@ -1229,34 +1409,34 @@
   }
 
   .skill-toggle:hover {
-    background: #f1f5f9;
+    background: var(--bg-muted);
   }
 
   .skill-name {
     font-family: 'Courier New', monospace;
     font-weight: 600;
-    color: #1a56db;
+    color: var(--primary);
     flex: 1;
   }
 
   .skill-count {
     font-size: 0.8rem;
-    color: #64748b;
+    color: var(--text-muted);
   }
 
   .toggle-arrow {
-    color: #94a3b8;
+    color: var(--text-faint);
     font-size: 0.8rem;
   }
 
   .lineage-tree {
     padding: 0.75rem 1rem;
-    background: #fff;
+    background: var(--bg-surface);
   }
 
   .lineage-row {
     padding: 0.5rem 0;
-    border-left: 2px solid #cbd5e1;
+    border-left: 2px solid var(--border-strong);
     padding-left: 1rem;
     margin-left: 0.5rem;
   }
@@ -1276,21 +1456,21 @@
     font-family: 'Courier New', monospace;
     font-size: 0.82rem;
     font-weight: 700;
-    background: #dbeafe;
-    color: #1e40af;
+    background: var(--info-bg);
+    color: var(--info-text);
     padding: 0.1rem 0.5rem;
     border-radius: 4px;
   }
 
   .version-badge.rolled-back-badge {
-    background: #fee2e2;
-    color: #991b1b;
+    background: var(--error-bg);
+    color: var(--error-text);
   }
 
   .rollback-flag {
     font-size: 0.72rem;
-    color: #991b1b;
-    background: #fee2e2;
+    color: var(--error-text);
+    background: var(--error-bg);
     padding: 0.1rem 0.4rem;
     border-radius: 3px;
   }
@@ -1300,7 +1480,7 @@
     align-items: center;
     gap: 0.6rem;
     font-size: 0.78rem;
-    color: #64748b;
+    color: var(--text-muted);
     margin-bottom: 0.2rem;
   }
 
@@ -1310,29 +1490,29 @@
 
   .itr-id {
     font-family: 'Courier New', monospace;
-    background: #f1f5f9;
+    background: var(--bg-muted);
     padding: 0.05rem 0.35rem;
     border-radius: 3px;
   }
 
   .itr-id.dim {
-    color: #94a3b8;
+    color: var(--text-faint);
   }
 
   .variant-id {
     font-family: 'Courier New', monospace;
-    color: #047857;
+    color: var(--success-text);
     font-size: 0.75rem;
   }
 
   .lineage-summary {
     font-size: 0.88rem;
-    color: #374151;
+    color: var(--text);
     line-height: 1.4;
   }
 
   .lineage-connector {
-    color: #cbd5e1;
+    color: var(--border-strong);
     padding-left: 1rem;
     margin-left: 0.5rem;
     font-size: 0.9rem;
@@ -1341,7 +1521,7 @@
   /* ── KB / Wiki / MCP sections ── */
   .kb-section, .wiki-section, .mcp-section {
     margin-top: 2rem;
-    border-top: 1px solid #e2e8f0;
+    border-top: 1px solid var(--border);
     padding-top: 1.5rem;
   }
 
@@ -1354,7 +1534,7 @@
 
   .section-header h2 {
     font-size: 1.1rem;
-    color: #444;
+    color: var(--text);
     margin: 0;
     flex: 1;
   }
@@ -1367,31 +1547,31 @@
   .tab-btn {
     font-size: 0.8rem;
     padding: 0.2rem 0.7rem;
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--border-strong);
     border-radius: 4px;
-    background: #f8fafc;
-    color: #475569;
+    background: var(--bg-subtle);
+    color: var(--text-sub);
     cursor: pointer;
   }
 
   .tab-btn.active {
-    background: #1a56db;
+    background: var(--primary);
     color: #fff;
-    border-color: #1a56db;
+    border-color: var(--primary);
   }
 
   .section-empty {
-    color: #94a3b8;
+    color: var(--text-faint);
     font-size: 0.9rem;
   }
 
   .section-error {
-    color: #b91c1c;
+    color: var(--error-text);
     font-size: 0.9rem;
   }
 
   .section-ok {
-    color: #15803d;
+    color: var(--success-text);
     font-size: 0.9rem;
   }
 
@@ -1404,14 +1584,14 @@
   .data-table th {
     text-align: left;
     padding: 0.35rem 0.65rem;
-    color: #64748b;
+    color: var(--text-muted);
     font-weight: 600;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--border);
   }
 
   .data-table td {
     padding: 0.4rem 0.65rem;
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid var(--border-faint);
     vertical-align: top;
   }
 
@@ -1426,11 +1606,11 @@
   }
 
   .dim {
-    color: #94a3b8;
+    color: var(--text-faint);
   }
 
   .snippet {
-    color: #475569;
+    color: var(--text-sub);
     font-size: 0.82rem;
     max-width: 300px;
     overflow: hidden;
@@ -1447,7 +1627,7 @@
   .search-input {
     flex: 1;
     padding: 0.45rem 0.75rem;
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--border-strong);
     border-radius: 6px;
     font-size: 0.9rem;
   }
@@ -1462,7 +1642,7 @@
 
   .short-input {
     padding: 0.4rem 0.7rem;
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--border-strong);
     border-radius: 6px;
     font-size: 0.85rem;
     width: 200px;
@@ -1470,7 +1650,7 @@
 
   .btn-action {
     padding: 0.4rem 1rem;
-    background: #1a56db;
+    background: var(--primary);
     color: #fff;
     border: none;
     border-radius: 6px;
@@ -1485,18 +1665,18 @@
   }
 
   .btn-action.btn-secondary {
-    background: #f1f5f9;
-    color: #1a56db;
-    border: 1px solid #cbd5e1;
+    background: var(--bg-muted);
+    color: var(--primary);
+    border: 1px solid var(--border-strong);
   }
 
   .btn-sm {
     font-size: 0.75rem;
     padding: 0.15rem 0.5rem;
-    background: #f1f5f9;
-    border: 1px solid #cbd5e1;
+    background: var(--bg-muted);
+    border: 1px solid var(--border-strong);
     border-radius: 4px;
-    color: #1a56db;
+    color: var(--primary);
     cursor: pointer;
   }
 
@@ -1507,10 +1687,10 @@
     border-radius: 3px;
   }
 
-  .sev-critical { background: #fee2e2; color: #991b1b; }
-  .sev-high { background: #fed7aa; color: #9a3412; }
-  .sev-medium { background: #fef9c3; color: #854d0e; }
-  .sev-low { background: #dcfce7; color: #15803d; }
+  .sev-critical { background: var(--error-bg); color: var(--error-text); }
+  .sev-high { background: var(--sev-high-bg); color: var(--sev-high-text); }
+  .sev-medium { background: var(--sev-medium-bg); color: var(--warn-text); }
+  .sev-low { background: var(--success-bg); color: var(--success-text); }
 
   /* ── Conflicts ── */
   .conflict-badge {
@@ -1520,7 +1700,7 @@
     min-width: 16px;
     height: 16px;
     padding: 0 4px;
-    background: #ef4444;
+    background: var(--error-badge);
     color: #fff;
     border-radius: 9999px;
     font-size: 0.65rem;
@@ -1538,7 +1718,7 @@
 
   .filter-label {
     font-size: 0.85rem;
-    color: #475569;
+    color: var(--text-sub);
     display: flex;
     align-items: center;
     gap: 0.4rem;
@@ -1547,7 +1727,7 @@
   .filter-label select {
     font-size: 0.85rem;
     padding: 0.2rem 0.5rem;
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--border-strong);
     border-radius: 4px;
   }
 
@@ -1559,7 +1739,7 @@
   .conflict-doc {
     font-size: 0.85rem;
     font-weight: 500;
-    color: #1e293b;
+    color: var(--text);
     max-width: 180px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1568,7 +1748,7 @@
 
   .chunk-preview {
     font-size: 0.75rem;
-    color: #64748b;
+    color: var(--text-muted);
     margin-top: 0.2rem;
     max-width: 180px;
     overflow: hidden;
@@ -1584,9 +1764,9 @@
     white-space: nowrap;
   }
 
-  .ctype-temporal_supersede { background: #dbeafe; color: #1e40af; }
-  .ctype-direct_contradiction { background: #fee2e2; color: #991b1b; }
-  .ctype-scope_overlap { background: #fef9c3; color: #854d0e; }
+  .ctype-temporal_supersede { background: var(--info-bg); color: var(--info-text); }
+  .ctype-direct_contradiction { background: var(--error-bg); color: var(--error-text); }
+  .ctype-scope_overlap { background: var(--sev-medium-bg); color: var(--warn-text); }
 
   .resolve-btns {
     display: flex;
@@ -1594,53 +1774,84 @@
     gap: 0.3rem;
   }
 
-  .btn-a-wins { background: #dcfce7; color: #15803d; border-color: #86efac; }
-  .btn-b-wins { background: #dbeafe; color: #1e40af; border-color: #93c5fd; }
+  .btn-a-wins { background: var(--success-bg); color: var(--success-text); border-color: var(--success-border); }
+  .btn-b-wins { background: var(--info-bg); color: var(--info-text); border-color: var(--info-border); }
 
   .row-conflict {
-    background: #fffbeb;
+    background: var(--row-conflict-bg);
   }
 
   .warn-badge {
     display: inline-block;
     margin-left: 4px;
-    color: #b45309;
+    color: var(--warn-text2);
     font-size: 0.85rem;
     cursor: help;
   }
 
-  .status-open { background: #fef3c7; color: #92400e; }
-  .status-a_wins { background: #dcfce7; color: #15803d; }
-  .status-b_wins { background: #dbeafe; color: #1e40af; }
-  .status-merged { background: #f3e8ff; color: #7e22ce; }
-  .status-dismissed { background: #f1f5f9; color: #64748b; }
+  .status-open { background: var(--warn-bg); color: var(--warn-text); }
+  .status-a_wins { background: var(--success-bg); color: var(--success-text); }
+  .status-b_wins { background: var(--info-bg); color: var(--info-text); }
+  .status-merged { background: var(--status-merged-bg); color: var(--status-merged-text); }
+  .status-dismissed { background: var(--bg-muted); color: var(--text-muted); }
 
   .kb-stats-bar {
     display: flex; align-items: center; gap: 8px;
-    padding: 6px 10px; background: #f8fafc; border: 1px solid #e2e8f0;
-    border-radius: 6px; font-size: 0.8rem; color: #475569; margin-bottom: 10px;
+    padding: 6px 10px; background: var(--bg-subtle); border: 1px solid var(--border);
+    border-radius: 6px; font-size: 0.8rem; color: var(--text-sub); margin-bottom: 10px;
   }
-  .stat-item strong { color: #1e293b; }
-  .stat-sep { color: #cbd5e1; }
-  .stat-warn strong { color: #b45309; }
+  .stat-item strong { color: var(--text); }
+  .stat-sep { color: var(--border-strong); }
+  .stat-warn strong { color: var(--warn-text2); }
 
   .corr-badge {
-    display: inline-block; background: #dbeafe; color: #1e40af;
+    display: inline-block; background: var(--info-bg); color: var(--info-text);
     border-radius: 10px; font-size: 0.7rem; padding: 0 6px; margin-left: 4px;
     font-weight: 600; line-height: 1.6;
   }
 
   .btn-correct-toggle {
-    background: none; border: 1px solid #cbd5e1; border-radius: 4px;
-    cursor: pointer; padding: 1px 6px; font-size: 0.85rem; color: #475569;
+    background: none; border: 1px solid var(--border-strong); border-radius: 4px;
+    cursor: pointer; padding: 1px 6px; font-size: 0.85rem; color: var(--text-sub);
   }
-  .btn-correct-toggle:hover { background: #f1f5f9; }
+  .btn-correct-toggle:hover { background: var(--bg-muted); }
 
-  .correct-row td { background: #f8fafc; padding: 8px 12px; }
+  .correct-row td { background: var(--bg-subtle); padding: 8px 12px; }
   .correct-form { display: flex; flex-direction: column; gap: 8px; max-width: 700px; }
-  .correct-label { display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; color: #64748b; }
-  .correct-input { padding: 4px 8px; border: 1px solid #e2e8f0; border-radius: 4px; font-size: 0.85rem; }
-  .correct-textarea { padding: 6px 8px; border: 1px solid #e2e8f0; border-radius: 4px; font-size: 0.8rem; font-family: monospace; resize: vertical; }
+  .correct-label { display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; color: var(--text-muted); }
+  .correct-input { padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; font-size: 0.85rem; }
+  .correct-textarea { padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; font-size: 0.8rem; font-family: monospace; resize: vertical; }
   .correct-actions { display: flex; gap: 8px; }
-  .btn-secondary { padding: 4px 10px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 4px; cursor: pointer; font-size: 0.8rem; }
+  .btn-secondary { padding: 4px 10px; background: var(--bg-muted); border: 1px solid var(--border-strong); border-radius: 4px; cursor: pointer; font-size: 0.8rem; }
+
+  /* ── Vendor Doc ── */
+  .vendordoc-section {
+    margin-top: 2rem;
+    border-top: 1px solid var(--border);
+    padding-top: 1.5rem;
+  }
+
+  .vd-form { display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1rem; }
+  .vd-row { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-end; }
+  .vd-label { display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; color: var(--text-muted); flex: 1; min-width: 180px; }
+  .vd-input { padding: 0.4rem 0.7rem; border: 1px solid var(--border-strong); border-radius: 6px; font-size: 0.9rem; background: var(--bg-surface); color: var(--text); }
+  .vd-input-sm { min-width: 140px; max-width: 200px; }
+  .vd-select { padding: 0.4rem 0.7rem; border: 1px solid var(--border-strong); border-radius: 6px; font-size: 0.9rem; background: var(--bg-surface); color: var(--text); }
+  .vd-actions { display: flex; align-items: center; gap: 1rem; }
+
+  .vd-output { margin-top: 1rem; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .vd-doc-header { padding: 1rem 1.25rem 0.75rem; background: var(--bg-subtle); border-bottom: 1px solid var(--border); }
+  .vd-title { font-size: 1.1rem; font-weight: 700; color: var(--text); margin-bottom: 0.3rem; }
+  .vd-meta { display: flex; align-items: center; gap: 0.6rem; }
+  .vd-template-badge { font-size: 0.72rem; font-weight: 600; background: var(--info-bg); color: var(--info-text); border-radius: 3px; padding: 0.1rem 0.45rem; text-transform: capitalize; }
+  .vd-scope-note { font-size: 0.85rem; color: var(--text-sub); font-style: italic; padding: 0.5rem 1.25rem 0; margin: 0; }
+  .vd-section { padding: 0.75rem 1.25rem; border-bottom: 1px solid var(--border-faint); }
+  .vd-section:last-of-type { border-bottom: none; }
+  .vd-section-heading { font-size: 0.9rem; font-weight: 700; color: var(--text); margin: 0 0 0.4rem; }
+  .vd-section-content { font-size: 0.88rem; color: var(--text); margin: 0; line-height: 1.6; white-space: pre-wrap; }
+  .vd-section-cits { display: flex; gap: 0.35rem; flex-wrap: wrap; margin-top: 0.4rem; }
+  .vd-cit-tag { font-size: 0.7rem; background: var(--primary-bg); color: var(--primary); border: 1px solid var(--primary-border); border-radius: 3px; padding: 0 0.4rem; }
+  .vd-citations { padding: 0.6rem 1.25rem; background: var(--bg-subtle); }
+  .vd-cit-summary { font-size: 0.8rem; color: var(--text-muted); cursor: pointer; }
+  .vd-cit-list { margin: 0.4rem 0 0; padding-left: 1rem; display: flex; flex-direction: column; gap: 0.2rem; list-style: disc; }
 </style>

@@ -59,13 +59,15 @@ def run_ticket_summary(
     embed_fn: Callable[[str], list[float]],
     sqlite_store: Any,  # SqliteStore — typed Any to avoid PR-4 import cycle
     lance_store: Any,  # LanceStore
+    user_msg_fn: Callable[[dict[str, Any]], str] | None = None,
 ) -> RunResult:
     """Run the playbook end-to-end. Returns a :class:`RunResult`."""
     pb = request.playbook
 
     # ── 1. Load + redact input ──────────────────────────────────────
     ticket = _load_ticket(request.input_path)
-    rendered_user_msg = _format_ticket(ticket)
+    fmt = user_msg_fn if user_msg_fn is not None else _format_ticket
+    rendered_user_msg = fmt(ticket)
     redaction = redactor.redact(rendered_user_msg)
     user_msg = redaction.text
 
@@ -592,6 +594,18 @@ def _edit_distance_at_most(a: str, b: str, k: int) -> bool:
             cur[j] = min(cur[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost)
         prev = cur
     return prev[lb] <= k
+
+
+def _format_doc_request(doc: dict[str, Any]) -> str:
+    """Format a vendor doc generation request as the user prompt."""
+    parts: list[str] = [
+        f"Topic: {doc.get('topic', '(not specified)')}",
+        f"Template: {doc.get('template_id', 'sop_summary')}",
+    ]
+    if doc.get("vendor_name"):
+        parts.append(f"Vendor: {doc['vendor_name']}")
+    parts.append(f"Language: {doc.get('language', 'en')}")
+    return "\n".join(parts)
 
 
 def _load_ticket(path: Any) -> dict[str, Any]:

@@ -270,6 +270,42 @@ export async function correctChunk(
   return res.json();
 }
 
+// ── Vendor Doc ───────────────────────────────────────────────────────────────
+
+export interface VendorDocSection {
+  heading: string;
+  content: string;
+  citations: string[];
+}
+
+export interface VendorDoc {
+  schema_version: string;
+  doc_ref: string;
+  template_id: string;
+  title: string;
+  sections: VendorDocSection[];
+  scope_note?: string;
+  citations: Citation[];
+}
+
+export interface DocGenRequest {
+  topic: string;
+  template_id: string;
+  vendor_name: string;
+  language: string;
+  model_id?: string | null;
+}
+
+export async function generateVendorDoc(req: DocGenRequest): Promise<RunResponse & { result: VendorDoc }> {
+  const res = await fetch('/api/doc/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req)
+  });
+  if (!res.ok) throw new Error(`Doc generate failed: ${res.status}`);
+  return res.json();
+}
+
 // ── Wiki ─────────────────────────────────────────────────────────────────────
 
 export interface WikiIngestResult {

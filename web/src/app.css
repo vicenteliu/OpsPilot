@@ -6,6 +6,195 @@
   box-sizing: border-box;
 }
 
+/* ── Light-mode tokens ─────────────────────────────────────────────── */
+:root {
+  /* Backgrounds */
+  --bg:          #f5f5f5;
+  --bg-surface:  #ffffff;
+  --bg-subtle:   #f8fafc;
+  --bg-muted:    #f1f5f9;
+  --bg-hover:    #e2e8f0;
+
+  /* Text */
+  --text:        #1e293b;
+  --text-sub:    #475569;
+  --text-muted:  #64748b;
+  --text-faint:  #94a3b8;
+
+  /* Borders */
+  --border:      #e2e8f0;
+  --border-strong: #cbd5e1;
+  --border-faint:  #f1f5f9;
+
+  /* Primary / link */
+  --primary:        #1a56db;
+  --primary-bg:     #e8f4fd;
+  --primary-border: #bee3f8;
+
+  /* Error */
+  --error-bg:     #fee2e2;
+  --error-text:   #991b1b;
+  --error-border: #fca5a5;
+
+  /* Warning */
+  --warn-bg:     #fef3c7;
+  --warn-text:   #92400e;
+  --warn-text2:  #b45309;
+  --warn-border: #fcd34d;
+
+  /* Success */
+  --success-bg:     #dcfce7;
+  --success-text:   #15803d;
+  --success-border: #86efac;
+
+  /* Info */
+  --info-bg:     #dbeafe;
+  --info-text:   #1e40af;
+  --info-border: #93c5fd;
+
+  /* Severity chips */
+  --sev-critical-bg: #fee2e2; --sev-critical-text: #991b1b;
+  --sev-high-bg:     #fed7aa; --sev-high-text:     #9a3412;
+  --sev-medium-bg:   #fef9c3; --sev-medium-text:   #854d0e;
+  --sev-low-bg:      #dcfce7; --sev-low-text:      #15803d;
+
+  /* Conflict type chips */
+  --ctype-temporal-bg:  #dbeafe; --ctype-temporal-text:  #1e40af;
+  --ctype-contra-bg:    #fee2e2; --ctype-contra-text:    #991b1b;
+  --ctype-overlap-bg:   #fef9c3; --ctype-overlap-text:   #854d0e;
+
+  /* Conflict status */
+  --status-open-bg:       #fef3c7; --status-open-text:       #92400e;
+  --status-a-wins-bg:     #dcfce7; --status-a-wins-text:     #15803d;
+  --status-b-wins-bg:     #dbeafe; --status-b-wins-text:     #1e40af;
+  --status-merged-bg:     #f3e8ff; --status-merged-text:     #7e22ce;
+  --status-dismissed-bg:  #f1f5f9; --status-dismissed-text:  #64748b;
+
+  /* Row highlight */
+  --row-conflict-bg: #fffbeb;
+
+  /* Error badge (notification dot) */
+  --error-badge: #ef4444;
+}
+
+/* ── Dark-mode overrides ─────────────────────────────────────────────
+   Applied automatically (prefers-color-scheme) OR manually via
+   [data-theme="dark"] on <html> (set by the toggle button).           */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:          #0f172a;
+    --bg-surface:  #1e293b;
+    --bg-subtle:   #1e293b;
+    --bg-muted:    #334155;
+    --bg-hover:    #475569;
+
+    --text:        #f1f5f9;
+    --text-sub:    #cbd5e1;
+    --text-muted:  #94a3b8;
+    --text-faint:  #64748b;
+
+    --border:        #334155;
+    --border-strong: #475569;
+    --border-faint:  #1e293b;
+
+    --primary:        #60a5fa;
+    --primary-bg:     #1e3a5f;
+    --primary-border: #2563eb;
+
+    --error-bg:     #450a0a;
+    --error-text:   #fca5a5;
+    --error-border: #7f1d1d;
+
+    --warn-bg:     #422006;
+    --warn-text:   #fcd34d;
+    --warn-text2:  #fbbf24;
+    --warn-border: #78350f;
+
+    --success-bg:     #052e16;
+    --success-text:   #86efac;
+    --success-border: #166534;
+
+    --info-bg:     #1e3a5f;
+    --info-text:   #93c5fd;
+    --info-border: #1d4ed8;
+
+    --sev-critical-bg: #450a0a; --sev-critical-text: #fca5a5;
+    --sev-high-bg:     #431407; --sev-high-text:     #fdba74;
+    --sev-medium-bg:   #422006; --sev-medium-text:   #fde68a;
+    --sev-low-bg:      #052e16; --sev-low-text:      #86efac;
+
+    --ctype-temporal-bg:  #1e3a5f; --ctype-temporal-text:  #93c5fd;
+    --ctype-contra-bg:    #450a0a; --ctype-contra-text:    #fca5a5;
+    --ctype-overlap-bg:   #422006; --ctype-overlap-text:   #fde68a;
+
+    --status-open-bg:       #422006; --status-open-text:       #fcd34d;
+    --status-a-wins-bg:     #052e16; --status-a-wins-text:     #86efac;
+    --status-b-wins-bg:     #1e3a5f; --status-b-wins-text:     #93c5fd;
+    --status-merged-bg:     #2e1065; --status-merged-text:     #d8b4fe;
+    --status-dismissed-bg:  #334155; --status-dismissed-text:  #94a3b8;
+
+    --row-conflict-bg: #292524;
+    --error-badge: #f87171;
+  }
+}
+
+/* Manual dark override (toggle button sets data-theme="dark" on <html>) */
+[data-theme="dark"] {
+  --bg:          #0f172a;
+  --bg-surface:  #1e293b;
+  --bg-subtle:   #1e293b;
+  --bg-muted:    #334155;
+  --bg-hover:    #475569;
+
+  --text:        #f1f5f9;
+  --text-sub:    #cbd5e1;
+  --text-muted:  #94a3b8;
+  --text-faint:  #64748b;
+
+  --border:        #334155;
+  --border-strong: #475569;
+  --border-faint:  #1e293b;
+
+  --primary:        #60a5fa;
+  --primary-bg:     #1e3a5f;
+  --primary-border: #2563eb;
+
+  --error-bg:     #450a0a;
+  --error-text:   #fca5a5;
+  --error-border: #7f1d1d;
+
+  --warn-bg:     #422006;
+  --warn-text:   #fcd34d;
+  --warn-text2:  #fbbf24;
+  --warn-border: #78350f;
+
+  --success-bg:     #052e16;
+  --success-text:   #86efac;
+  --success-border: #166534;
+
+  --info-bg:     #1e3a5f;
+  --info-text:   #93c5fd;
+  --info-border: #1d4ed8;
+
+  --sev-critical-bg: #450a0a; --sev-critical-text: #fca5a5;
+  --sev-high-bg:     #431407; --sev-high-text:     #fdba74;
+  --sev-medium-bg:   #422006; --sev-medium-text:   #fde68a;
+  --sev-low-bg:      #052e16; --sev-low-text:      #86efac;
+
+  --ctype-temporal-bg:  #1e3a5f; --ctype-temporal-text:  #93c5fd;
+  --ctype-contra-bg:    #450a0a; --ctype-contra-text:    #fca5a5;
+  --ctype-overlap-bg:   #422006; --ctype-overlap-text:   #fde68a;
+
+  --status-open-bg:       #422006; --status-open-text:       #fcd34d;
+  --status-a-wins-bg:     #052e16; --status-a-wins-text:     #86efac;
+  --status-b-wins-bg:     #1e3a5f; --status-b-wins-text:     #93c5fd;
+  --status-merged-bg:     #2e1065; --status-merged-text:     #d8b4fe;
+  --status-dismissed-bg:  #334155; --status-dismissed-text:  #94a3b8;
+
+  --row-conflict-bg: #292524;
+  --error-badge: #f87171;
+}
+
 html,
 body {
   margin: 0;
@@ -20,8 +209,8 @@ body {
     sans-serif;
   font-size: 16px;
   line-height: 1.5;
-  color: #1a1a1a;
-  background: #f5f5f5;
+  color: var(--text);
+  background: var(--bg);
 }
 
 h1,
@@ -38,4 +227,17 @@ textarea {
   font-family: 'Courier New', Courier, monospace;
   font-size: 13px;
   resize: vertical;
+}
+
+/* ── Form elements inherit theme colors ──────────────────────────────────── */
+input,
+select,
+textarea {
+  color: var(--text);
+  background: var(--bg-surface);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-faint);
 }

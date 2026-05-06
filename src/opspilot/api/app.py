@@ -45,6 +45,7 @@ from .routes.kb import router as kb_router
 from .routes.mcp import router as mcp_router
 from .routes.metrics import router as metrics_router
 from .routes.models import router as models_router
+from .routes.doc import router as doc_router
 from .routes.run import router as run_router
 from .routes.sandbox import router as sandbox_router
 from .routes.sessions import router as sessions_router
@@ -59,6 +60,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     playbooks_base = cfg.playbooks_dir or Path("playbooks")
     playbook_id = os.environ.get("OPSPILOT_DEFAULT_PLAYBOOK", "pb_ticket_summary_zh")
     playbook = load_playbook(playbooks_base / playbook_id)
+    vendor_doc_pb = load_playbook(playbooks_base / "pb_vendor_doc_en")
 
     # Build the active_model_ref string returned by /api/config.
     active_model_ref = (
@@ -86,6 +88,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         kind=playbook.model.kind,
         api_key=cfg.anthropic_api_key,
     )
+    vendor_doc_provider = make_provider(
+        vendor_doc_pb.model.provider_id,
+        kind=vendor_doc_pb.model.kind,
+        api_key=cfg.anthropic_api_key,
+    )
 
     # Embed provider is always Ollama (Anthropic does not support embeddings).
     embed_provider = make_provider("ollama-local", base_url=cfg.ollama_base_url)
@@ -98,6 +105,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     app.state.cfg = cfg
     app.state.playbook = playbook
+    app.state.vendor_doc_pb = vendor_doc_pb
+    app.state.vendor_doc_provider = vendor_doc_provider
     app.state.active_model_ref = active_model_ref
     app.state.sqlite = sqlite
     app.state.lance = lance
@@ -127,6 +136,7 @@ app.include_router(metrics_router)         # /metrics
 app.include_router(config_router, prefix="/api")
 app.include_router(models_router, prefix="/api")
 app.include_router(run_router, prefix="/api")
+app.include_router(doc_router, prefix="/api")
 app.include_router(sessions_router, prefix="/api")
 app.include_router(iteration_router, prefix="/api")
 app.include_router(kb_router, prefix="/api")
