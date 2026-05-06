@@ -18,6 +18,7 @@
 * ``opspilot sandbox run``            — execute action in Docker L2 hardened container (PR-30)
 * ``opspilot mcp list``               — list MCP servers and their tools (PR-31)
 * ``opspilot mcp probe <id>``         — health-check a single MCP server (PR-31)
+* ``opspilot serve``                  — start the FastAPI server (PR-32)
 """
 
 from __future__ import annotations
@@ -1222,6 +1223,38 @@ def tui_run(
     from .tui import run_tui
 
     run_tui(run_input=str(input), run_playbook=str(playbook))
+
+
+# ──────────────────────────────────────────────────────────────────────────
+#  serve (PR-32)
+# ──────────────────────────────────────────────────────────────────────────
+
+
+@app.command("serve")
+def serve(
+    host: str = typer.Option("127.0.0.1", "--host", "-H", help="Bind host."),
+    port: int = typer.Option(8000, "--port", "-p", help="Bind port."),
+    workers: int = typer.Option(1, "--workers", "-w", help="Uvicorn worker count."),
+    reload: bool = typer.Option(False, "--reload", help="Hot-reload (dev only)."),
+    json_logs: bool = typer.Option(False, "--json-logs", help="Enable JSON structured logging."),
+) -> None:
+    """Start the OpsPilot FastAPI server with uvicorn."""
+    import uvicorn
+    from .api.middleware import configure_json_logging
+
+    if json_logs:
+        configure_json_logging()
+        _console.print("[dim]JSON logging enabled[/dim]")
+
+    _console.print(f"Starting OpsPilot API on http://{host}:{port}")
+    uvicorn.run(
+        "opspilot.api.app:app",
+        host=host,
+        port=port,
+        workers=workers,
+        reload=reload,
+        log_config=None if json_logs else uvicorn.config.LOGGING_CONFIG,  # type: ignore[attr-defined]
+    )
 
 
 # ──────────────────────────────────────────────────────────────────────────

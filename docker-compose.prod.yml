@@ -1,0 +1,60 @@
+# OpsPilot production Docker Compose (PR-32)
+# Usage:
+#   cp .env.example .env.prod  # fill in keys
+#   docker compose -f docker-compose.prod.yml up -d
+
+services:
+  api:
+    image: opspilot:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["opspilot", "serve", "--host", "0.0.0.0", "--port", "8000",
+              "--workers", "2", "--json-logs"]
+    env_file: .env.prod
+    environment:
+      OPSPILOT_HOME: /data/opspilot
+      OLLAMA_BASE_URL: http://ollama:11434
+    volumes:
+      - opspilot-data:/data/opspilot
+      - ./playbooks:/home/opspilot/playbooks:ro
+    expose:
+      - "8000"
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "sh", "-c", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama-data:/root/.ollama
+    expose:
+      - "11434"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./deploy/nginx/opspilot.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  opspilot-data:
+  ollama-data:

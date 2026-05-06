@@ -24,8 +24,11 @@ from ..orchestrator.types import load_playbook
 from ..providers.registry import make_provider
 from ..redaction import Redactor
 from ..session.manager import SessionManager
+from .middleware import ObservabilityMiddleware
 from .routes.config import router as config_router
+from .routes.health import router as health_router
 from .routes.iteration import router as iteration_router
+from .routes.metrics import router as metrics_router
 from .routes.models import router as models_router
 from .routes.run import router as run_router
 from .routes.sessions import router as sessions_router
@@ -100,7 +103,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(ObservabilityMiddleware)
 
+app.include_router(health_router)          # /health  (no /api prefix — ops endpoints)
+app.include_router(metrics_router)         # /metrics
 app.include_router(config_router, prefix="/api")
 app.include_router(models_router, prefix="/api")
 app.include_router(run_router, prefix="/api")
