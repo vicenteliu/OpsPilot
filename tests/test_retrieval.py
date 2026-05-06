@@ -259,3 +259,146 @@ def test_kb_search_returns_hit_metadata(
 def test_rrf_constant_is_sixty() -> None:
     """Don't drift the constant without thinking about ranking dynamics."""
     assert RRF_K == 60
+
+
+# ── source_authority tie-breaking tests ─────────────────────────────
+
+
+def _make_two_authority_stores(
+    tmp_path: Path, authority_a: str, authority_b: str
+) -> tuple[SqliteStore, LanceStore]:
+    """Create two docs with identical content but different source_authority.
+
+    Both chunks get the same embedding so RRF scores are equal; the
+    authority rank should break the tie.
+    """
+    sqlite = SqliteStore(init_sqlite(tmp_path / "kb.db"))
+    lance = LanceStore.open_or_create(tmp_path / "lancedb", dim=DIM, embedding_model=EMBED_MODEL)
+
+    content = "VPN authentication fails — please verify RADIUS credentials and retry"
+
+    for doc_id, cid, authority in (
+        ("doc_aaaaaaaa", "chk_aaaaaaaa", authority_a),
+        ("doc_bbbbbbbb", "chk_bbbbbbbb", authority_b),
+    ):
+        sqlite.upsert_document(
+            {
+                "id": doc_id,
+                "source_path": f"docs/{doc_id}.md",
+                "title": f"VPN doc ({authority})",
+                "classification": "internal",
+                "content_hash": "sha256:" + (doc_id[-1] * 64),
+                "ingested_at": "2026-05-01T10:00:00Z",
+                "language": "en",
+                "tags": [],
+                "namespace": "opspilot:public-kb",
+                "chunk_strategy": "headings_then_size",
+                "chunk_count": 1,
+                "embedding_model": EMBED_MODEL,
+                "embedding_dim": DIM,
+                "redaction_passed": True,
+                "source_authority": authority,
+            }
+        )
+        sqlite.upsert_chunks(
+            [
+                {
+                    "id": cid,
+                    "document_id": doc_id,
+                    "seq": 0,
+                    "content": content,
+                    "content_hash": "sha256:" + (cid[-1] * 64),
+                    "char_start": 0,
+                    "char_end": len(content),
+                    "line_start": 1,
+                    "line_end": 1,
+                    "embedding_model": EMBED_MODEL,
+                    "vector_id": f"vec_{cid}",
+                    "metadata": {
+                        "namespace": "opspilot:public-kb",
+                        "classification": "internal",
+                        "language": "en",
+                        "tags": [],
+                    },
+                }
+            ]
+        )
+        embedding = _topic_embed(content)
+        lance.upsert_vectors(
+            [
+                VectorRecord(
+                    vector_id=f"vec_{cid}",
+                    embedding=embedding,
+                    document_id=doc_id,
+                    chunk_id=cid,
+                    namespace="opspilot:public-kb",
+                    classification="internal",
+                    language="en",
+                    tags=[],
+                    embedding_model=EMBED_MODEL,
+                )
+            ]
+        )
+
+    return sqlite, lance
+
+
+def test_official_ranks_above_internal_on_equal_rrf(tmp_path: Path) -> None:
+    """'official' source_authority should beat 'internal' as tie-breaker."""
+    sqlite, lance = _make_two_authority_stores(tmp_path, "official", "internal")
+    hits = kb_search(
+        "VPN authentication",
+        sqlite=sqlite,
+        lance=lance,
+        embed_fn=_topic_embed,
+        top_k=2,
+    )
+    assert len(hits) == 2
+    assert hits[0].chunk_id == "chk_aaaaaaaa"  # official
+    assert hits[0].source_authority == "official"
+    assert hits[1].source_authority == "internal"
+
+
+def test_official_ranks_above_unverified_on_equal_rrf(tmp_path: Path) -> None:
+    """'official' should also beat 'unverified'."""
+    sqlite, lance = _make_two_authority_stores(tmp_path, "official", "unverified")
+    hits = kb_search(
+        "VPN authentication",
+        sqlite=sqlite,
+        lance=lance,
+        embed_fn=_topic_embed,
+        top_k=2,
+    )
+    assert len(hits) == 2
+    assert hits[0].chunk_id == "chk_aaaaaaaa"  # official
+    assert hits[1].chunk_id == "chk_bbbbbbbb"  # unverified
+
+
+def test_vendor_ranks_above_unverified_on_equal_rrf(tmp_path: Path) -> None:
+    """'vendor' should beat 'unverified'."""
+    sqlite, lance = _make_two_authority_stores(tmp_path, "vendor", "unverified")
+    hits = kb_search(
+        "VPN authentication",
+        sqlite=sqlite,
+        lance=lance,
+        embed_fn=_topic_embed,
+        top_k=2,
+    )
+    assert len(hits) == 2
+    assert hits[0].source_authority == "vendor"
+    assert hits[1].source_authority == "unverified"
+
+
+def test_source_authority_propagated_to_hit(tmp_path: Path) -> None:
+    """Hit.source_authority should reflect the document's actual value."""
+    sqlite, lance = _make_two_authority_stores(tmp_path, "vendor", "internal")
+    hits = kb_search(
+        "VPN authentication",
+        sqlite=sqlite,
+        lance=lance,
+        embed_fn=_topic_embed,
+        top_k=2,
+    )
+    authority_by_chunk = {h.chunk_id: h.source_authority for h in hits}
+    assert authority_by_chunk["chk_aaaaaaaa"] == "vendor"
+    assert authority_by_chunk["chk_bbbbbbbb"] == "internal"

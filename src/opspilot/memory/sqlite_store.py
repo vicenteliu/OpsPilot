@@ -354,6 +354,17 @@ class SqliteStore:
         )
         return {str(r["doc_id"]) for r in cur.fetchall()}
 
+    def get_source_authorities(self, doc_ids: list[str]) -> dict[str, str]:
+        """Return ``{doc_id: source_authority}`` for the given doc IDs."""
+        if not doc_ids:
+            return {}
+        placeholders = ",".join("?" * len(doc_ids))
+        cur = self._conn.execute(
+            f"SELECT id, source_authority FROM kb_documents WHERE id IN ({placeholders})",
+            tuple(doc_ids),
+        )
+        return {str(r["id"]): str(r["source_authority"]) for r in cur.fetchall()}
+
     def get_superseded_chunk_ids(self, chunk_ids: list[str]) -> set[str]:
         """Return the subset of *chunk_ids* where ``superseded_by IS NOT NULL``."""
         if not chunk_ids:

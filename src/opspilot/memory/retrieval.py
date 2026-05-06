@@ -52,6 +52,14 @@ def _safe_fts_query(q: str) -> str:
 # RRF constant — Cormack et al. (2009). Higher k = flatter weighting.
 RRF_K: Final[int] = 60
 
+# Source-authority tie-breaker: higher rank wins when RRF scores are equal.
+_AUTHORITY_RANK: Final[dict[str, int]] = {
+    "official": 3,
+    "vendor": 2,
+    "internal": 1,
+    "unverified": 0,
+}
+
 # Default mixing weights from memory/SPEC.md §156. Vector slightly heavier
 # because dense retrieval generalises across paraphrase + cross-language;
 # keyword catches exact-token hits that embeddings miss.
@@ -81,6 +89,7 @@ class Hit:
     content: str | None
     valid_from: str | None = None
     has_open_conflicts: bool = False
+    source_authority: str | None = None
 
 
 def kb_search(
@@ -172,16 +181,27 @@ def kb_search(
     if not rrf_scores:
         return []
 
-    # Hydrate all candidate chunks so we can use valid_from as tie-breaker.
+    # Hydrate all candidate chunks for tie-breaker fields.
     candidate_ids = list(rrf_scores.keys())
     rows_by_chunk = _fetch_chunk_rows(sqlite, candidate_ids)
 
-    def _sort_key(cid: str) -> tuple[float, str]:
+    # Batch-fetch source_authority for all candidate documents.
+    candidate_doc_ids = list({
+        str(rows_by_chunk[cid]["document_id"])
+        for cid in candidate_ids
+        if cid in rows_by_chunk
+    })
+    source_authorities = sqlite.get_source_authorities(candidate_doc_ids)
+
+    def _sort_key(cid: str) -> tuple[float, int, str]:
         score = rrf_scores[cid]
-        # Newer valid_from wins ties; missing → empty string (sorts earlier).
         row = rows_by_chunk.get(cid) or {}
+        doc_id = str(row.get("document_id", ""))
+        authority = source_authorities.get(doc_id, "internal")
+        authority_rank = _AUTHORITY_RANK.get(authority, 1)
+        # Newer valid_from wins ties within the same authority tier.
         vf: str = row.get("valid_from") or ""  # type: ignore[assignment]
-        return (score, vf)
+        return (score, authority_rank, vf)
 
     ordered_ids = sorted(candidate_ids, key=_sort_key, reverse=True)[:top_k]
 
@@ -214,6 +234,7 @@ def kb_search(
                 content=str(content) if content is not None else None,
                 valid_from=row.get("valid_from"),  # type: ignore[arg-type]
                 has_open_conflicts=doc_id in docs_with_conflicts,
+                source_authority=source_authorities.get(doc_id),
             )
         )
     return out
