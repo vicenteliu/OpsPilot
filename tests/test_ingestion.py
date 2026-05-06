@@ -385,3 +385,154 @@ def test_empty_inputs_writes_no_op_run(
     assert stats.docs_total == 0
     cur = sqlite._conn.execute("SELECT COUNT(*) FROM ingest_runs").fetchone()
     assert cur[0] == 1
+
+
+# ── valid_from / source_authority / conflict detection ──────────────
+
+
+def _get_doc_by_source(sqlite: SqliteStore, source_path: str) -> dict | None:
+    cur = sqlite._conn.execute(
+        "SELECT * FROM kb_documents WHERE source_path=?", (source_path,)
+    )
+    row = cur.fetchone()
+    return dict(row) if row else None
+
+
+def test_ingest_stores_valid_from_from_frontmatter(
+    tmp_path: Path, stores: tuple[SqliteStore, LanceStore], redactor: Redactor
+) -> None:
+    md = tmp_path / "sop_2026-03-01.md"
+    md.write_text(
+        "---\nvalid_from: 2026-03-01\n---\n\n"
+        "## VPN auth\n\nAuthentication step: check RADIUS credentials.\n",
+        encoding="utf-8",
+    )
+    cfg = IngestConfig(embedding_model=EMBED_MODEL, embedding_dim=DIM, detect_conflicts=False)
+    sqlite, lance = stores
+    ingest([md], sqlite=sqlite, lance=lance, redactor=redactor, embed_fn=_topic_embed, config=cfg)
+
+    doc = _get_doc_by_source(sqlite, str(md))
+    assert doc is not None
+    assert (doc["valid_from"] or "").startswith("2026-03-01")
+
+
+def test_ingest_stores_valid_from_from_filename(
+    tmp_path: Path, stores: tuple[SqliteStore, LanceStore], redactor: Redactor
+) -> None:
+    md = tmp_path / "guide_2025-11-15.md"
+    md.write_text(
+        "## Setup\n\nAuthentication step: check RADIUS credentials.\n",
+        encoding="utf-8",
+    )
+    cfg = IngestConfig(embedding_model=EMBED_MODEL, embedding_dim=DIM, detect_conflicts=False)
+    sqlite, lance = stores
+    ingest([md], sqlite=sqlite, lance=lance, redactor=redactor, embed_fn=_topic_embed, config=cfg)
+
+    doc = _get_doc_by_source(sqlite, str(md))
+    assert doc is not None
+    assert (doc["valid_from"] or "").startswith("2025-11-15")
+
+
+def test_ingest_stores_source_authority(
+    tmp_path: Path, stores: tuple[SqliteStore, LanceStore], redactor: Redactor
+) -> None:
+    md = tmp_path / "official.md"
+    md.write_text(
+        "## VPN\n\nAuthentication step: check RADIUS credentials.\n",
+        encoding="utf-8",
+    )
+    cfg = IngestConfig(
+        embedding_model=EMBED_MODEL,
+        embedding_dim=DIM,
+        source_authority="official",
+        detect_conflicts=False,
+    )
+    sqlite, lance = stores
+    ingest([md], sqlite=sqlite, lance=lance, redactor=redactor, embed_fn=_topic_embed, config=cfg)
+
+    doc = _get_doc_by_source(sqlite, str(md))
+    assert doc is not None
+    assert doc["source_authority"] == "official"
+
+
+def test_ingest_conflict_detection_creates_conflict_record(
+    tmp_path: Path, stores: tuple[SqliteStore, LanceStore], redactor: Redactor
+) -> None:
+    """Two semantically similar docs should produce a kb_conflicts row."""
+    content = (
+        "## VPN Authentication\n\n"
+        "To authenticate, enter your RADIUS credentials and click Submit.\n"
+        "If authentication fails, contact your administrator.\n"
+    )
+    doc_a = tmp_path / "vpn_auth_a.md"
+    doc_b = tmp_path / "vpn_auth_b.md"
+    doc_a.write_text(content, encoding="utf-8")
+    doc_b.write_text(content + "\nAdditional note: also check your VPN client version.\n", encoding="utf-8")
+
+    cfg = IngestConfig(
+        embedding_model=EMBED_MODEL,
+        embedding_dim=DIM,
+        detect_conflicts=True,
+        conflict_similarity_threshold=0.80,
+    )
+    sqlite, lance = stores
+    ingest(
+        [doc_a, doc_b],
+        sqlite=sqlite, lance=lance, redactor=redactor, embed_fn=_topic_embed, config=cfg,
+    )
+
+    conflicts = sqlite.list_conflicts(status="open")
+    assert len(conflicts) >= 1
+
+
+def test_ingest_resolve_then_superseded_excluded_from_retrieval(
+    tmp_path: Path, stores: tuple[SqliteStore, LanceStore], redactor: Redactor
+) -> None:
+    """Full pipeline: ingest → detect conflict → resolve (a_wins) → b chunk excluded."""
+    content_a = (
+        "## VPN Authentication\n\n"
+        "Authenticate via RADIUS credentials. If it fails, reset your password.\n"
+    )
+    content_b = (
+        "## VPN Authentication\n\n"
+        "Authenticate via RADIUS credentials. If it fails, reset your password.\n"
+        "Note: legacy LDAP mode is deprecated.\n"
+    )
+    doc_a = tmp_path / "vpn_a.md"
+    doc_b = tmp_path / "vpn_b.md"
+    doc_a.write_text(content_a, encoding="utf-8")
+    doc_b.write_text(content_b, encoding="utf-8")
+
+    cfg = IngestConfig(
+        embedding_model=EMBED_MODEL,
+        embedding_dim=DIM,
+        detect_conflicts=True,
+        conflict_similarity_threshold=0.80,
+    )
+    sqlite, lance = stores
+    ingest(
+        [doc_a, doc_b],
+        sqlite=sqlite, lance=lance, redactor=redactor, embed_fn=_topic_embed, config=cfg,
+    )
+
+    conflicts = sqlite.list_conflicts(status="open")
+    assert conflicts, "expected at least one conflict to be detected"
+    conf_id = conflicts[0]["id"]
+
+    from opspilot.memory.conflict import resolve_conflict
+    resolve_conflict(conf_id, resolution="a_wins", resolved_by="tester", sqlite=sqlite)
+
+    # After resolution, retrieval should not surface the superseded (b-side) chunk.
+    hits = kb_search(
+        "RADIUS authentication",
+        sqlite=sqlite,
+        lance=lance,
+        embed_fn=_topic_embed,
+        top_k=10,
+        exclude_superseded=True,
+    )
+    winning_doc_id = sqlite.get_conflict(conf_id)["doc_a_id"]
+    losing_doc_id = sqlite.get_conflict(conf_id)["doc_b_id"]
+    hit_doc_ids = {h.document_id for h in hits}
+    assert winning_doc_id in hit_doc_ids, "winning doc must appear in results"
+    assert losing_doc_id not in hit_doc_ids, "losing doc chunks must be excluded"
