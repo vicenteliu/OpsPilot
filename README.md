@@ -45,6 +45,17 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
+**Rust extensions (optional but recommended — 10–48× faster chunker and tokenizer):**
+
+```bash
+# Requires Rust toolchain: https://rustup.rs
+make rust-dev        # builds debug .so into the venv
+# or for a release wheel:
+make rust-build
+```
+
+`make install` auto-detects `cargo` and runs `make rust-dev`; if Rust is absent the Python fallback is used transparently.
+
 ### 2. Pull models
 
 ```bash
@@ -380,8 +391,9 @@ All settings live in `~/.opspilot/config.yaml` (optional) or environment variabl
 ## Running tests
 
 ```bash
-pytest                        # all tests (644 tests, 84% coverage)
-pytest -m "not requires_ollama"  # skip tests that need a live Ollama instance
+pytest                              # all tests (681 tests)
+pytest -m "not requires_ollama"     # skip tests that need a live Ollama instance
+make bench                          # Rust vs Python speedup benchmarks (must be ≥ 5×)
 ```
 
 ---
@@ -394,16 +406,21 @@ pytest -m "not requires_ollama"  # skip tests that need a live Ollama instance
 │   ├── api/            #   FastAPI app + routes + middleware (health, metrics)
 │   ├── orchestrator/   #   Ticket summary playbook runner
 │   ├── providers/      #   Anthropic · OpenAI-compat (OpenAI/OpenRouter/Gemini) · Ollama
-│   ├── memory/         #   SqliteStore (FTS5) + LanceStore (vectors)
+│   ├── memory/         #   SqliteStore (FTS5) + LanceStore (vectors) + chunker/tokenizer dispatch
 │   ├── session/        #   SessionManager · TraceWriter · ArtifactStore
 │   ├── sandbox/        #   L2 Docker execution engine + approval gate
 │   ├── mcp/            #   MCP JSON-RPC 2.0 client (stdio + HTTP)
 │   ├── wiki/           #   Wiki ingest · query-to-page · lint · promote
 │   └── tui/            #   Textual terminal UI
+├── crates/             # Rust extensions (PyO3 / maturin)
+│   ├── opspilot-core/      #   Shared Rust types: chunker + tokenizer algorithms
+│   ├── opspilot-chunker/   #   Python binding — chunk_markdown() (9.5× Python)
+│   └── opspilot-tokenizer/ #   Python binding — count_tokens() (48× Python)
 ├── web/                # Svelte 5 frontend
+├── benchmarks/         # Rust vs Python timing benchmarks (exit 1 if < 5×)
 ├── playbooks/          # Playbook YAML + system prompts
 ├── kb/                 # Source documents for KB ingestion
-├── tests/              # pytest test suite
+├── tests/              # pytest test suite (681 tests)
 ├── deploy/             # systemd unit + nginx config
 ├── docker-compose.prod.yml
 ├── .env.example        # Environment variable reference

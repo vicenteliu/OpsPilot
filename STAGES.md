@@ -446,14 +446,16 @@ OpsPilot/
 - PR-28 / tui-iteration-screens（Textual）
 
 **退出标准**：
-- 第四个 e2e 样例（`examples/itr_ticket_summary_zh_v1_3_0/`）跑得过：feedback signals → trigger → variants → eval → promote 全链路
-- WebUI 能完整看到 iteration 历史 + lineage 树
-- OpenRouter 能跑 golden test，与 Anthropic / Ollama 在同 fixture 上 delta < 0.1
-- Stage 4 末做 **WebUI vs GUI 评审**：决定是否在 Stage 5 启动 GUI
+- ✅ 第四个 e2e 样例（`examples/itr_ticket_summary_zh_v1_3_0/`）跑得过：feedback signals → trigger → variants → eval → promote 全链路
+- ✅ WebUI 能完整看到 iteration 历史 + lineage 树
+- ✅ OpenRouter 能跑 golden test，与 Anthropic / Ollama 在同 fixture 上 delta < 0.1（实测 0.983，delta=0.015）
+- ✅ Stage 4 末做 **WebUI vs GUI 评审**：**保留 WebUI，不做 Tauri GUI**（见 ADR-0004）
 
-### 7.5 Stage 5 — 生产化（GUI 可选 / Optional）
+**Stage 4 已完成（2026-05-07）**
 
-> 用户决策 #3：GUI 仅在 Stage 4 末评审决定要做时启动；不必做。
+### 7.5 Stage 5 — 生产化（GUI 已排除）
+
+> 用户决策 #4（Stage 4 末评审）：WebUI 体验已满足需求，**Tauri GUI 永久排除**，Stage 5 不再包含任何 GUI 工作。
 
 **核心生产化（必做）**：
 - 剩余 provider：**Gemini API** + **Grok API**（Stage 4 已含 OpenRouter + OpenAI；至此 6 provider 齐全）
@@ -480,7 +482,7 @@ OpsPilot/
 **退出标准（必做部分）**：
 - `make harness` 在 6 个 provider 上分别跑通
 - sandbox L2 在生产环境跑过 1 个月无逃逸事件
-- MCP integration：至少 fs-readonly + 1 个 SaaS（Notion 或 Slack）跑通
+- ✅ MCP integration：fs-readonly（2 tools）+ Notion（22 tools）端到端跑通（2026-05-07）
 
 ---
 
