@@ -1,7 +1,7 @@
 .PHONY: install install-dev install-ui dev ensure-venv test test-cov test-ollama lint format \
         typecheck validate serve build-ui lint-ui ci-ui ci \
         ollama-up ollama-down ollama-pull ollama-logs harness golden golden-kb docker-build \
-        rust-dev rust-build clean help
+        rust-dev rust-build bench clean help golden-openrouter golden-gemini
 
 # Use python3.12 explicitly; on macOS this resolves to brew's installation.
 PYTHON ?= python3.12
@@ -27,6 +27,8 @@ install: ## Create venv and install in editable mode with dev extras.
 	$(PYTHON) -m venv $(VENV)
 	$(PIP) install -U pip
 	$(PIP) install -e ".[dev]"
+	@command -v cargo >/dev/null 2>&1 && $(MAKE) rust-dev || \
+	  echo "  cargo not found — skipping Rust extensions (run 'make rust-dev' after installing rustup)"
 	@echo
 	@echo "Done. Activate with: source $(VENV)/bin/activate"
 
@@ -85,7 +87,11 @@ dev: ensure-venv install-ui ## Start FastAPI (port 8000) + Svelte dev server (po
 	  cd $(WEB_DIR) && $(PNPM) dev; \
 	  wait
 
-ci: lint typecheck test validate ## Run the full quality gate.
+bench: ensure-venv ## Run Rust vs Python benchmarks (exit 1 if speedup < 5×).
+	$(PY) benchmarks/bench_chunker.py
+	$(PY) benchmarks/bench_tokenizer.py
+
+ci: lint typecheck test validate bench ## Run the full quality gate (includes Rust benchmarks).
 
 # ── PR-3: Ollama orchestration ──────────────────────────────────────────
 # OLLAMA_MODE = local  → talk to host's `ollama` binary (macOS dev default;
@@ -144,6 +150,12 @@ golden-kb: ensure-venv ## Load the Stage 1 spec example KB (frozen fixture, dete
 
 golden: ensure-venv golden-kb ## Run the Stage 1 golden test (auto-ingests KB; needs Ollama running).
 	$(OPSPL) harness golden --output golden-results.jsonl
+
+golden-openrouter: ensure-venv golden-kb ## Run the Stage 4 OpenRouter golden test (needs OPENROUTER_API_KEY + Ollama running).
+	$(OPSPL) harness golden-openrouter
+
+golden-gemini: ensure-venv golden-kb ## Run the Stage 5 Gemini golden test (needs GEMINI_API_KEY + Ollama running).
+	$(OPSPL) harness golden-gemini
 
 docker-build: ## Build the multi-stage docker image (opspilot:latest).
 	docker build -t opspilot:latest .
