@@ -503,6 +503,65 @@ export async function getVendorDoc(filename: string): Promise<VendorDoc> {
   return res.json();
 }
 
+// ── Chat ─────────────────────────────────────────────────────────────────────
+
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface ChatResult {
+  content: string;
+  usage: { input_tokens: number; output_tokens: number; cost_usd: number };
+}
+
+export type ChatStreamEvent =
+  | { type: 'status'; message: string }
+  | { type: 'result'; data: ChatResult }
+  | { type: 'error'; message: string };
+
+export async function* chatStream(
+  messages: ChatMessage[],
+  modelId?: string
+): AsyncGenerator<ChatStreamEvent> {
+  const res = await fetch('/api/chat/stream', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages, model_id: modelId ?? null })
+  });
+  if (!res.ok) throw new Error(`Chat stream failed: ${res.status}`);
+
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let currentEvent = 'message';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+
+    for (const line of lines) {
+      if (line.startsWith('event: ')) {
+        currentEvent = line.slice(7).trim();
+      } else if (line.startsWith('data: ')) {
+        const payload = JSON.parse(line.slice(6));
+        if (currentEvent === 'status') {
+          yield { type: 'status', message: payload.message };
+        } else if (currentEvent === 'result') {
+          yield { type: 'result', data: payload };
+        } else if (currentEvent === 'error') {
+          yield { type: 'error', message: payload.message };
+        }
+        currentEvent = 'message';
+      }
+    }
+  }
+}
+
 // ── MCP ──────────────────────────────────────────────────────────────────────
 
 export interface MCPServer {
