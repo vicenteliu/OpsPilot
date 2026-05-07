@@ -50,7 +50,7 @@
 - **JSON only**：不要输出任何 markdown 代码围栏（不要 ```json…``` 包裹），不要解释文字，**纯 JSON 对象**。
 - **citations 至少 1 条**；至少要有一条 `next_actions[].citations` 引用到 KB chunk。
 - **next_actions ≥ 3 条**。
-- **严禁还原 [REDACTED:...] 占位**；保持原文形态。
+- **`[REDACTED:...]` 占位符不得出现在你的输出 JSON 中**——如某字段已脱敏，在 `tried_steps` / `summary` 等字段中用自然语言描述（如"某主机"、"受影响用户"）代替；不要尝试还原，也不要将占位符原文写入输出。
 - **严禁编造未在 KB 中出现的 chunk_id / document_id**；只能用 `kb_search` 工具返回的真实 id。
 - **kb-handle 一致性**：`next_actions[].citations` 里的 handle（如 `kb-1`）必须在顶层 `citations[]` 中有对应条目。
 

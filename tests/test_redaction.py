@@ -185,6 +185,24 @@ class TestResidualCheck:
 # ──────────────────────────────────────────────────────────────────────────
 
 
+class TestDoubleRedaction:
+    def test_existing_placeholder_not_re_redacted(self, redactor: Redactor) -> None:
+        # Pre-redacted text (e.g. from fixture) must not produce nested markers.
+        # The 8-char hex hash inside [REDACTED:hostname:22222222] looks like a
+        # numeric/hex sequence that some rules would match; second pass must skip it.
+        pre_redacted = "我用 [REDACTED:hostname:22222222] 这台机器试过"
+        result = redactor.redact(pre_redacted)
+        assert "[REDACTED:hostname:[REDACTED:" not in result.text
+        assert result.text == pre_redacted  # no-op when already redacted
+
+    def test_new_pii_outside_placeholder_still_redacted(self, redactor: Redactor) -> None:
+        # PII outside existing markers must still be caught.
+        text = "[REDACTED:hostname:aabbccdd] 联系 alice@corp.local"
+        result = redactor.redact(text)
+        assert "email" in {h.placeholder_type for h in result.hits}
+        assert "[REDACTED:hostname:[REDACTED:" not in result.text
+
+
 class TestExampleTicket:
     def test_redacts_internal_hostname_in_ticket_body(self, redactor: Redactor) -> None:
         # Mirrors the original (pre-redaction) shape of the zh ticket sample

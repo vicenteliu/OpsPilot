@@ -147,6 +147,13 @@ class Redactor:
         return f"[REDACTED:{placeholder_type}:{h}]"
 
     def redact(self, text: str) -> RedactionResult:
+        # Guard spans already covered by existing [REDACTED:...] markers so
+        # that a second pass over pre-redacted text never nests placeholders.
+        _placeholder_re = re.compile(r"\[REDACTED:[^\[\]]*\]")
+        protected: list[tuple[int, int]] = [
+            (m.start(), m.end()) for m in _placeholder_re.finditer(text)
+        ]
+
         # 1) Collect all matches across rules.
         rule_priority = {r.id: i for i, r in enumerate(self.rules)}
         candidates: list[tuple[int, int, RedactionRule, str]] = []
@@ -155,7 +162,10 @@ class Redactor:
                 original = m.group(0)
                 if original in rule.exceptions:
                     continue
-                candidates.append((m.start(), m.end(), rule, original))
+                start, end = m.start(), m.end()
+                if any(ps <= start and end <= pe for ps, pe in protected):
+                    continue
+                candidates.append((start, end, rule, original))
 
         # 2) Sort by start, then by length descending (longest / most specific
         #    match wins at the same offset — e.g. an 18-digit national ID beats
