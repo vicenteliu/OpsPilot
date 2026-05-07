@@ -34,10 +34,10 @@ def test_config_has_fs_readonly():
     assert "fs-readonly" in ids
 
 
-def test_config_notion_disabled():
+def test_config_notion_enabled():
     cfg = load_mcp_config(EXAMPLE_CONFIG)
     notion = next(s for s in cfg.mcps if s.id == "notion-main")
-    assert not notion.enabled
+    assert notion.enabled
 
 
 def test_config_rejects_inline_secret(tmp_path: Path):
@@ -170,12 +170,13 @@ def test_registry_raises_for_unknown_prefix():
         registry.call_tool("mcp__unknown__do_thing", {})
 
 
-def test_registry_only_loads_enabled():
+def test_registry_loads_all_enabled():
     cfg = load_mcp_config(EXAMPLE_CONFIG)
     registry = McpRegistry.from_config(cfg)
-    # Only fs-readonly is enabled; notion-main is disabled
-    assert len(registry.list_servers()) == 1
-    assert registry.list_servers()[0].id == "fs-readonly"
+    # Both fs-readonly and notion-main are enabled
+    server_ids = {s.id for s in registry.list_servers()}
+    assert "fs-readonly" in server_ids
+    assert "notion-main" in server_ids
 
 
 # ── Transport JSON-RPC shape ──────────────────────────────────────────────

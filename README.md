@@ -4,7 +4,7 @@
 
 > 中文版：[README_zh.md](./README_zh.md)
 
-OpsPilot turns raw IT tickets into structured, KB-cited summaries using a playbook-driven AI pipeline. It runs locally with Ollama or against any cloud provider (Anthropic, OpenAI, OpenRouter, Gemini), with a terminal UI, a Svelte 5 web UI, and a FastAPI backend.
+OpsPilot turns raw IT tickets into structured, KB-cited summaries using a playbook-driven AI pipeline. It runs locally with Ollama or against any cloud provider (Anthropic, OpenAI, OpenRouter, Gemini), with a terminal UI, a tabbed Svelte 5 web UI, a KB-augmented chat interface, and a FastAPI backend wired to MCP servers (filesystem, Notion, and more).
 
 ---
 
@@ -22,7 +22,8 @@ OpsPilot turns raw IT tickets into structured, KB-cited summaries using a playbo
 - **Terminal UI (TUI)** — 8-module Textual workbench: dashboard, sessions, KB browser, wiki tree, harness, lint issues, providers, config; run playbooks inline with `R`; generate wiki pages from sessions with `W`; promote draft wiki pages with `P`
 - **Wiki layer** — compounding knowledge base built on top of the long-term KB: ingest KB docs into wiki summary pages, auto-generate synthesis pages from qualifying session responses, lint for orphans/broken links/redaction warnings, promote pages through a `draft → reviewed → live → stale → archived` lifecycle
 - **Sandbox (L2)** — Docker-hardened action execution with seccomp, cap-drop, read-only rootfs, and an approval gate that blocks destructive patterns (`rm -rf`, `DROP TABLE`, fork bombs, prod env mutations); dry-run preview before committing any action
-- **MCP client** — JSON-RPC 2.0 client for Model Context Protocol servers (stdio and HTTP transports); per-server allowlist/denylist tool filtering; secret detection blocks inline literals in env config
+- **KB-augmented chat** — conversational tab in the web UI; hybrid KB search injected into every turn; streams responses via SSE
+- **MCP client** — JSON-RPC 2.0 client for Model Context Protocol servers (stdio and HTTP transports); MCP tools injected into the orchestrator's ReAct loop alongside `kb_search`; per-server allowlist/denylist; `${VAR:-default}` env expansion; secret detection blocks inline literals
 - **Observability** — Prometheus-format `/metrics` endpoint, structured JSON logging (OTel-compatible), `/health` with uptime and version
 - **Rust extensions** — `opspilot_chunker` (9.6× faster than pure Python) and `opspilot_tokenizer` (45× faster BPE-ish token counter) compiled via PyO3/maturin
 
@@ -151,7 +152,7 @@ src/opspilot/
   tui/          Textual TUI shell + 8 screens + RunModal + WikiQueryModal
   sandbox/      L2 Docker execution engine + approval gate
   mcp/          MCP JSON-RPC 2.0 client — stdio + HTTP transports
-web/            Svelte 5 frontend (model selector, run, history)
+web/            Svelte 5 frontend (7-tab UI: Run / Chat / KB / Wiki / VendorDoc / MCP / Iteration)
 playbooks/      YAML playbook specs + system prompts
 kb/             Source documents for KB ingestion
 deploy/         systemd unit + nginx config for Linux production
@@ -256,8 +257,11 @@ opspilot harness run \
 # Stage 1 golden test (Anthropic baseline, weighted_score ≈ 0.968)
 opspilot harness golden
 
-# Stage 5 Gemini golden test (gemini-2.5-flash, weighted_score ≈ 0.917, delta 0.051)
-opspilot harness golden-gemini    # requires GEMINI_API_KEY
+# Stage 4 OpenRouter golden test (delta < 0.1 exit criterion)
+opspilot harness golden-openrouter  # requires OPENROUTER_API_KEY
+
+# Stage 5 Gemini golden test
+opspilot harness golden-gemini      # requires GEMINI_API_KEY
 ```
 
 Golden test scores vs baseline (threshold: delta < 0.1):
@@ -266,7 +270,7 @@ Golden test scores vs baseline (threshold: delta < 0.1):
 |---|---|---|---|
 | Anthropic | claude-sonnet-4-6 | 0.968 | — baseline |
 | OpenRouter | claude-haiku-4-5 (via OR) | 0.983 | 0.015 ✅ |
-| Gemini | gemini-2.5-flash | 0.917 | 0.051 ✅ |
+| Gemini | gemini-2.5-flash | 0.983 | 0.015 ✅ |
 
 ---
 
@@ -294,19 +298,32 @@ opspilot mcp list --config mcp-config.yaml
 opspilot mcp probe --config mcp-config.yaml --server fs-readonly
 ```
 
-MCP config example (`mcp-config.yaml`):
+MCP tools are injected into the orchestrator's ReAct loop automatically when `mcp-config.yaml` is present at startup — no playbook changes needed. Config example:
 
 ```yaml
-version: "1"
+version: "1.0.0"
 mcps:
   - id: fs-readonly
     name: "Filesystem (read-only)"
     transport: stdio
     command: npx
-    args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "${WORKSPACE_ROOT:-/workspace}"]
     tools_prefix: "mcp__fs__"
     tools_allowlist: ["read_file", "list_directory"]
     enabled: true
+    trust: trusted
+
+  - id: notion-main
+    name: "Notion (main workspace)"
+    transport: stdio
+    command: npx
+    args: ["-y", "@notionhq/notion-mcp-server"]
+    env:
+      NOTION_TOKEN: "${NOTION_API_KEY}"
+    tools_prefix: "mcp__notion__"
+    tools_denylist: ["delete_page", "delete_database"]
+    enabled: true
+    trust: trusted
 ```
 
 ---
@@ -391,7 +408,7 @@ All settings live in `~/.opspilot/config.yaml` (optional) or environment variabl
 ## Running tests
 
 ```bash
-pytest                              # all tests (681 tests)
+pytest                              # all tests (733 tests)
 pytest -m "not requires_ollama"     # skip tests that need a live Ollama instance
 make bench                          # Rust vs Python speedup benchmarks (must be ≥ 5×)
 ```
@@ -420,7 +437,7 @@ make bench                          # Rust vs Python speedup benchmarks (must be
 ├── benchmarks/         # Rust vs Python timing benchmarks (exit 1 if < 5×)
 ├── playbooks/          # Playbook YAML + system prompts
 ├── kb/                 # Source documents for KB ingestion
-├── tests/              # pytest test suite (681 tests)
+├── tests/              # pytest test suite (733 tests)
 ├── deploy/             # systemd unit + nginx config
 ├── docker-compose.prod.yml
 ├── .env.example        # Environment variable reference
