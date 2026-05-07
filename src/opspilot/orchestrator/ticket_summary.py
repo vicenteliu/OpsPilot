@@ -36,6 +36,7 @@ from collections.abc import Callable
 from typing import Any, Literal
 
 from ..errors import ProviderError
+from ..mcp.registry import McpRegistry
 from ..providers.base import ProviderProtocol
 from ..providers.registry import make_provider
 from ..providers.types import Message, SamplingParams, ToolDef
@@ -59,6 +60,7 @@ def run_ticket_summary(
     embed_fn: Callable[[str], list[float]],
     sqlite_store: Any,  # SqliteStore — typed Any to avoid PR-4 import cycle
     lance_store: Any,  # LanceStore
+    mcp_registry: McpRegistry | None = None,
     user_msg_fn: Callable[[dict[str, Any]], str] | None = None,
     on_progress: Callable[[str], None] | None = None,
 ) -> RunResult:
@@ -93,6 +95,13 @@ def run_ticket_summary(
         default_top_k=pb.limits.max_kb_search_results,
         namespace=namespace,
     )
+    mcp_tool_defs: list[ToolDef] = []
+    if mcp_registry is not None:
+        try:
+            mcp_registry.refresh_all_tools()
+            mcp_tool_defs = mcp_registry.as_tool_defs()
+        except Exception:  # noqa: BLE001 — MCP unavailability must not crash a run
+            mcp_tool_defs = []
 
     artifact_id: str | None = None
     summary: dict[str, Any] = {}
@@ -120,7 +129,7 @@ def run_ticket_summary(
             #     The trace still gets a tool_call + tool_result pair so the
             #     harness's _retrieved_chunks() walker can find the chunks.
             effective_system_prompt = pb.system_prompt
-            effective_tools: list[ToolDef] = [tool_def]
+            effective_tools: list[ToolDef] = [tool_def, *mcp_tool_defs]
             effective_max_turns = pb.limits.max_turns
             prefetch_chunk_ids: set[str] = set()
             prefetch_hits: list[dict[str, Any]] = []
@@ -232,10 +241,8 @@ def run_ticket_summary(
                             )
                         )
                         status: Literal["ok", "failed", "timeout", "aborted"]
-                        if tc.name != "kb_search":
-                            payload = {"_error": f"unknown tool: {tc.name}"}
-                            status = "failed"
-                        else:
+                        tool_actor: str
+                        if tc.name == "kb_search":
                             try:
                                 _prog("Searching knowledge base…")
                                 payload = tool_handler(tc.arguments)
@@ -243,6 +250,24 @@ def run_ticket_summary(
                             except Exception as e:  # noqa: BLE001 — surface tool errors
                                 payload = {"_error": f"{type(e).__name__}: {e}"}
                                 status = "failed"
+                            tool_actor = "tool:kb"
+                        elif mcp_registry is not None and any(
+                            tc.name.startswith(c.cfg.tools_prefix)
+                            for c in mcp_registry._clients.values()
+                        ):
+                            try:
+                                _prog(f"Calling MCP tool {tc.name}…")
+                                mcp_result = mcp_registry.call_tool(tc.name, tc.arguments)
+                                payload = {"text": mcp_result.text, "is_error": mcp_result.is_error}
+                                status = "ok" if not mcp_result.is_error else "failed"
+                            except Exception as e:  # noqa: BLE001
+                                payload = {"_error": f"{type(e).__name__}: {e}"}
+                                status = "failed"
+                            tool_actor = "tool:mcp"
+                        else:
+                            payload = {"_error": f"unknown tool: {tc.name}"}
+                            status = "failed"
+                            tool_actor = "tool:unknown"
 
                         rendered = render_tool_result(payload)
                         tw.write(
@@ -251,7 +276,7 @@ def run_ticket_summary(
                                 status=status,
                                 action_id=action_id,
                                 stdout_ref=rendered[:8000],
-                                actor="tool:kb",
+                                actor=tool_actor,
                             )
                         )
                         messages.append(

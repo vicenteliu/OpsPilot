@@ -84,6 +84,7 @@ async def run_ticket(body: ApiRunRequest, request: Request) -> ApiRunResponse:
                 embed_fn=state.embed_fn,
                 sqlite_store=state.sqlite,
                 lance_store=state.lance,
+                mcp_registry=getattr(state, "mcp_registry", None),
             )
 
         result = await loop.run_in_executor(None, _run)
@@ -144,6 +145,7 @@ async def run_ticket_stream(body: ApiRunRequest, request: Request) -> StreamingR
                     embed_fn=state.embed_fn,
                     sqlite_store=state.sqlite,
                     lance_store=state.lance,
+                    mcp_registry=getattr(state, "mcp_registry", None),
                     on_progress=on_progress,
                 ),
             )

@@ -29,6 +29,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from ..config import load_config
+from ..mcp import McpRegistry, load_mcp_config
 from ..memory.lance_store import LanceStore
 from ..memory.sqlite_store import SqliteStore
 from ..memory.storage_init import init_sqlite
@@ -37,6 +38,7 @@ from ..providers.registry import make_provider
 from ..redaction import Redactor
 from ..session.manager import SessionManager
 from .middleware import ObservabilityMiddleware
+from .routes.chat import router as chat_router
 from .routes.config import router as config_router
 from .routes.harness import router as harness_router
 from .routes.health import router as health_router
@@ -103,6 +105,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     session_mgr = SessionManager(home=cfg.home)
     redactor = Redactor.from_yaml()
 
+    mcp_registry: McpRegistry | None = None
+    mcp_config_path = Path("mcp-config.yaml")
+    if mcp_config_path.exists():
+        try:
+            mcp_cfg = load_mcp_config(mcp_config_path)
+            mcp_registry = McpRegistry.from_config(mcp_cfg)
+        except Exception:  # noqa: BLE001 — bad config must not prevent startup
+            mcp_registry = None
+
     app.state.cfg = cfg
     app.state.playbook = playbook
     app.state.vendor_doc_pb = vendor_doc_pb
@@ -114,10 +125,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.embed_fn = embed_fn
     app.state.session_mgr = session_mgr
     app.state.redactor = redactor
+    app.state.mcp_registry = mcp_registry
 
     yield
-    # No teardown required; SQLite connections and Ollama HTTP clients
-    # are closed by the OS on process exit for this single-user deployment.
+
+    if mcp_registry is not None:
+        mcp_registry.close_all()
 
 
 app = FastAPI(title="OpsPilot API", version="0.2.0", lifespan=lifespan)
@@ -134,6 +147,7 @@ app.add_middleware(ObservabilityMiddleware)
 app.include_router(health_router)          # /health  (no /api prefix — ops endpoints)
 app.include_router(metrics_router)         # /metrics
 app.include_router(config_router, prefix="/api")
+app.include_router(chat_router, prefix="/api")
 app.include_router(models_router, prefix="/api")
 app.include_router(run_router, prefix="/api")
 app.include_router(doc_router, prefix="/api")

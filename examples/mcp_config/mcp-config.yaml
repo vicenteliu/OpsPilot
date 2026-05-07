@@ -33,13 +33,13 @@ mcps:
     description: "Read pages and databases in the main Notion workspace."
     transport: "stdio"
     command: "npx"
-    args: ["-y", "@notionhq/mcp-server"]
+    args: ["-y", "@notionhq/notion-mcp-server"]
     env:
       NOTION_TOKEN: "${NOTION_API_KEY}"
     tools_prefix: "mcp__notion__"
     tools_allowlist: null
     tools_denylist: ["delete_page", "delete_database"]
-    enabled: false
+    enabled: true
     trust: "trusted"
     auth:
       type: "bearer_env"

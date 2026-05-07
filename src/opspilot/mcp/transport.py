@@ -23,11 +23,16 @@ import httpx
 from ..errors import ProviderError
 
 MCP_PROTOCOL_VERSION = "2024-11-05"
-_PLACEHOLDER_RE = re.compile(r"\$\{(\w+)\}")
+# Matches ${VAR} and ${VAR:-default} bash-style expansions.
+_PLACEHOLDER_RE = re.compile(r"\$\{(\w+)(?::-([^}]*))?\}")
 
 
 def _resolve_env_value(value: str) -> str:
-    return _PLACEHOLDER_RE.sub(lambda m: os.environ.get(m.group(1), ""), value)
+    def _sub(m: re.Match[str]) -> str:
+        var, default = m.group(1), m.group(2) or ""
+        return os.environ.get(var, default)
+
+    return _PLACEHOLDER_RE.sub(_sub, value)
 
 
 class McpTransport(Protocol):
@@ -45,9 +50,10 @@ class StdioTransport:
         if env:
             for k, v in env.items():
                 merged_env[k] = _resolve_env_value(v)
+        resolved_args = [_resolve_env_value(a) for a in args]
 
         self._proc = subprocess.Popen(
-            [command, *args],
+            [command, *resolved_args],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
