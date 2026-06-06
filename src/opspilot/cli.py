@@ -1831,6 +1831,7 @@ def serve(
     Both processes are stopped together on Ctrl+C.
     """
     import atexit
+    import os
     import subprocess
 
     import uvicorn
@@ -1848,9 +1849,12 @@ def serve(
             _err.print(f"[red]web/ not found at {web_dir}[/red]")
             raise typer.Exit(code=1)
         _console.print(f"Starting Svelte frontend on http://localhost:{ui_port}")
+        # Tell Vite which backend port to proxy /api → so a non-default --port works.
+        frontend_env = {**os.environ, "OPSPILOT_API_PORT": str(port)}
         frontend_proc = subprocess.Popen(
             ["pnpm", "dev", "--port", str(ui_port)],
             cwd=web_dir,
+            env=frontend_env,
         )
 
         def _stop_frontend() -> None:
