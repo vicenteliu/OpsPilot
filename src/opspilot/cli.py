@@ -1814,7 +1814,7 @@ def tui_run(
 @app.command("serve")
 def serve(
     host: str = typer.Option("127.0.0.1", "--host", "-H", help="Bind host."),
-    port: int = typer.Option(8000, "--port", "-p", help="Bind port."),
+    port: int = typer.Option(8001, "--port", "-p", help="Bind port."),
     workers: int = typer.Option(1, "--workers", "-w", help="Uvicorn worker count."),
     reload: bool = typer.Option(False, "--reload", help="Hot-reload (dev only)."),
     json_logs: bool = typer.Option(False, "--json-logs", help="Enable JSON structured logging."),
