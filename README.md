@@ -21,7 +21,7 @@ OpsPilot turns raw IT tickets into structured, KB-cited summaries using a playbo
 - **Session history** — past runs listed inline with expandable output cards for side-by-side comparison
 - **Terminal UI (TUI)** — 8-module Textual workbench: dashboard, sessions, KB browser, wiki tree, harness, lint issues, providers, config; run playbooks inline with `R`; generate wiki pages from sessions with `W`; promote draft wiki pages with `P`
 - **Wiki layer** — compounding knowledge base built on top of the long-term KB: ingest KB docs into wiki summary pages, auto-generate synthesis pages from qualifying session responses, lint for orphans/broken links/redaction warnings, promote pages through a `draft → reviewed → live → stale → archived` lifecycle
-- **Sandbox (L2)** — Docker-hardened action execution with seccomp, cap-drop, read-only rootfs, no host mounts, and `--network=none` by default; the real blast-radius boundary is the ephemeral container + network policy. An approval gate *flags* risky patterns (`rm -rf`, `DROP TABLE`, fork bombs, prod-env or network-opening actions) for human sign-off — a defense-in-depth signal, not a boundary (see [ADR-0005](docs/adr/0005-approval-gate-is-defense-signal-not-boundary.md)); dry-run preview before committing any action
+- **Sandbox (L2 / L3)** — Docker-hardened action execution with seccomp, cap-drop, read-only rootfs, no host mounts, and `--network=none` by default; the real blast-radius boundary is the ephemeral container + network policy. **L3** adds gVisor (`--runtime=runsc`) for user-space-kernel isolation of suspicious-input workloads — selected per-run with `--level l3`, and **fail-closed** (refuses to run rather than downgrade to L2 if `runsc` is unregistered); see [ADR-0009](docs/adr/0009-sandbox-l3-gvisor-over-firecracker.md). An approval gate *flags* risky patterns (`rm -rf`, `DROP TABLE`, fork bombs, prod-env or network-opening actions) for human sign-off — a defense-in-depth signal, not a boundary (see [ADR-0005](docs/adr/0005-approval-gate-is-defense-signal-not-boundary.md)); dry-run preview before committing any action
 - **KB-augmented chat** — conversational tab in the web UI; hybrid KB search injected into every turn; streams responses via SSE
 - **MCP client** — JSON-RPC 2.0 client for Model Context Protocol servers (stdio and HTTP transports); MCP tools injected into the orchestrator's ReAct loop alongside `kb_search`; per-server allowlist/denylist; `${VAR:-default}` env expansion; best-effort inline-secret detection across env/args/url/headers (a footgun guard, not a guarantee — keep secrets in the environment)
 - **Observability** — Prometheus-format `/metrics` endpoint, structured JSON logging (OTel-compatible), `/health` with uptime and version
@@ -150,7 +150,7 @@ src/opspilot/
   schemas/      JSON Schema registry + validator
   wiki/         ingest · query_to_page · lint · promote — compounding KB layer
   tui/          Textual TUI shell + 8 screens + RunModal + WikiQueryModal
-  sandbox/      L2 Docker execution engine + approval gate
+  sandbox/      L2 Docker-hardened + L3 gVisor execution engine + approval gate
   mcp/          MCP JSON-RPC 2.0 client — stdio + HTTP transports
 web/            Svelte 5 frontend (7-tab UI: Run / Chat / KB / Wiki / VendorDoc / MCP / Iteration)
 playbooks/      YAML playbook specs + system prompts
@@ -190,7 +190,7 @@ The six layers form a closed AI task loop:
 - **memory/** — three-tier memory: short-term (in-trace summaries) / mid-term (SQLite + markdown) / long-term (LanceDB + markdown); RAG retrieval and reranking
 - **wiki/** — LLM-maintained synthesis layer on top of the long-term KB: 5 page kinds + cross-links + lint; query answers can be written back as new pages, forming a compounding insight loop
 - **session/** — "context + trace + artifact + audit" bundle for every AI task; the carrier for compliance
-- **sandbox/** — isolated execution layer for AI-proposed actions ("show me before committing"); L2: Docker hardened (seccomp + cap-drop + RO rootfs); default deny-all
+- **sandbox/** — isolated execution layer for AI-proposed actions ("show me before committing"); L2: Docker hardened (seccomp + cap-drop + RO rootfs); L3: + gVisor `runsc` user-space kernel; default deny-all
 - **harness/** — unit tests and regression gates for prompts and playbooks; required before model upgrades
 
 > The spec-only directories (`providers/`, `skills/`, `wiki/`, `session/`, `sandbox/`, `harness/` at repo root) define these contracts and templates. The working implementation lives under `src/opspilot/`.
@@ -279,12 +279,32 @@ Golden test scores vs baseline (threshold: delta < 0.1):
 The sandbox runs AI-proposed shell actions in a Docker L2 container (seccomp + `--cap-drop=ALL` + read-only rootfs). An approval gate blocks patterns like `rm -rf`, `DROP TABLE`, `chmod 777`, and fork bombs.
 
 ```bash
-# Preview an action (no execution)
-opspilot sandbox dry-run --action examples/sandbox_shell_l2/action.yaml
+# Preview an action (no execution) — prints the exact docker argv
+opspilot sandbox dry-run examples/sandbox_shell_l2/action.yaml
 
-# Execute (requires Docker; dangerous patterns require --force-approve)
-opspilot sandbox run --action examples/sandbox_shell_l2/action.yaml
+# Execute (requires Docker; dangerous patterns require --approve)
+opspilot sandbox run examples/sandbox_shell_l2/action.yaml
+opspilot sandbox run examples/sandbox_shell_l2/action.yaml --approve
 ```
+
+### L3 (gVisor)
+
+Add `--level l3` to either command to route execution through gVisor's
+`runsc` runtime instead of the host kernel — the L2 hardening flags are all
+retained, with a stronger isolation boundary on top ([ADR-0009](docs/adr/0009-sandbox-l3-gvisor-over-firecracker.md)).
+
+```bash
+# Dry-run shows the injected --runtime=runsc in the docker argv
+opspilot sandbox dry-run --level l3 examples/sandbox_shell_l2/action.yaml
+
+# Execute under gVisor (requires runsc registered with the Docker daemon)
+opspilot sandbox run --level l3 examples/sandbox_shell_l2/action.yaml
+```
+
+L3 is **fail-closed**: if `runsc` is not registered in `/etc/docker/daemon.json`,
+the run is refused with an explicit error rather than silently downgrading to L2.
+Host setup (install `runsc`, register the runtime) is documented in
+[`sandbox/backends/README.md` §3](sandbox/backends/README.md).
 
 ---
 
@@ -425,7 +445,7 @@ make bench                          # Rust vs Python speedup benchmarks (must be
 │   ├── providers/      #   Anthropic · OpenAI-compat (OpenAI/OpenRouter/Gemini) · Ollama
 │   ├── memory/         #   SqliteStore (FTS5) + LanceStore (vectors) + chunker/tokenizer dispatch
 │   ├── session/        #   SessionManager · TraceWriter · ArtifactStore
-│   ├── sandbox/        #   L2 Docker execution engine + approval gate
+│   ├── sandbox/        #   L2 Docker-hardened + L3 gVisor execution engine + approval gate
 │   ├── mcp/            #   MCP JSON-RPC 2.0 client (stdio + HTTP)
 │   ├── wiki/           #   Wiki ingest · query-to-page · lint · promote
 │   └── tui/            #   Textual terminal UI
