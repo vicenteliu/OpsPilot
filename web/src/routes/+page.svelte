@@ -405,25 +405,18 @@
     service_request: 'pb_request_fulfillment_zh',
   };
 
-  async function handleRun(playbookId?: string) {
+  // Run-tab work-item-type selector. 'auto' omits playbook_id so the backend
+  // classifies (and may ask for confirmation); the others force a playbook.
+  let selectedWorkItemType = $state<'auto' | 'incident' | 'service_request'>('auto');
+
+  function selectedPlaybookId(): string | undefined {
+    return selectedWorkItemType === 'auto' ? undefined : PLAYBOOK_BY_TYPE[selectedWorkItemType];
+  }
+
+  async function runWith(input: Record<string, unknown>, playbookId?: string) {
     fetchError = null;
     result = null;
     statusLines = [];
-    let input: Record<string, unknown>;
-    if (playbookId && lastRunInput) {
-      // Confirm re-run: reuse the prior input, force the chosen playbook.
-      input = lastRunInput;
-    } else if (inputMode === 'nl') {
-      if (!nlInput.trim()) { fetchError = 'Please describe the issue.'; return; }
-      input = buildTicketFromNL();
-    } else {
-      try {
-        input = JSON.parse(ticketInput);
-      } catch {
-        fetchError = 'Invalid JSON in ticket input.';
-        return;
-      }
-    }
     lastRunInput = input;
     loading = true;
     try {
@@ -444,8 +437,25 @@
     }
   }
 
+  async function handleRun() {
+    let input: Record<string, unknown>;
+    if (inputMode === 'nl') {
+      if (!nlInput.trim()) { fetchError = 'Please describe the issue.'; return; }
+      input = buildTicketFromNL();
+    } else {
+      try {
+        input = JSON.parse(ticketInput);
+      } catch {
+        fetchError = 'Invalid JSON in ticket input.';
+        return;
+      }
+    }
+    await runWith(input, selectedPlaybookId());
+  }
+
   function confirmWorkItemType(workItemType: string) {
-    handleRun(PLAYBOOK_BY_TYPE[workItemType] ?? PLAYBOOK_BY_TYPE.incident);
+    if (!lastRunInput) return;
+    runWith(lastRunInput, PLAYBOOK_BY_TYPE[workItemType] ?? PLAYBOOK_BY_TYPE.incident);
   }
 
   function copyText(text: string) {
@@ -828,6 +838,14 @@
         {/if}
 
         <div class="run-row">
+          <label class="wi-type-label">
+            Type
+            <select class="wi-type-select" bind:value={selectedWorkItemType} disabled={loading}>
+              <option value="auto">Auto-detect</option>
+              <option value="incident">Incident</option>
+              <option value="service_request">Service Request</option>
+            </select>
+          </label>
           <button class="btn-run" onclick={() => handleRun()} disabled={loading}>
             {#if loading}
               <span class="spinner"></span> Running...
@@ -2170,6 +2188,21 @@
   }
   .btn-confirm:hover { background: var(--accent-bg, #e8f0fe); }
   .classified-note { margin: 0.5rem 0; color: var(--text-muted); font-size: 0.9rem; }
+
+  .wi-type-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+  }
+  .wi-type-select {
+    padding: 0.4rem 0.6rem;
+    border-radius: 0.4rem;
+    border: 1px solid var(--border);
+    background: var(--surface, #fff);
+    font-size: 0.9rem;
+  }
 
   .escalation { margin-top: 0.5rem; font-size: 0.9rem; color: var(--warn-text2); }
 
