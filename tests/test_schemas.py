@@ -39,6 +39,7 @@ REQUIRED_SCHEMAS = (
     "provider-config",
     "incident_summary_v1",
     "request_fulfillment_v1",
+    "work_item_classification_v1",
 )
 
 
@@ -163,6 +164,36 @@ class TestRequestFulfillmentSchema:
         bad["severity_suggested"] = "P2"
         with pytest.raises(SchemaError):
             validate("request_fulfillment_v1", bad, repo_root=repo_root)
+
+
+class TestWorkItemClassificationSchema:
+    def _valid(self) -> dict:
+        return {
+            "work_item_type": "incident",
+            "confidence": 0.82,
+            "rationale": "Reports a service outage, not a standard request.",
+        }
+
+    def test_valid_instance_passes(self, repo_root: Path) -> None:
+        validate("work_item_classification_v1", self._valid(), repo_root=repo_root)
+
+    def test_unknown_type_fails(self, repo_root: Path) -> None:
+        bad = self._valid()
+        bad["work_item_type"] = "problem"
+        with pytest.raises(SchemaError):
+            validate("work_item_classification_v1", bad, repo_root=repo_root)
+
+    def test_confidence_out_of_range_fails(self, repo_root: Path) -> None:
+        bad = self._valid()
+        bad["confidence"] = 1.5
+        with pytest.raises(SchemaError):
+            validate("work_item_classification_v1", bad, repo_root=repo_root)
+
+    def test_missing_rationale_fails(self, repo_root: Path) -> None:
+        bad = self._valid()
+        del bad["rationale"]
+        with pytest.raises(SchemaError):
+            validate("work_item_classification_v1", bad, repo_root=repo_root)
 
 
 class TestRegistry:

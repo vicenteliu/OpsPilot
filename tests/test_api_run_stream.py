@@ -25,6 +25,8 @@ _SAMPLE_TICKET = {
     "submitted_at": "2026-05-06T09:00:00Z",
     "subject": "DB connection pool exhausted",
     "body": "All 50 connections in use, new requests timing out.",
+    # Declared type → stream goes straight to the incident playbook (no classify).
+    "work_item_type": "incident",
 }
 
 _MOCK_SUMMARY = {
@@ -66,6 +68,10 @@ def _make_test_app() -> FastAPI:
         app.state.embed_fn = lambda text: [0.0] * 768
         app.state.session_mgr = MagicMock()
         app.state.redactor = MagicMock()
+        app.state.request_fulfillment_pb = MagicMock()
+        app.state.classify_pb = MagicMock()
+        app.state.classify_threshold = 0.7
+        app.state.mcp_registry = None
         yield
 
     app = FastAPI(lifespan=test_lifespan)

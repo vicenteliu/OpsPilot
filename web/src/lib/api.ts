@@ -8,6 +8,12 @@ export interface TokenUsage {
   cost_usd: number;
 }
 
+export interface WorkItemClassification {
+  work_item_type: string;
+  confidence: number;
+  rationale: string;
+}
+
 export interface RunResponse {
   session_id: string;
   artifact_id: string | null;
@@ -15,6 +21,10 @@ export interface RunResponse {
   result: TicketSummary;
   error: string | null;
   usage: TokenUsage | null;
+  // #6 — present when the type was inferred. needs_confirmation means the run
+  // was withheld for a human pick; re-submit with an explicit playbookId.
+  classification?: WorkItemClassification | null;
+  needs_confirmation?: boolean;
 }
 
 // incident_summary_v1 artifact. Legacy ticket_summary_v1 fields
@@ -96,12 +106,13 @@ export async function getModels(): Promise<ModelsResponse> {
 
 export async function runTicket(
   input: Record<string, unknown>,
-  modelId?: string
+  modelId?: string,
+  playbookId?: string
 ): Promise<RunResponse> {
   const res = await fetch('/api/run', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ input, model_id: modelId ?? null })
+    body: JSON.stringify({ input, model_id: modelId ?? null, playbook_id: playbookId ?? null })
   });
   if (!res.ok) throw new Error(`Run failed: ${res.status}`);
   return res.json();
@@ -114,12 +125,13 @@ export type StreamEvent =
 
 export async function* runTicketStream(
   input: Record<string, unknown>,
-  modelId?: string
+  modelId?: string,
+  playbookId?: string
 ): AsyncGenerator<StreamEvent> {
   const res = await fetch('/api/run/stream', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ input, model_id: modelId ?? null })
+    body: JSON.stringify({ input, model_id: modelId ?? null, playbook_id: playbookId ?? null })
   });
   if (!res.ok) throw new Error(`Run stream failed: ${res.status}`);
 

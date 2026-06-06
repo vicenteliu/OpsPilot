@@ -44,12 +44,17 @@ class ApiTokenUsage(BaseModel):
 class ApiRunResponse(BaseModel):
     """Response body for POST /api/run."""
 
-    session_id: str
+    session_id: str  # "" when needs_confirmation (no run happened)
     artifact_id: str | None
     schema_valid: bool
-    result: dict[str, Any]  # the ticket_summary_v1 artifact, or {} on error
+    result: dict[str, Any]  # the work-item artifact, or {} on error / confirmation
     error: str | None
     usage: ApiTokenUsage | None = None
+    # Work item classification (#6). Present when the type was inferred rather
+    # than declared. needs_confirmation=True means the run was withheld pending a
+    # human pick (low confidence); re-submit with an explicit playbook_id.
+    classification: dict[str, Any] | None = None
+    needs_confirmation: bool = False
 
 
 class ApiConfigResponse(BaseModel):
