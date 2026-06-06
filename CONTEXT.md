@@ -78,6 +78,16 @@ _Avoid_: model name, model string
 A discrete UI feature (e.g. `run`, `ingest`, `harness`) that can be toggled on/off via `ui.modules` in config. Not an auth concept — single-user local deployment only.
 _Avoid_: feature, page, view
 
+### Action execution (Stage 4+)
+
+**Approval gate**:
+A heuristic check that *flags* an action as requiring human sign-off before apply (denylist of risky command patterns + prod-env / irreversibility flags). It is a **defense-in-depth signal and audit aid, not a security boundary** — the real boundary is the Docker L2 hardened container plus network policy. See ADR-0005.
+_Avoid_: security boundary, sandbox (the gate is not the sandbox)
+
+**Sandbox (L2)**:
+The ephemeral hardened Docker container an action runs inside: read-only rootfs, `cap-drop ALL`, no-new-privileges, seccomp, tmpfs workdir, no host mounts. This — not the **approval gate** — is what actually contains an action's blast radius.
+_Avoid_: container, jail, isolation layer
+
 ## Relationships
 
 - A **Playbook** specifies the **retrieval mode** and output schema for a **Session**
@@ -98,3 +108,4 @@ _Avoid_: feature, page, view
 
 - "tool" was used to mean both a retrieval mode (`tool` mode) and a callable function (`kb_search` tool) — context disambiguates: retrieval mode is a playbook setting, tool is a callable registered with the provider.
 - "session" in some LLM frameworks means a conversation window — in OpsPilot it means a single playbook run with its full audit trail, not a multi-turn conversation.
+- "signed" was used (in older README copy) for the **trace** and **artifact** — resolved: nothing is cryptographically signed. Artifacts are *content-addressed* (`art_<sha256[:16]>`); traces are *append-only, seq-stamped*. Both give tamper-evidence against accidental corruption, not signatures. Say "content-addressed" / "append-only", never "signed".

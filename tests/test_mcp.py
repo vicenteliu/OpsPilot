@@ -86,6 +86,86 @@ mcps:
     assert cfg.mcps[0].id == "ok-server"
 
 
+# ── Inline-secret detection: extended coverage (env / args / url / headers) ──
+
+
+def _write_stdio(tmp_path: Path, *, env="{}", args="[]", headers="{}") -> Path:
+    y = f"""
+version: "1.0.0"
+mcps:
+  - id: "s"
+    name: "S"
+    transport: "stdio"
+    command: "npx"
+    args: {args}
+    env: {env}
+    headers: {headers}
+    tools_prefix: "mcp__s__"
+    enabled: true
+    trust: "unknown"
+    auth:
+      type: "none"
+"""
+    p = tmp_path / "mcp-config.yaml"
+    p.write_text(y)
+    return p
+
+
+def test_secret_in_args_rejected(tmp_path: Path):
+    p = _write_stdio(tmp_path, args='["--api-key=sk-liveABCDEF1234567890"]')
+    with pytest.raises(ConfigError, match="inline secret"):
+        load_mcp_config(p)
+
+
+def test_secret_under_nonsensitive_key_rejected(tmp_path: Path):
+    # Key name 'FOO' dodges the name heuristic, but the value shape is a known
+    # GitHub PAT — value-based detection still catches it.
+    p = _write_stdio(tmp_path, env='{FOO: "ghp_ABCDEF1234567890abcdef"}')
+    with pytest.raises(ConfigError, match="inline secret"):
+        load_mcp_config(p)
+
+
+def test_secret_in_header_rejected(tmp_path: Path):
+    p = _write_stdio(tmp_path, headers='{Authorization: "Bearer sk-ABCDEF1234567890"}')
+    with pytest.raises(ConfigError, match="inline secret"):
+        load_mcp_config(p)
+
+
+def test_url_with_inline_credentials_rejected(tmp_path: Path):
+    y = """
+version: "1.0.0"
+mcps:
+  - id: "h"
+    name: "H"
+    transport: "http"
+    url: "https://user:supersecretpw@mcp.example.com/rpc"
+    tools_prefix: "mcp__h__"
+    enabled: true
+    trust: "unknown"
+    auth:
+      type: "none"
+"""
+    p = tmp_path / "mcp-config.yaml"
+    p.write_text(y)
+    with pytest.raises(ConfigError, match="inline secret"):
+        load_mcp_config(p)
+
+
+def test_placeholder_with_empty_default_allowed(tmp_path: Path):
+    # ${VAR:-} is a supported expansion form — must NOT be flagged (regression
+    # against the old exact-${VAR}-only placeholder regex).
+    p = _write_stdio(tmp_path, env='{API_TOKEN: "${API_TOKEN:-}"}')
+    cfg = load_mcp_config(p)
+    assert cfg.mcps[0].id == "s"
+
+
+def test_placeholder_with_plain_default_allowed(tmp_path: Path):
+    # A non-secret-shaped default is allowed.
+    p = _write_stdio(tmp_path, env='{LOG_LEVEL: "${LOG_LEVEL:-info}"}')
+    cfg = load_mcp_config(p)
+    assert cfg.mcps[0].id == "s"
+
+
 # ── Tool filtering ────────────────────────────────────────────────────────
 
 

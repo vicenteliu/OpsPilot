@@ -15,15 +15,15 @@ OpsPilot turns raw IT tickets into structured, KB-cited summaries using a playbo
 - **KB retrieval** — hybrid vector (LanceDB) + full-text search (SQLite FTS5) over an ingested knowledge base; citations traced to source chunks
 - **Retrieval modes** — `tool` (model calls `kb_search` via ReAct loop) or `prefetch` (orchestrator injects chunks before the LLM call); prefetch makes weak local models (Gemma, Phi) reliably cite KB chunks
 - **Redaction** — PII stripped before any content reaches the model or the KB
-- **Session audit** — every run produces a signed trace + artifact; sessions are archived and browsable
+- **Session audit** — every run produces a content-addressed artifact (`art_<sha256>`) + an append-only, seq-stamped trace; sessions are archived and browsable
 - **Schema validation** — model output validated against a strict JSON Schema before it's accepted
 - **Token usage display** — input/output token counts shown after each run
 - **Session history** — past runs listed inline with expandable output cards for side-by-side comparison
 - **Terminal UI (TUI)** — 8-module Textual workbench: dashboard, sessions, KB browser, wiki tree, harness, lint issues, providers, config; run playbooks inline with `R`; generate wiki pages from sessions with `W`; promote draft wiki pages with `P`
 - **Wiki layer** — compounding knowledge base built on top of the long-term KB: ingest KB docs into wiki summary pages, auto-generate synthesis pages from qualifying session responses, lint for orphans/broken links/redaction warnings, promote pages through a `draft → reviewed → live → stale → archived` lifecycle
-- **Sandbox (L2)** — Docker-hardened action execution with seccomp, cap-drop, read-only rootfs, and an approval gate that blocks destructive patterns (`rm -rf`, `DROP TABLE`, fork bombs, prod env mutations); dry-run preview before committing any action
+- **Sandbox (L2)** — Docker-hardened action execution with seccomp, cap-drop, read-only rootfs, no host mounts, and `--network=none` by default; the real blast-radius boundary is the ephemeral container + network policy. An approval gate *flags* risky patterns (`rm -rf`, `DROP TABLE`, fork bombs, prod-env or network-opening actions) for human sign-off — a defense-in-depth signal, not a boundary (see [ADR-0005](docs/adr/0005-approval-gate-is-defense-signal-not-boundary.md)); dry-run preview before committing any action
 - **KB-augmented chat** — conversational tab in the web UI; hybrid KB search injected into every turn; streams responses via SSE
-- **MCP client** — JSON-RPC 2.0 client for Model Context Protocol servers (stdio and HTTP transports); MCP tools injected into the orchestrator's ReAct loop alongside `kb_search`; per-server allowlist/denylist; `${VAR:-default}` env expansion; secret detection blocks inline literals
+- **MCP client** — JSON-RPC 2.0 client for Model Context Protocol servers (stdio and HTTP transports); MCP tools injected into the orchestrator's ReAct loop alongside `kb_search`; per-server allowlist/denylist; `${VAR:-default}` env expansion; best-effort inline-secret detection across env/args/url/headers (a footgun guard, not a guarantee — keep secrets in the environment)
 - **Observability** — Prometheus-format `/metrics` endpoint, structured JSON logging (OTel-compatible), `/health` with uptime and version
 - **Rust extensions** — `opspilot_chunker` (9.6× faster than pure Python) and `opspilot_tokenizer` (45× faster BPE-ish token counter) compiled via PyO3/maturin
 
