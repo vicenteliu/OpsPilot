@@ -30,8 +30,9 @@ class _FakeProvider:
         self._content = content
         self.calls: list[Any] = []
 
-    def chat(self, messages: Any, *, model: str, params: Any, tools: Any = None,
-             timeout_ms: int = 90_000) -> ChatResponse:
+    def chat(
+        self, messages: Any, *, model: str, params: Any, tools: Any = None, timeout_ms: int = 90_000
+    ) -> ChatResponse:
         self.calls.append(messages)
         return ChatResponse(
             content=self._content,
@@ -48,8 +49,7 @@ class _FakeProvider:
 
 
 def _ticket(tmp_path: Path, **extra: Any) -> Path:
-    t = {"ticket_id": "T-1", "subject": "VPN 连不上",
-         "body": "上午起多人无法连接 VPN", **extra}
+    t = {"ticket_id": "T-1", "subject": "VPN 连不上", "body": "上午起多人无法连接 VPN", **extra}
     p = tmp_path / "ticket.json"
     p.write_text(json.dumps(t), encoding="utf-8")
     return p
@@ -64,24 +64,31 @@ def _classify(tmp_path: Path, content: str):
 
 
 def test_classify_incident_high_confidence(tmp_path: Path) -> None:
-    res = _classify(tmp_path, json.dumps(
-        {"work_item_type": "incident", "confidence": 0.9, "rationale": "服务中断"}))
+    res = _classify(
+        tmp_path,
+        json.dumps({"work_item_type": "incident", "confidence": 0.9, "rationale": "服务中断"}),
+    )
     assert res.work_item_type == "incident"
     assert res.confidence == 0.9
     assert res.confidence >= DEFAULT_CONFIDENCE_THRESHOLD
 
 
 def test_classify_service_request_low_confidence(tmp_path: Path) -> None:
-    res = _classify(tmp_path, json.dumps(
-        {"work_item_type": "service_request", "confidence": 0.4, "rationale": "申请权限"}))
+    res = _classify(
+        tmp_path,
+        json.dumps(
+            {"work_item_type": "service_request", "confidence": 0.4, "rationale": "申请权限"}
+        ),
+    )
     assert res.work_item_type == "service_request"
     assert res.confidence < DEFAULT_CONFIDENCE_THRESHOLD
 
 
 def test_classify_rejects_unknown_type(tmp_path: Path) -> None:
     with pytest.raises(SchemaError):
-        _classify(tmp_path, json.dumps(
-            {"work_item_type": "problem", "confidence": 0.9, "rationale": "x"}))
+        _classify(
+            tmp_path, json.dumps({"work_item_type": "problem", "confidence": 0.9, "rationale": "x"})
+        )
 
 
 def test_declared_type() -> None:

@@ -49,8 +49,9 @@ class IterationScreen(Widget):
 
 
 def _read_lineage_rows(lineage_dir) -> list[tuple[str, ...]]:
-    import yaml
     from pathlib import Path
+
+    import yaml
 
     rows = []
     for yaml_file in sorted(Path(lineage_dir).glob("*.yaml")):

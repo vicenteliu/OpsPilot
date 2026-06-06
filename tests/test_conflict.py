@@ -30,7 +30,9 @@ def sqlite(tmp_path: Path) -> SqliteStore:
     return SqliteStore(init_sqlite(tmp_path / "kb.db"))
 
 
-def _upsert_doc(sqlite: SqliteStore, doc_id: str, title: str = "doc", valid_from: str | None = None) -> None:
+def _upsert_doc(
+    sqlite: SqliteStore, doc_id: str, title: str = "doc", valid_from: str | None = None
+) -> None:
     sqlite.upsert_document(
         {
             "id": doc_id,
@@ -151,13 +153,17 @@ def two_doc_kb(sqlite: SqliteStore) -> tuple[SqliteStore, str, list[dict], str]:
     """Two documents with one chunk each; returns (sqlite, new_doc_id, new_chunks, existing_chunk_id)."""
     _upsert_doc(sqlite, "doc_aaaaaaaa", title="Old doc", valid_from="2026-01-01T00:00:00Z")
     existing = _upsert_chunk(
-        sqlite, "chk_aaaaaaaa", "doc_aaaaaaaa",
+        sqlite,
+        "chk_aaaaaaaa",
+        "doc_aaaaaaaa",
         content="VPN authentication fails — please check credentials",
     )
 
     _upsert_doc(sqlite, "doc_bbbbbbbb", title="New doc", valid_from="2026-03-01T00:00:00Z")
     new_chunk = _upsert_chunk(
-        sqlite, "chk_bbbbbbbb", "doc_bbbbbbbb",
+        sqlite,
+        "chk_bbbbbbbb",
+        "doc_bbbbbbbb",
         content="VPN authentication failure — verify username and password",
     )
 
@@ -204,7 +210,9 @@ def test_detect_creates_conflict_record(two_doc_kb: Any) -> None:
 def test_detect_skips_same_document_chunks(sqlite: SqliteStore) -> None:
     _upsert_doc(sqlite, "doc_aaaaaaaa")
     chunk = _upsert_chunk(
-        sqlite, "chk_aaaaaaaa", "doc_aaaaaaaa",
+        sqlite,
+        "chk_aaaaaaaa",
+        "doc_aaaaaaaa",
         content="VPN authentication fails — please check firewall rules",
     )
 
@@ -346,7 +354,9 @@ def test_resolve_merged_no_superseded(open_conflict: Any) -> None:
 
 def test_resolve_dismissed(open_conflict: Any) -> None:
     sqlite, conf_id = open_conflict
-    resolve_conflict(conf_id, resolution="dismissed", resolved_by="bot", note="false positive", sqlite=sqlite)
+    resolve_conflict(
+        conf_id, resolution="dismissed", resolved_by="bot", note="false positive", sqlite=sqlite
+    )
 
     conf = sqlite.get_conflict(conf_id)
     assert conf is not None
@@ -362,7 +372,9 @@ def test_resolve_invalid_resolution_raises(open_conflict: Any) -> None:
 
 def test_resolve_missing_conflict_raises(sqlite: SqliteStore) -> None:
     with pytest.raises(KeyError, match="conf_notfound"):
-        resolve_conflict("conf_notfound", resolution="dismissed", resolved_by="tester", sqlite=sqlite)
+        resolve_conflict(
+            "conf_notfound", resolution="dismissed", resolved_by="tester", sqlite=sqlite
+        )
 
 
 # ── exclude_superseded in retrieval ──────────────────────────────────
@@ -388,7 +400,9 @@ def test_fts_search_excludes_superseded_by_default(sqlite: SqliteStore) -> None:
     _upsert_doc(sqlite, "doc_aaaaaaaa")
     _upsert_doc(sqlite, "doc_bbbbbbbb")
     _upsert_chunk(sqlite, "chk_aaaaaaaa", "doc_aaaaaaaa", content="VPN authentication failure")
-    _upsert_chunk(sqlite, "chk_bbbbbbbb", "doc_bbbbbbbb", content="VPN authentication failure fixed")
+    _upsert_chunk(
+        sqlite, "chk_bbbbbbbb", "doc_bbbbbbbb", content="VPN authentication failure fixed"
+    )
 
     sqlite.mark_chunk_superseded("chk_aaaaaaaa", superseded_by="chk_bbbbbbbb")
 
@@ -431,9 +445,7 @@ def test_get_docs_with_open_conflicts_returns_affected_docs(sqlite: SqliteStore)
         }
     )
 
-    result = sqlite.get_docs_with_open_conflicts(
-        ["doc_aaaaaaaa", "doc_bbbbbbbb", "doc_cccccccc"]
-    )
+    result = sqlite.get_docs_with_open_conflicts(["doc_aaaaaaaa", "doc_bbbbbbbb", "doc_cccccccc"])
     assert result == {"doc_aaaaaaaa", "doc_bbbbbbbb"}
 
 
@@ -468,6 +480,7 @@ def test_get_docs_with_open_conflicts_empty_input(sqlite: SqliteStore) -> None:
 def test_kb_search_sets_has_open_conflicts(tmp_path: Path) -> None:
     """kb_search marks hits whose source doc has an open conflict."""
     import math
+
     from opspilot.memory.lance_store import LanceStore, VectorRecord
     from opspilot.memory.retrieval import kb_search
 
@@ -519,7 +532,12 @@ def test_kb_search_sets_has_open_conflicts(tmp_path: Path) -> None:
             "line_end": 1,
             "embedding_model": MODEL,
             "vector_id": f"vec_{chunk_id}",
-            "metadata": {"namespace": "ns", "classification": "internal", "language": "en", "tags": []},
+            "metadata": {
+                "namespace": "ns",
+                "classification": "internal",
+                "language": "en",
+                "tags": [],
+            },
         }
         sqlite_store.upsert_chunks([row])
         vec = [1.0, 0.0, 0.0]

@@ -493,6 +493,7 @@ def test_load_golden_reads_spec_example() -> None:
 
 # ── Conflict-aware golden tests ───────────────────────────────────────
 
+
 # Recording provider — records full message lists so we can inspect
 # what the LLM sees in each round.
 class _RecordingProvider(_ScriptedProvider):
@@ -510,7 +511,9 @@ class _RecordingProvider(_ScriptedProvider):
         timeout_ms: int = 90_000,
     ) -> ChatResponse:
         self.all_messages.append(list(messages))
-        return super().chat(messages, model=model, params=params, tools=tools, timeout_ms=timeout_ms)
+        return super().chat(
+            messages, model=model, params=params, tools=tools, timeout_ms=timeout_ms
+        )
 
 
 @pytest.fixture
@@ -669,9 +672,9 @@ def test_run_harness_conflict_warning_reaches_llm_context(
     assert len(provider.all_messages) >= 2, "expected at least 2 chat rounds"
     round2_msgs = provider.all_messages[1]
     tool_msgs = [m for m in round2_msgs if m.role == "tool"]
-    assert any(
-        "_conflict_warning" in (m.content or "") for m in tool_msgs
-    ), "expected _conflict_warning in tool-result message of round-2 LLM context"
+    assert any("_conflict_warning" in (m.content or "") for m in tool_msgs), (
+        "expected _conflict_warning in tool-result message of round-2 LLM context"
+    )
 
 
 def test_run_harness_no_conflict_warning_after_resolve(
@@ -706,6 +709,6 @@ def test_run_harness_no_conflict_warning_after_resolve(
     assert len(provider.all_messages) >= 2
     round2_msgs = provider.all_messages[1]
     tool_msgs = [m for m in round2_msgs if m.role == "tool"]
-    assert not any(
-        "_conflict_warning" in (m.content or "") for m in tool_msgs
-    ), "expected no _conflict_warning after conflict is resolved"
+    assert not any("_conflict_warning" in (m.content or "") for m in tool_msgs), (
+        "expected no _conflict_warning after conflict is resolved"
+    )

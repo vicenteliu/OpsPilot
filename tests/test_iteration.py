@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -36,7 +36,7 @@ def test_aggregate_weight_matches_example():
     signals = load_signals(SIGNALS_FILE)
     policy = IterationPolicy()
     # Evaluate as of 2026-05-01 (all signals are within 30-day window)
-    as_of = datetime(2026, 5, 1, 13, 0, 0, tzinfo=timezone.utc)
+    as_of = datetime(2026, 5, 1, 13, 0, 0, tzinfo=UTC)
     result = aggregate_signals(signals, policy, as_of=as_of)
 
     assert result.signal_count == 5
@@ -50,26 +50,26 @@ def test_aggregate_below_threshold():
         FeedbackSignal(
             id="fb_01AAAAAAAAAAAAAAAAAAAAAA01",
             skill_ref="test@1.0.0",
-            ts=datetime(2026, 5, 1, tzinfo=timezone.utc),
+            ts=datetime(2026, 5, 1, tzinfo=UTC),
             signal_type="user_action.edit",
             weight=-1.0,
             redacted=True,
         )
     ]
     policy = IterationPolicy(feedback_min_weight_to_trigger=5.0)
-    as_of = datetime(2026, 5, 1, 13, 0, 0, tzinfo=timezone.utc)
+    as_of = datetime(2026, 5, 1, 13, 0, 0, tzinfo=UTC)
     result = aggregate_signals(signals, policy, as_of=as_of)
     assert result.aggregate_weight == pytest.approx(1.0)
     assert result.should_trigger is False
 
 
 def test_aggregate_excludes_expired():
-    expired_ts = datetime(2026, 4, 1, tzinfo=timezone.utc)
+    expired_ts = datetime(2026, 4, 1, tzinfo=UTC)
     signals = [
         FeedbackSignal(
             id="fb_01AAAAAAAAAAAAAAAAAAAAAA01",
             skill_ref="test@1.0.0",
-            ts=datetime(2026, 4, 20, tzinfo=timezone.utc),
+            ts=datetime(2026, 4, 20, tzinfo=UTC),
             signal_type="user_action.edit",
             weight=-1.0,
             redacted=True,
@@ -77,7 +77,7 @@ def test_aggregate_excludes_expired():
         )
     ]
     policy = IterationPolicy()
-    as_of = datetime(2026, 5, 1, tzinfo=timezone.utc)
+    as_of = datetime(2026, 5, 1, tzinfo=UTC)
     result = aggregate_signals(signals, policy, as_of=as_of)
     assert result.signal_count == 0
     assert result.aggregate_weight == 0.0
@@ -131,7 +131,7 @@ def test_engine_sense():
     engine = IterationEngine()
     # Pin the reference time so the fixed-date fixture stays inside the 30-day
     # feedback window regardless of when the test runs.
-    as_of = datetime(2026, 5, 1, 13, 0, 0, tzinfo=timezone.utc)
+    as_of = datetime(2026, 5, 1, 13, 0, 0, tzinfo=UTC)
     result = engine.sense(SIGNALS_FILE, as_of=as_of)
     assert result.should_trigger is True
     assert result.aggregate_weight >= 5.0

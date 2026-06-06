@@ -98,12 +98,8 @@ class McpRegistry:
         self._clients: dict[str, McpServerClient] = {c.cfg.id: c for c in clients}
 
     @classmethod
-    def from_config(cls, cfg: McpConfig) -> "McpRegistry":
-        clients = [
-            McpServerClient(srv)
-            for srv in cfg.mcps
-            if srv.enabled
-        ]
+    def from_config(cls, cfg: McpConfig) -> McpRegistry:
+        clients = [McpServerClient(srv) for srv in cfg.mcps if srv.enabled]
         return cls(clients)
 
     def list_servers(self) -> list[McpServerConfig]:
@@ -126,7 +122,7 @@ class McpRegistry:
         for client in self._clients.values():
             prefix = client.cfg.tools_prefix
             if prefixed_name.startswith(prefix):
-                tool_name = prefixed_name[len(prefix):]
+                tool_name = prefixed_name[len(prefix) :]
                 return client.call(tool_name, arguments)
         raise ConfigError(
             f"No enabled MCP server found for tool '{prefixed_name}'",

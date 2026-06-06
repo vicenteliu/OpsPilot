@@ -16,7 +16,7 @@ _DEFAULT_MCP_CONFIG = Path("mcp-config.yaml")
 @router.get("/mcp/servers")
 async def list_mcp_servers(request: Request) -> dict[str, Any]:
     """List all registered MCP servers from mcp-config.yaml."""
-    from ...mcp import load_mcp_config, McpRegistry
+    from ...mcp import McpRegistry, load_mcp_config
 
     loop = asyncio.get_event_loop()
 
@@ -44,8 +44,7 @@ async def list_mcp_servers(request: Request) -> dict[str, Any]:
                 raw = registry.refresh_all_tools()
                 for sid, tools in raw.items():
                     tools_by_server[sid] = [
-                        {"name": t.name, "description": t.description}
-                        for t in tools
+                        {"name": t.name, "description": t.description} for t in tools
                     ]
             except Exception:  # noqa: BLE001
                 pass

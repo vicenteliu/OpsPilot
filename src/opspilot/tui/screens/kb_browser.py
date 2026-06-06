@@ -40,7 +40,9 @@ class KBBrowserScreen(Widget):
         self._correct_reason = ""
 
     def compose(self) -> ComposeResult:
-        yield Label("[b]KB Browser[/b] — [dim]I: ingest  S: search  R: reload  C: conflicts  E: correct chunk[/dim]")
+        yield Label(
+            "[b]KB Browser[/b] — [dim]I: ingest  S: search  R: reload  C: conflicts  E: correct chunk[/dim]"
+        )
         yield Static(id="kb-input-row")
         yield DataTable(id="kb-table", zebra_stripes=True)
 
@@ -130,7 +132,9 @@ class KBBrowserScreen(Widget):
         kb_dir = cfg.home / "kb"
         kb_dir.mkdir(parents=True, exist_ok=True)
         sqlite = SqliteStore(init_sqlite(kb_dir / "sqlite.db"))
-        lance = LanceStore.open_or_create(kb_dir / "lancedb", dim=768, embedding_model=cfg.embed_model)
+        lance = LanceStore.open_or_create(
+            kb_dir / "lancedb", dim=768, embedding_model=cfg.embed_model
+        )
         provider = make_provider("ollama-local", base_url=cfg.ollama_base_url)
         redactor = Redactor.from_yaml()
 
@@ -185,7 +189,9 @@ class KBBrowserScreen(Widget):
             return
 
         sqlite = SqliteStore(init_sqlite(kb_dir / "sqlite.db"))
-        lance = LanceStore.open_or_create(kb_dir / "lancedb", dim=768, embedding_model=cfg.embed_model)
+        lance = LanceStore.open_or_create(
+            kb_dir / "lancedb", dim=768, embedding_model=cfg.embed_model
+        )
         provider = make_provider("ollama-local", base_url=cfg.ollama_base_url)
 
         def embed_fn(text: str) -> list[float]:

@@ -55,13 +55,25 @@ def _valid_incident() -> dict:
         "tried_steps": ["restarted client"],
         "missing_fields": ["affected user list"],
         "tasks": [
-            {"ref": "task-1", "action": "Restart the VPN gateway",
-             "rationale": "Gateway unresponsive per runbook", "tier": "L2",
-             "citations": ["kb-1"]},
-            {"ref": "task-2", "action": "Notify affected users",
-             "rationale": "Site-wide impact", "tier": "L1"},
-            {"ref": "task-3", "action": "Open a vendor case",
-             "rationale": "May be upstream", "tier": "L3"},
+            {
+                "ref": "task-1",
+                "action": "Restart the VPN gateway",
+                "rationale": "Gateway unresponsive per runbook",
+                "tier": "L2",
+                "citations": ["kb-1"],
+            },
+            {
+                "ref": "task-2",
+                "action": "Notify affected users",
+                "rationale": "Site-wide impact",
+                "tier": "L1",
+            },
+            {
+                "ref": "task-3",
+                "action": "Open a vendor case",
+                "rationale": "May be upstream",
+                "tier": "L3",
+            },
         ],
         "severity_suggested": "P1",
         "citations": [
@@ -120,9 +132,13 @@ def _valid_request() -> dict:
         "approval_needed": True,
         "missing_fields": ["manager approver"],
         "tasks": [
-            {"ref": "task-1", "action": "Create the VPN account",
-             "rationale": "Standard onboarding step", "tier": "L1",
-             "citations": ["kb-1"]},
+            {
+                "ref": "task-1",
+                "action": "Create the VPN account",
+                "rationale": "Standard onboarding step",
+                "tier": "L1",
+                "citations": ["kb-1"],
+            },
         ],
         "citations": [
             {"id": "kb-1", "chunk_id": "chk_abcd1234", "document_id": "doc_abcd1234"},

@@ -28,11 +28,11 @@ async def harness_run(body: HarnessRunRequest, request: Request) -> dict[str, An
     cfg = state.cfg
 
     from ...harness import load_fixture, load_golden, run_harness
+    from ...memory.lance_store import LanceStore
+    from ...memory.sqlite_store import SqliteStore
+    from ...memory.storage_init import init_sqlite
     from ...orchestrator.types import load_playbook
     from ...providers import make_provider
-    from ...memory.storage_init import init_sqlite
-    from ...memory.sqlite_store import SqliteStore
-    from ...memory.lance_store import LanceStore
 
     loop = asyncio.get_event_loop()
 

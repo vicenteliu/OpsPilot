@@ -283,9 +283,7 @@ class SqliteStore:
         r = cur.fetchone()
         return dict(r) if r else None
 
-    def list_conflicts(
-        self, status: str | None = None, limit: int = 100
-    ) -> list[dict[str, Any]]:
+    def list_conflicts(self, status: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
         """Return conflicts enriched with document titles."""
         where = "WHERE c.status = ?" if status else ""
         params: tuple = (status, limit) if status else (limit,)
@@ -335,9 +333,7 @@ class SqliteStore:
         self._conn.commit()
 
     def count_open_conflicts(self) -> int:
-        cur = self._conn.execute(
-            "SELECT COUNT(*) FROM kb_conflicts WHERE status='open'"
-        )
+        cur = self._conn.execute("SELECT COUNT(*) FROM kb_conflicts WHERE status='open'")
         return int(cur.fetchone()[0])
 
     def get_docs_with_open_conflicts(self, doc_ids: list[str]) -> set[str]:
@@ -445,9 +441,9 @@ class SqliteStore:
             """
         ).fetchone()
         return {
-            "docs_total":        int(rows["docs_total"]),
-            "chunks_total":      int(rows["chunks_total"]),
-            "open_conflicts":    int(rows["open_conflicts"]),
+            "docs_total": int(rows["docs_total"]),
+            "chunks_total": int(rows["chunks_total"]),
+            "open_conflicts": int(rows["open_conflicts"]),
             "corrections_total": int(rows["corrections_total"]),
         }
 

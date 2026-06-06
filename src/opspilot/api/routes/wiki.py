@@ -24,9 +24,9 @@ async def wiki_ingest(body: WikiIngestRequest, request: Request) -> dict[str, An
     state = request.app.state
     cfg = state.cfg
 
+    from ...providers.ollama import OllamaProvider
     from ...wiki.ingest import WikiIngestConfig
     from ...wiki.ingest import ingest as run_wiki_ingest
-    from ...providers.ollama import OllamaProvider
 
     loop = asyncio.get_event_loop()
 
@@ -65,9 +65,8 @@ async def wiki_query_to_page(body: WikiQueryToPageRequest, request: Request) -> 
     state = request.app.state
     cfg = state.cfg
 
-    from ...wiki.query_to_page import QueryToPageConfig
-    from ...wiki.query_to_page import query_to_page, scan_and_convert
     from ...providers.ollama import OllamaProvider
+    from ...wiki.query_to_page import QueryToPageConfig, query_to_page, scan_and_convert
 
     loop = asyncio.get_event_loop()
 
@@ -89,26 +88,27 @@ async def wiki_query_to_page(body: WikiQueryToPageRequest, request: Request) -> 
             return {
                 "pages_created": 0 if result.skipped else 1,
                 "pages_updated": 0,
-                "pages": [] if result.skipped else [{"slug": result.slug, "page_id": result.page_id}],
+                "pages": []
+                if result.skipped
+                else [{"slug": result.slug, "page_id": result.page_id}],
                 "skipped": result.skipped,
                 "skip_reason": result.skip_reason,
             }
-        else:
-            results = scan_and_convert(
-                session_manager=state.session_mgr,
-                provider=provider,
-                config=qtp_cfg,
-                max_sessions=body.max_sessions,
-            )
-            created = sum(1 for r in results if not r.skipped)
-            pages = [{"slug": r.slug, "page_id": r.page_id} for r in results if not r.skipped]
-            return {
-                "pages_created": created,
-                "pages_updated": 0,
-                "pages": pages,
-                "skipped": False,
-                "skip_reason": "",
-            }
+        results = scan_and_convert(
+            session_manager=state.session_mgr,
+            provider=provider,
+            config=qtp_cfg,
+            max_sessions=body.max_sessions,
+        )
+        created = sum(1 for r in results if not r.skipped)
+        pages = [{"slug": r.slug, "page_id": r.page_id} for r in results if not r.skipped]
+        return {
+            "pages_created": created,
+            "pages_updated": 0,
+            "pages": pages,
+            "skipped": False,
+            "skip_reason": "",
+        }
 
     return await loop.run_in_executor(None, _run)
 
@@ -155,17 +155,19 @@ async def list_wiki_pages(request: Request) -> dict[str, Any]:
         for md_file in sorted(pages_dir.rglob("*.md")):
             try:
                 page = read_page(md_file)
-                pages.append({
-                    "page_id": page.page_id,
-                    "slug": page.slug,
-                    "kind": page.kind,
-                    "title": page.title,
-                    "summary": page.summary,
-                    "lifecycle_state": page.lifecycle_state,
-                    "language": page.language,
-                    "tags": page.tags,
-                    "updated_at": page.updated_at,
-                })
+                pages.append(
+                    {
+                        "page_id": page.page_id,
+                        "slug": page.slug,
+                        "kind": page.kind,
+                        "title": page.title,
+                        "summary": page.summary,
+                        "lifecycle_state": page.lifecycle_state,
+                        "language": page.language,
+                        "tags": page.tags,
+                        "updated_at": page.updated_at,
+                    }
+                )
             except Exception:  # noqa: BLE001
                 pass
     return {"pages": pages, "total": len(pages)}
@@ -178,6 +180,7 @@ async def get_wiki_page(slug: str, request: Request) -> dict[str, Any]:
     pages_dir = cfg.home / "wiki" / "pages"
 
     from fastapi import HTTPException
+
     from ...wiki.page import read_page
 
     md_file = pages_dir / f"{slug}.md"

@@ -141,9 +141,7 @@ def make_kb_search_tool(
 
         # Surface a top-level warning when any source document has unresolved
         # conflicts so the LLM can mention this caveat in its final answer.
-        conflicted_docs = {
-            h.document_id for h in hits if h.has_open_conflicts
-        }
+        conflicted_docs = {h.document_id for h in hits if h.has_open_conflicts}
         if conflicted_docs:
             result["_conflict_warning"] = (
                 f"{len(conflicted_docs)} source document(s) have unresolved "

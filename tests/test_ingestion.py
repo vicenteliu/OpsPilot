@@ -391,9 +391,7 @@ def test_empty_inputs_writes_no_op_run(
 
 
 def _get_doc_by_source(sqlite: SqliteStore, source_path: str) -> dict | None:
-    cur = sqlite._conn.execute(
-        "SELECT * FROM kb_documents WHERE source_path=?", (source_path,)
-    )
+    cur = sqlite._conn.execute("SELECT * FROM kb_documents WHERE source_path=?", (source_path,))
     row = cur.fetchone()
     return dict(row) if row else None
 
@@ -467,7 +465,9 @@ def test_ingest_conflict_detection_creates_conflict_record(
     doc_a = tmp_path / "vpn_auth_a.md"
     doc_b = tmp_path / "vpn_auth_b.md"
     doc_a.write_text(content, encoding="utf-8")
-    doc_b.write_text(content + "\nAdditional note: also check your VPN client version.\n", encoding="utf-8")
+    doc_b.write_text(
+        content + "\nAdditional note: also check your VPN client version.\n", encoding="utf-8"
+    )
 
     cfg = IngestConfig(
         embedding_model=EMBED_MODEL,
@@ -478,7 +478,11 @@ def test_ingest_conflict_detection_creates_conflict_record(
     sqlite, lance = stores
     ingest(
         [doc_a, doc_b],
-        sqlite=sqlite, lance=lance, redactor=redactor, embed_fn=_topic_embed, config=cfg,
+        sqlite=sqlite,
+        lance=lance,
+        redactor=redactor,
+        embed_fn=_topic_embed,
+        config=cfg,
     )
 
     conflicts = sqlite.list_conflicts(status="open")
@@ -512,7 +516,11 @@ def test_ingest_resolve_then_superseded_excluded_from_retrieval(
     sqlite, lance = stores
     ingest(
         [doc_a, doc_b],
-        sqlite=sqlite, lance=lance, redactor=redactor, embed_fn=_topic_embed, config=cfg,
+        sqlite=sqlite,
+        lance=lance,
+        redactor=redactor,
+        embed_fn=_topic_embed,
+        config=cfg,
     )
 
     conflicts = sqlite.list_conflicts(status="open")
@@ -520,6 +528,7 @@ def test_ingest_resolve_then_superseded_excluded_from_retrieval(
     conf_id = conflicts[0]["id"]
 
     from opspilot.memory.conflict import resolve_conflict
+
     resolve_conflict(conf_id, resolution="a_wins", resolved_by="tester", sqlite=sqlite)
 
     # After resolution, retrieval should not surface the superseded (b-side) chunk.

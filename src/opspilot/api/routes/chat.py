@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Any, AsyncGenerator
+from collections.abc import AsyncGenerator
+from typing import Any
 
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
@@ -74,7 +75,9 @@ async def chat_stream(body: ChatRequest, request: Request) -> StreamingResponse:
 
             context_block = ""
             if context_chunks:
-                context_block = "\n\n## Relevant KB context\n\n" + "\n\n---\n\n".join(context_chunks)
+                context_block = "\n\n## Relevant KB context\n\n" + "\n\n---\n\n".join(
+                    context_chunks
+                )
 
             provider_msgs: list[Message] = [
                 Message(role="system", content=_SYSTEM_PROMPT + context_block)
@@ -92,17 +95,19 @@ async def chat_stream(body: ChatRequest, request: Request) -> StreamingResponse:
                 ),
             )
 
-            await queue.put({
-                "type": "result",
-                "data": {
-                    "content": resp.content,
-                    "usage": {
-                        "input_tokens": resp.usage.input_tokens,
-                        "output_tokens": resp.usage.output_tokens,
-                        "cost_usd": resp.usage.cost_usd,
+            await queue.put(
+                {
+                    "type": "result",
+                    "data": {
+                        "content": resp.content,
+                        "usage": {
+                            "input_tokens": resp.usage.input_tokens,
+                            "output_tokens": resp.usage.output_tokens,
+                            "cost_usd": resp.usage.cost_usd,
+                        },
                     },
-                },
-            })
+                }
+            )
         except Exception as exc:  # noqa: BLE001
             await queue.put({"type": "error", "message": str(exc)})
 

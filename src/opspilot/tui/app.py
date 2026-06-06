@@ -118,7 +118,9 @@ class OpsPilotApp(App[None]):
         self._write("Type [bold]/help[/bold] to see available commands.\n")
         self.query_one("#cmd-input", Input).focus()
         if self._run_input:
-            self.set_timer(0.3, lambda: self._cmd_run(self._run_input, self._run_playbook, "tui@opspilot"))
+            self.set_timer(
+                0.3, lambda: self._cmd_run(self._run_input, self._run_playbook, "tui@opspilot")
+            )
 
     # ── Output helpers ────────────────────────────────────────────────────────
 
@@ -217,7 +219,9 @@ class OpsPilotApp(App[None]):
             golden = positional[1] if len(positional) > 1 else ""
             pb = self._extract_flag(rest, "--playbook") or self._run_playbook
             if not fixture or not golden:
-                self._write("[red]Usage: /harness <fixture.json> <golden.json> [--playbook <dir>][/red]")
+                self._write(
+                    "[red]Usage: /harness <fixture.json> <golden.json> [--playbook <dir>][/red]"
+                )
                 return
             self._cmd_harness(fixture, golden, pb)
 
@@ -276,7 +280,9 @@ class OpsPilotApp(App[None]):
             kb_dir = cfg.home / "kb"
             kb_dir.mkdir(parents=True, exist_ok=True)
             sqlite = SqliteStore(init_sqlite(kb_dir / "sqlite.db"))
-            lance = LanceStore.open_or_create(kb_dir / "lancedb", dim=768, embedding_model=_EMBED_MODEL_REF)
+            lance = LanceStore.open_or_create(
+                kb_dir / "lancedb", dim=768, embedding_model=_EMBED_MODEL_REF
+            )
             embed_provider = make_provider("ollama-local")
             primary_provider = make_provider(pb.model.provider_id, kind=pb.model.kind)
 
@@ -318,7 +324,9 @@ class OpsPilotApp(App[None]):
                         w(f"       [dim]{rat}[/dim]")
             usage = result.usage
             if usage:
-                w(f"\n[dim]tokens in={usage.input_tokens} out={usage.output_tokens}  cost=${usage.cost_usd:.4f}[/dim]")
+                w(
+                    f"\n[dim]tokens in={usage.input_tokens} out={usage.output_tokens}  cost=${usage.cost_usd:.4f}[/dim]"
+                )
             w("")
 
         except Exception as exc:  # noqa: BLE001
@@ -345,7 +353,9 @@ class OpsPilotApp(App[None]):
                 return
 
             sqlite = SqliteStore(init_sqlite(kb_dir / "sqlite.db"))
-            lance = LanceStore.open_or_create(kb_dir / "lancedb", dim=768, embedding_model=_EMBED_MODEL_REF)
+            lance = LanceStore.open_or_create(
+                kb_dir / "lancedb", dim=768, embedding_model=_EMBED_MODEL_REF
+            )
             provider = make_provider("ollama-local")
 
             def embed_fn(text: str) -> list[float]:
@@ -360,7 +370,9 @@ class OpsPilotApp(App[None]):
             w(f"\n[bold cyan]KB Search: {query!r}[/bold cyan] — {len(hits)} result(s)\n")
             for i, hit in enumerate(hits, 1):
                 preview = (hit.content or "").replace("\n", " ")[:180]
-                w(f"[bold]{i}.[/bold] [cyan]{hit.chunk_id}[/cyan]  score=[yellow]{hit.score:.3f}[/yellow]")
+                w(
+                    f"[bold]{i}.[/bold] [cyan]{hit.chunk_id}[/cyan]  score=[yellow]{hit.score:.3f}[/yellow]"
+                )
                 w(f"   {preview}[dim]…[/dim]")
             w("")
         except Exception as exc:  # noqa: BLE001
@@ -397,8 +409,10 @@ class OpsPilotApp(App[None]):
 
             w(f"\n[bold cyan]KB Documents[/bold cyan] — {len(rows)} doc(s)\n")
             for r in rows:
-                w(f"  [cyan]{r['id']}[/cyan]  {(r['title'] or '')[:40]}  "
-                  f"[dim]{r['chunk_count']} chunks · {r['namespace'] or '—'}[/dim]")
+                w(
+                    f"  [cyan]{r['id']}[/cyan]  {(r['title'] or '')[:40]}  "
+                    f"[dim]{r['chunk_count']} chunks · {r['namespace'] or '—'}[/dim]"
+                )
             w("")
         except Exception as exc:  # noqa: BLE001
             w(f"[red]✗ {type(exc).__name__}: {exc}[/red]\n")
@@ -420,7 +434,7 @@ class OpsPilotApp(App[None]):
                 return
 
             stats = SqliteStore(init_sqlite(db_path)).kb_stats()
-            w(f"\n[bold cyan]KB Stats[/bold cyan]")
+            w("\n[bold cyan]KB Stats[/bold cyan]")
             w(f"  Documents:   [yellow]{stats['docs_total']}[/yellow]")
             w(f"  Chunks:      [yellow]{stats['chunks_total']}[/yellow]")
             w(f"  Conflicts:   [yellow]{stats['open_conflicts']}[/yellow] open")
@@ -452,7 +466,9 @@ class OpsPilotApp(App[None]):
                 try:
                     s = sm.load(sid)
                     color = "green" if s.status == "done" else "yellow"
-                    w(f"  [{color}]{s.status:8}[/{color}]  [cyan]{sid[:32]}[/cyan]  {s.created_at[:19]}")
+                    w(
+                        f"  [{color}]{s.status:8}[/{color}]  [cyan]{sid[:32]}[/cyan]  {s.created_at[:19]}"
+                    )
                 except Exception:  # noqa: BLE001
                     w(f"  [dim]{sid}[/dim]")
             w("")
@@ -570,7 +586,9 @@ class OpsPilotApp(App[None]):
             w(f"\n[bold cyan]Wiki Lint[/bold cyan] — {len(issues)} issue(s)\n")
             for issue in issues:
                 color = "red" if issue.severity == "error" else "yellow"
-                w(f"  [{color}]{issue.severity:8}[/{color}]  [cyan]{issue.page_slug}[/cyan]  {issue.summary}")
+                w(
+                    f"  [{color}]{issue.severity:8}[/{color}]  [cyan]{issue.page_slug}[/cyan]  {issue.summary}"
+                )
             w("")
         except Exception as exc:  # noqa: BLE001
             w(f"[red]✗ {type(exc).__name__}: {exc}[/red]\n")
@@ -605,7 +623,9 @@ class OpsPilotApp(App[None]):
             kb_dir = cfg.home / "kb"
             kb_dir.mkdir(parents=True, exist_ok=True)
             sqlite = SqliteStore(init_sqlite(kb_dir / "sqlite.db"))
-            lance = LanceStore.open_or_create(kb_dir / "lancedb", dim=768, embedding_model=_EMBED_MODEL_REF)
+            lance = LanceStore.open_or_create(
+                kb_dir / "lancedb", dim=768, embedding_model=_EMBED_MODEL_REF
+            )
             embed_provider = make_provider("ollama-local")
             chat_provider = make_provider(playbook.model.provider_id, kind=playbook.model.kind)
 
@@ -643,7 +663,7 @@ class OpsPilotApp(App[None]):
             from ..config import load_config
 
             cfg = load_config()
-            self._write(f"\n[bold cyan]Providers[/bold cyan]")
+            self._write("\n[bold cyan]Providers[/bold cyan]")
             self._write(f"  ollama_base_url:  [yellow]{cfg.ollama_base_url}[/yellow]")
             self._write(f"  embed_model:      [yellow]{cfg.embed_model}[/yellow]")
             self._write(
@@ -661,11 +681,13 @@ class OpsPilotApp(App[None]):
             from ..config import load_config
 
             cfg = load_config()
-            self._write(f"\n[bold cyan]Configuration[/bold cyan]")
+            self._write("\n[bold cyan]Configuration[/bold cyan]")
             self._write(f"  home:            [yellow]{cfg.home}[/yellow]")
             self._write(f"  ollama_base_url: [yellow]{cfg.ollama_base_url}[/yellow]")
             self._write(f"  embed_model:     [yellow]{cfg.embed_model}[/yellow]")
-            self._write(f"  anthropic_key:   {'[green]set[/green]' if cfg.anthropic_api_key else '[dim]not set[/dim]'}")
+            self._write(
+                f"  anthropic_key:   {'[green]set[/green]' if cfg.anthropic_api_key else '[dim]not set[/dim]'}"
+            )
             self._write(f"  log_level:       [yellow]{cfg.log_level}[/yellow]")
             pb_dir = cfg.playbooks_dir or "(uses ./playbooks)"
             self._write(f"  playbooks_dir:   [yellow]{pb_dir}[/yellow]")
@@ -696,7 +718,7 @@ class OpsPilotApp(App[None]):
                 w("[yellow]No lineage files found.[/yellow]\n")
                 return
 
-            w(f"\n[bold cyan]Skill Lineage[/bold cyan]\n")
+            w("\n[bold cyan]Skill Lineage[/bold cyan]\n")
             for yaml_file in files:
                 skill_name = yaml_file.stem
                 data = yaml.safe_load(yaml_file.read_text(encoding="utf-8")) or {}
@@ -706,7 +728,9 @@ class OpsPilotApp(App[None]):
                     rolled = " [dim]⟲ rolled back[/dim]" if ver.get("rolled_back") else ""
                     promoted_at = (ver.get("promoted_at") or "")[:10]
                     summary = (ver.get("summary") or "")[:70]
-                    w(f"  [cyan]v{ver.get('version', '?')}[/cyan]  {promoted_at}  {summary}{rolled}")
+                    w(
+                        f"  [cyan]v{ver.get('version', '?')}[/cyan]  {promoted_at}  {summary}{rolled}"
+                    )
                 w("")
         except Exception as exc:  # noqa: BLE001
             w(f"[red]✗ {type(exc).__name__}: {exc}[/red]\n")

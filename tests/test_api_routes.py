@@ -12,7 +12,6 @@ from fastapi.testclient import TestClient
 from opspilot.api.routes.models import router as models_router
 from opspilot.api.routes.sessions import router as sessions_router
 
-
 # ── Helpers ───────────────────────────────────────────────────────────────
 
 
@@ -136,6 +135,7 @@ def test_get_session_with_artifact(tmp_path: Path):
     model = Model(provider_id="ollama-local", kind="ollama", name="test", version="1", params={})
     sess = sm.create(owner="test", playbook=pb, model=model)
     import json as _json
+
     art_store = sm.artifacts(sess.id)
     meta = art_store.put(
         _json.dumps({"summary": "ok"}),

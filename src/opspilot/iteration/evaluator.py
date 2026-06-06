@@ -60,7 +60,9 @@ def _apply_gates(data: dict, policy: IterationPolicy) -> VariantVerdict:
         gate = _compute_gate(delta, policy)
 
     reasons = _build_reasons(gate, delta, policy)
-    return VariantVerdict(variant_id=variant_id, run_id=run_id, delta=delta, gate=gate, verdict_reasons=reasons)
+    return VariantVerdict(
+        variant_id=variant_id, run_id=run_id, delta=delta, gate=gate, verdict_reasons=reasons
+    )
 
 
 def _compute_gate(delta: VariantDelta, policy: IterationPolicy) -> PromotionGateResult:
@@ -80,16 +82,26 @@ def _compute_gate(delta: VariantDelta, policy: IterationPolicy) -> PromotionGate
     )
 
 
-def _build_reasons(gate: PromotionGateResult, delta: VariantDelta, policy: IterationPolicy) -> list[str]:
+def _build_reasons(
+    gate: PromotionGateResult, delta: VariantDelta, policy: IterationPolicy
+) -> list[str]:
     reasons = []
     if gate.no_regression_on_anchors_pass:
-        reasons.append(f"no_regression_on_anchor: pass_rate unchanged")
+        reasons.append("no_regression_on_anchor: pass_rate unchanged")
     if gate.min_delta_weighted_pass:
-        reasons.append(f"delta_weighted={delta.weighted} >= min_delta_weighted={policy.min_delta_weighted}")
+        reasons.append(
+            f"delta_weighted={delta.weighted} >= min_delta_weighted={policy.min_delta_weighted}"
+        )
     else:
-        reasons.append(f"delta_weighted={delta.weighted} < min_delta_weighted={policy.min_delta_weighted}")
+        reasons.append(
+            f"delta_weighted={delta.weighted} < min_delta_weighted={policy.min_delta_weighted}"
+        )
     if gate.max_cost_increase_pct_pass:
-        reasons.append(f"cost growth +{delta.cost_pct}% <= max_cost_increase_pct={policy.max_cost_increase_pct}")
+        reasons.append(
+            f"cost growth +{delta.cost_pct}% <= max_cost_increase_pct={policy.max_cost_increase_pct}"
+        )
     else:
-        reasons.append(f"cost growth +{delta.cost_pct}% > max_cost_increase_pct={policy.max_cost_increase_pct}")
+        reasons.append(
+            f"cost growth +{delta.cost_pct}% > max_cost_increase_pct={policy.max_cost_increase_pct}"
+        )
     return reasons

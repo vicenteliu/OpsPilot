@@ -218,9 +218,7 @@ class TestBaseUrlResolution:
             ("grok", "https://api.x.ai/v1"),
         ],
     )
-    def test_base_url_resolved_per_provider(
-        self, provider_id: str, expected_base_url: str
-    ) -> None:
+    def test_base_url_resolved_per_provider(self, provider_id: str, expected_base_url: str) -> None:
         with patch("opspilot.providers.openai_compat.OpenAI") as mock_cls:
             OpenAIProvider(provider_id=provider_id, api_key="test-key")
 

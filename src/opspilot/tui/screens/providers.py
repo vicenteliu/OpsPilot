@@ -8,19 +8,19 @@ from textual.widget import Widget
 from textual.widgets import DataTable, Label
 
 _PROVIDERS = [
-    ("ollama-local", "ollama",     "Ollama (local)"),
-    ("anthropic",   "anthropic",   "Anthropic"),
-    ("openai",      "openai",      "OpenAI"),
-    ("openrouter",  "openai",      "OpenRouter"),
-    ("gemini",      "openai",      "Gemini"),
+    ("ollama-local", "ollama", "Ollama (local)"),
+    ("anthropic", "anthropic", "Anthropic"),
+    ("openai", "openai", "OpenAI"),
+    ("openrouter", "openai", "OpenRouter"),
+    ("gemini", "openai", "Gemini"),
 ]
 
 # Maps provider_id → env var name shown in the "no key" hint.
 _KEY_ENV: dict[str, str] = {
-    "anthropic":  "ANTHROPIC_API_KEY",
-    "openai":     "OPENAI_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+    "openai": "OPENAI_API_KEY",
     "openrouter": "OPENROUTER_API_KEY",
-    "gemini":     "GEMINI_API_KEY",
+    "gemini": "GEMINI_API_KEY",
 }
 
 

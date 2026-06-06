@@ -211,6 +211,7 @@ async def resolve_conflict_route(
         await loop.run_in_executor(None, _run)
     except (ValueError, KeyError) as e:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=400, detail=str(e)) from e
 
     return {"conflict_id": conflict_id, "resolution": body.resolution, "ok": True}
@@ -226,9 +227,7 @@ class CorrectRequest(BaseModel):
 
 
 @router.post("/kb/chunks/{chunk_id}/correct")
-async def correct_chunk(
-    chunk_id: str, body: CorrectRequest, request: Request
-) -> dict[str, Any]:
+async def correct_chunk(chunk_id: str, body: CorrectRequest, request: Request) -> dict[str, Any]:
     """Apply an inline content correction to a KB chunk."""
     state = request.app.state
     loop = asyncio.get_event_loop()
@@ -245,6 +244,7 @@ async def correct_chunk(
         corr_id = await loop.run_in_executor(None, _run)
     except KeyError as e:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=404, detail=str(e)) from e
 
     return {"corr_id": corr_id, "chunk_id": chunk_id, "ok": True}

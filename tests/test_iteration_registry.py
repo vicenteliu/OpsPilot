@@ -114,9 +114,7 @@ def test_verify_variant_checksum_passes(tmp_path: Path):
     skill = variant_dir / "SKILL.md"
     skill.write_text("correct content", encoding="utf-8")
     checksum = compute_skill_checksum(skill)
-    (variant_dir / "meta.yaml").write_text(
-        yaml.dump({"checksum": checksum}), encoding="utf-8"
-    )
+    (variant_dir / "meta.yaml").write_text(yaml.dump({"checksum": checksum}), encoding="utf-8")
     assert verify_variant_checksum(tmp_path, "v_ok") is True
 
 

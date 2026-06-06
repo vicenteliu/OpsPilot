@@ -10,7 +10,6 @@ from opspilot.errors import ConfigError
 from opspilot.mcp.registry import McpRegistry, McpServerClient
 from opspilot.mcp.types import McpCallResult, McpConfig, McpContent, McpServerConfig
 
-
 # ── helpers ───────────────────────────────────────────────────────────────
 
 
@@ -39,7 +38,9 @@ def _cfg(
 def _mock_transport(tools: list[dict] | None = None):
     t = MagicMock()
     t.initialize.return_value = {}
-    t.list_tools.return_value = tools or [{"name": "read_file", "description": "reads", "inputSchema": {}}]
+    t.list_tools.return_value = tools or [
+        {"name": "read_file", "description": "reads", "inputSchema": {}}
+    ]
     t.call_tool.return_value = {"content": [{"type": "text", "text": "result"}]}
     return t
 
@@ -86,7 +87,9 @@ def test_connect_http_missing_url_raises():
 def test_refresh_tools_returns_tool_list():
     cfg = _cfg()
     client = McpServerClient(cfg)
-    client._transport = _mock_transport([{"name": "read_file", "description": "reads", "inputSchema": {}}])
+    client._transport = _mock_transport(
+        [{"name": "read_file", "description": "reads", "inputSchema": {}}]
+    )
     tools = client.refresh_tools()
     assert len(tools) == 1
     assert tools[0].name == "read_file"
@@ -104,10 +107,12 @@ def test_refresh_tools_connects_if_no_transport():
 def test_refresh_tools_applies_allowlist():
     cfg = _cfg(tools_allowlist=["read_file"])
     client = McpServerClient(cfg)
-    client._transport = _mock_transport([
-        {"name": "read_file", "description": "r", "inputSchema": {}},
-        {"name": "write_file", "description": "w", "inputSchema": {}},
-    ])
+    client._transport = _mock_transport(
+        [
+            {"name": "read_file", "description": "r", "inputSchema": {}},
+            {"name": "write_file", "description": "w", "inputSchema": {}},
+        ]
+    )
     tools = client.refresh_tools()
     assert len(tools) == 1
     assert tools[0].name == "read_file"
@@ -116,10 +121,12 @@ def test_refresh_tools_applies_allowlist():
 def test_refresh_tools_applies_denylist():
     cfg = _cfg(tools_denylist=["write_file"])
     client = McpServerClient(cfg)
-    client._transport = _mock_transport([
-        {"name": "read_file", "description": "r", "inputSchema": {}},
-        {"name": "write_file", "description": "w", "inputSchema": {}},
-    ])
+    client._transport = _mock_transport(
+        [
+            {"name": "read_file", "description": "r", "inputSchema": {}},
+            {"name": "write_file", "description": "w", "inputSchema": {}},
+        ]
+    )
     tools = client.refresh_tools()
     assert len(tools) == 1
     assert tools[0].name == "read_file"
@@ -201,7 +208,10 @@ def _make_registry(server_ids: list[str], tools_per_server: int = 1) -> McpRegis
         cfg = _cfg(server_id=sid)
         c = McpServerClient(cfg)
         c._transport = _mock_transport(
-            [{"name": f"tool_{i}", "description": "", "inputSchema": {}} for i in range(tools_per_server)]
+            [
+                {"name": f"tool_{i}", "description": "", "inputSchema": {}}
+                for i in range(tools_per_server)
+            ]
         )
         c.refresh_tools()
         clients.append(c)
@@ -209,10 +219,13 @@ def _make_registry(server_ids: list[str], tools_per_server: int = 1) -> McpRegis
 
 
 def test_registry_from_config_skips_disabled():
-    cfg = McpConfig(version="1", mcps=[
-        _cfg(server_id="enabled", enabled=True),
-        _cfg(server_id="disabled", enabled=False),
-    ])
+    cfg = McpConfig(
+        version="1",
+        mcps=[
+            _cfg(server_id="enabled", enabled=True),
+            _cfg(server_id="disabled", enabled=False),
+        ],
+    )
     reg = McpRegistry.from_config(cfg)
     ids = [c.cfg.id for c in reg._clients.values()]
     assert "enabled" in ids

@@ -19,12 +19,12 @@ _DANGEROUS_PATTERNS = [
     r"rm\s+--no-preserve-root",
     r"\bDROP\s+(TABLE|DATABASE|SCHEMA)\b",
     r"\bTRUNCATE\b",
-    r"\bDELETE\s+FROM\b",            # unqualified deletes look the same as scoped
-    r"chmod\s+[0-7]*7[0-7][0-7]",   # chmod 777 / 0777
-    r":\(\)\s*\{[^}]*\}\s*;",       # fork bomb
+    r"\bDELETE\s+FROM\b",  # unqualified deletes look the same as scoped
+    r"chmod\s+[0-7]*7[0-7][0-7]",  # chmod 777 / 0777
+    r":\(\)\s*\{[^}]*\}\s*;",  # fork bomb
     r"\bfind\b[^|;&]*\s-delete\b",  # find ... -delete
-    r"\bdd\b[^|;&]*\bof=",          # dd of=/dev/...
-    r"\bmkfs(\.\w+)?\b",            # mkfs / mkfs.ext4
+    r"\bdd\b[^|;&]*\bof=",  # dd of=/dev/...
+    r"\bmkfs(\.\w+)?\b",  # mkfs / mkfs.ext4
     r">\s*/dev/(sd|nvme|hd|disk|vd)\w*",  # clobber a raw disk
     r"\bgit\s+push\b[^|;&]*--force\b",
     r"\bkubectl\s+delete\b",

@@ -75,8 +75,15 @@ class ApplyResult(BaseModel):
 class ActionResult(BaseModel):
     action_id: str
     status: Literal[
-        "proposed", "validated", "dry_run", "approval_pending",
-        "applied", "recorded", "rejected", "aborted", "failed",
+        "proposed",
+        "validated",
+        "dry_run",
+        "approval_pending",
+        "applied",
+        "recorded",
+        "rejected",
+        "aborted",
+        "failed",
     ]
     dry_run_preview: DryRunPreview | None = None
     apply_result: ApplyResult | None = None

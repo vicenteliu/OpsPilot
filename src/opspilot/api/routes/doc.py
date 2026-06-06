@@ -6,8 +6,9 @@ import asyncio
 import dataclasses
 import json
 import tempfile
+from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import Any, AsyncGenerator
+from typing import Any
 
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
@@ -78,7 +79,9 @@ async def generate_vendor_doc(body: DocGenRequest, request: Request) -> ApiRunRe
 
     try:
         loop = asyncio.get_event_loop()
-        orch_request = OrchestratorRunRequest(playbook=effective_playbook, input_path=input_path, owner="api:default")
+        orch_request = OrchestratorRunRequest(
+            playbook=effective_playbook, input_path=input_path, owner="api:default"
+        )
 
         result = await loop.run_in_executor(
             None,
@@ -123,7 +126,9 @@ async def generate_vendor_doc_stream(body: DocGenRequest, request: Request) -> S
     def on_progress(msg: str) -> None:
         loop.call_soon_threadsafe(queue.put_nowait, {"type": "status", "message": msg})
 
-    orch_request = OrchestratorRunRequest(playbook=effective_playbook, input_path=input_path, owner="api:default")
+    orch_request = OrchestratorRunRequest(
+        playbook=effective_playbook, input_path=input_path, owner="api:default"
+    )
 
     async def _run_in_thread() -> None:
         try:
@@ -151,7 +156,9 @@ async def generate_vendor_doc_stream(body: DocGenRequest, request: Request) -> S
                     "input_tokens": result.usage.input_tokens,
                     "output_tokens": result.usage.output_tokens,
                     "cost_usd": result.usage.cost_usd,
-                } if result.usage else None,
+                }
+                if result.usage
+                else None,
             }
             await queue.put({"type": "result", "data": payload})
         except Exception as exc:  # noqa: BLE001
@@ -191,15 +198,17 @@ async def list_vendor_docs(request: Request) -> dict[str, Any]:
         for json_file in sorted(vd_dir.glob("*.json")):
             try:
                 data = json.loads(json_file.read_text(encoding="utf-8"))
-                docs.append({
-                    "filename": json_file.name,
-                    "doc_ref": data.get("doc_ref", ""),
-                    "template_id": data.get("template_id", ""),
-                    "title": data.get("title", ""),
-                    "scope_note": data.get("scope_note"),
-                    "sections_count": len(data.get("sections") or []),
-                    "citations_count": len(data.get("citations") or []),
-                })
+                docs.append(
+                    {
+                        "filename": json_file.name,
+                        "doc_ref": data.get("doc_ref", ""),
+                        "template_id": data.get("template_id", ""),
+                        "title": data.get("title", ""),
+                        "scope_note": data.get("scope_note"),
+                        "sections_count": len(data.get("sections") or []),
+                        "citations_count": len(data.get("citations") or []),
+                    }
+                )
             except Exception:  # noqa: BLE001
                 pass
     return {"docs": docs, "total": len(docs)}

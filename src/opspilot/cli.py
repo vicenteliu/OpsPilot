@@ -38,6 +38,8 @@ from .config import ensure_home, load_config
 from .errors import OpsPilotError, SchemaError
 from .harness import load_fixture, load_golden, run_harness
 from .harness.reporter import render_result_table
+from .iteration.engine import IterationEngine
+from .iteration.types import IterationPolicy
 from .memory.conflict import resolve_conflict
 from .memory.ingestion import IngestConfig
 from .memory.ingestion import ingest as run_ingest
@@ -61,8 +63,6 @@ from .schemas import (
 )
 from .session import SessionManager
 from .session.types import Model
-from .iteration.engine import IterationEngine
-from .iteration.types import IterationPolicy
 from .wiki.ingest import WikiIngestConfig
 from .wiki.ingest import ingest as run_wiki_ingest
 
@@ -563,9 +563,8 @@ def doc_generate(
     }
 
     import tempfile
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".json", delete=False, encoding="utf-8"
-    ) as f:
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as f:
         json.dump(input_dict, f, ensure_ascii=False)
         input_path = Path(f.name)
 
@@ -730,7 +729,9 @@ def kb_load_dir(
             pairs.append((meta, chunks_path))
 
     if not pairs:
-        _err.print(f"[yellow]No doc-meta.json + chunks.jsonl pairs found under {directory}[/yellow]")
+        _err.print(
+            f"[yellow]No doc-meta.json + chunks.jsonl pairs found under {directory}[/yellow]"
+        )
         raise typer.Exit(code=1)
 
     cfg = load_config()
@@ -760,7 +761,11 @@ def kb_load_dir(
                 chunks_jsonl_path=chunks_path,
                 embed_fn=embed_fn,
             )
-            rel = str(chunks_path.relative_to(REPO_ROOT) if chunks_path.is_relative_to(REPO_ROOT) else chunks_path)
+            rel = str(
+                chunks_path.relative_to(REPO_ROOT)
+                if chunks_path.is_relative_to(REPO_ROOT)
+                else chunks_path
+            )
             table.add_row(stats.document_id, rel, str(stats.chunk_count), str(stats.vector_count))
         except Exception as e:  # noqa: BLE001
             _err.print(f"[red]failed:[/red] {meta} — {e}")
@@ -810,7 +815,9 @@ def kb_conflicts_cmd(
 def kb_resolve_cmd(
     conflict_id: str = typer.Argument(..., help="Conflict ID (conf_xxxxxxxx)."),
     resolution: str = typer.Option(
-        ..., "--resolution", "-r",
+        ...,
+        "--resolution",
+        "-r",
         help="Resolution: a_wins | b_wins | merged | dismissed",
     ),
     resolved_by: str = typer.Option("cli-user", "--by", help="Who is resolving."),
@@ -900,12 +907,16 @@ GOLDEN_PLAYBOOK_DIR = REPO_ROOT / "playbooks" / "pb_ticket_summary_zh"
 GEMINI_FIXTURE_PATH = GOLDEN_FIXTURE_PATH  # same ticket, same KB
 GEMINI_GOLDEN_PATH = GOLDEN_GOLDEN_PATH
 GEMINI_PLAYBOOK_DIR = REPO_ROOT / "playbooks" / "pb_ticket_summary_zh_gemini"
-GEMINI_RESULTS_PATH = REPO_ROOT / "examples" / "scn_ticket_summary_zh_gemini" / "harness" / "results.jsonl"
+GEMINI_RESULTS_PATH = (
+    REPO_ROOT / "examples" / "scn_ticket_summary_zh_gemini" / "harness" / "results.jsonl"
+)
 
 OPENROUTER_FIXTURE_PATH = GOLDEN_FIXTURE_PATH  # same ticket, same KB
 OPENROUTER_GOLDEN_PATH = GOLDEN_GOLDEN_PATH
 OPENROUTER_PLAYBOOK_DIR = REPO_ROOT / "playbooks" / "pb_ticket_summary_zh_openrouter"
-OPENROUTER_RESULTS_PATH = REPO_ROOT / "examples" / "scn_ticket_summary_zh_openrouter" / "harness" / "results.jsonl"
+OPENROUTER_RESULTS_PATH = (
+    REPO_ROOT / "examples" / "scn_ticket_summary_zh_openrouter" / "harness" / "results.jsonl"
+)
 
 VENDOR_DOC_FIXTURE_PATH = REPO_ROOT / "examples" / "scn_vendor_doc_en" / "harness" / "fixture.json"
 VENDOR_DOC_GOLDEN_PATH = REPO_ROOT / "examples" / "scn_vendor_doc_en" / "harness" / "golden.json"
@@ -948,7 +959,9 @@ def _harness_dispatch(
     chat_provider = make_provider(
         playbook.model.provider_id,
         kind=playbook.model.kind,
-        api_key=cfg.anthropic_api_key if playbook.model.provider_id.startswith("anthropic") else None,
+        api_key=cfg.anthropic_api_key
+        if playbook.model.provider_id.startswith("anthropic")
+        else None,
     )
     # Embed provider: always Ollama (other providers don't support embeddings)
     embed_provider = make_provider("ollama-local")
@@ -1461,11 +1474,15 @@ def iteration_sense(
     signals: Path = typer.Argument(  # noqa: B008
         ..., exists=True, help="Path to feedback/signals.jsonl."
     ),
-    threshold: float = typer.Option(5.0, "--threshold", "-t", help="Trigger threshold (default: 5.0)."),
+    threshold: float = typer.Option(
+        5.0, "--threshold", "-t", help="Trigger threshold (default: 5.0)."
+    ),
     window_days: int = typer.Option(30, "--window-days", help="Feedback window in days."),
 ) -> None:
     """Compute aggregate feedback weight and report should_trigger."""
-    policy = IterationPolicy(feedback_min_weight_to_trigger=threshold, feedback_window_days=window_days)
+    policy = IterationPolicy(
+        feedback_min_weight_to_trigger=threshold, feedback_window_days=window_days
+    )
     engine = IterationEngine(policy=policy)
     result = engine.sense(signals)
 
@@ -1483,9 +1500,13 @@ def iteration_sense(
 @iteration_app.command("evaluate")
 def iteration_evaluate(
     iteration_dir: Path = typer.Argument(  # noqa: B008
-        ..., exists=True, help="Path to iteration example directory (contains iteration/ + eval/ + variants/)."
+        ...,
+        exists=True,
+        help="Path to iteration example directory (contains iteration/ + eval/ + variants/).",
     ),
-    min_delta: float = typer.Option(0.01, "--min-delta", help="Minimum weighted score delta to pass."),
+    min_delta: float = typer.Option(
+        0.01, "--min-delta", help="Minimum weighted score delta to pass."
+    ),
     max_cost_pct: float = typer.Option(10.0, "--max-cost-pct", help="Max cost increase % allowed."),
 ) -> None:
     """Apply promotion gates to pre-computed eval results and show verdicts."""
@@ -1677,6 +1698,7 @@ app.add_typer(sandbox_app)
 
 def _load_action(path: Path):  # type: ignore[return]
     import yaml
+
     from .sandbox.types import ActionRequest
 
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -1689,6 +1711,7 @@ def sandbox_dry_run(
 ) -> None:
     """Preview a sandbox action without executing it."""
     from rich.syntax import Syntax
+
     from .sandbox.engine import SandboxEngine
 
     req = _load_action(action)
@@ -1699,10 +1722,14 @@ def sandbox_dry_run(
         _console.print("[yellow]⚠ approval_required[/yellow]")
     if result.dry_run_preview:
         _console.print(f"\n[dim]{result.dry_run_preview.command_preview}[/dim]")
-        _console.print(Syntax(
-            "\n".join(result.dry_run_preview.docker_args),
-            "text", theme="monokai", word_wrap=True,
-        ))
+        _console.print(
+            Syntax(
+                "\n".join(result.dry_run_preview.docker_args),
+                "text",
+                theme="monokai",
+                word_wrap=True,
+            )
+        )
 
 
 @sandbox_app.command("run")
@@ -1791,8 +1818,12 @@ def serve(
     workers: int = typer.Option(1, "--workers", "-w", help="Uvicorn worker count."),
     reload: bool = typer.Option(False, "--reload", help="Hot-reload (dev only)."),
     json_logs: bool = typer.Option(False, "--json-logs", help="Enable JSON structured logging."),
-    with_ui: bool = typer.Option(False, "--with-ui", help="Also start the Svelte frontend (pnpm dev)."),
-    ui_port: int = typer.Option(5173, "--ui-port", help="Frontend dev server port (used with --with-ui)."),
+    with_ui: bool = typer.Option(
+        False, "--with-ui", help="Also start the Svelte frontend (pnpm dev)."
+    ),
+    ui_port: int = typer.Option(
+        5173, "--ui-port", help="Frontend dev server port (used with --with-ui)."
+    ),
 ) -> None:
     """Start the OpsPilot FastAPI server with uvicorn.
 
@@ -1801,7 +1832,9 @@ def serve(
     """
     import atexit
     import subprocess
+
     import uvicorn
+
     from .api.middleware import configure_json_logging
 
     if json_logs:
