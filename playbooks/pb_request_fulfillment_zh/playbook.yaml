@@ -1,0 +1,75 @@
+# Playbook: pb_request_fulfillment_zh
+# 中文服务请求（Service Request）履约；产物 schema = request_fulfillment_v1
+# 路径约定：playbooks/<id>/{playbook.yaml, prompt.md}
+
+id: "pb_request_fulfillment_zh"
+version: "1.0.0"
+
+description: |
+  Given a redacted IT service request (JSON), produce a structured
+  fulfillment artifact conforming to request_fulfillment_v1: what is
+  requested, whether approval is needed, and the fulfillment steps as
+  tiered tasks, with citations traceable to KB chunks via kb.search.
+
+  Work item model (ADR-0006): OpsPilot is a processing layer — every
+  field is advisory; the external system of record owns final state.
+
+# Path is resolved relative to this file.
+system_prompt: "prompt.md"
+
+# Output artifact schema (registered in opspilot.schemas registry).
+output_schema: "request_fulfillment_v1"
+
+# Tools the orchestrator exposes to the LLM.
+tools:
+  - name: "kb_search"
+    description: "Hybrid (vector + FTS5) retrieval over the OpsPilot KB. Use it to find the SOP / access policy for the requested item. Returns chunks with citation handles you can reference in your final JSON."
+
+# Primary model.
+model:
+  provider_id: "anthropic"
+  kind: "anthropic"
+  name: "claude-haiku-4-5-20251001"
+  version: "2025-01"
+  params:
+    temperature: 0.2
+    top_p: 0.9
+    max_tokens: 4096
+
+# Additional selectable models (shown in the UI dropdown alongside the primary).
+extra_models:
+  - provider_id: "anthropic"
+    kind: "anthropic"
+    name: "claude-sonnet-4-5"
+    version: "2025-01"
+    params:
+      temperature: 0.2
+      top_p: 0.9
+      max_tokens: 8192
+  - provider_id: "ollama-local"
+    kind: "ollama"
+    name: "gemma4:e4b"
+    version: "2026-04"
+    params:
+      temperature: 0.2
+      top_p: 0.9
+      max_tokens: 3000
+
+# Loop bounds.
+limits:
+  max_turns: 8
+  max_kb_search_results: 5
+
+# Sensitivity defaults; CLI may override.
+defaults:
+  retention_class: "medium"
+  sensitivity: "internal"
+  kb_id: "opspilot:public-kb"
+
+# Retrieval strategy.
+#   mode=prefetch — orchestrator pre-runs kb_search and folds hits into
+#                   the system prompt; chat runs once with tools=[].
+retrieval:
+  mode: "prefetch"
+  prefetch:
+    query_fields: ["subject", "body"]

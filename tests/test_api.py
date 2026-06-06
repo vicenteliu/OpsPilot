@@ -152,3 +152,37 @@ class TestPostRun:
         assert "JSON parse error" in data["error"]
         assert data["schema_valid"] is False
         assert data["result"] == {}
+
+
+# ---------------------------------------------------------------------------
+# Playbook selection (#5 — incident default vs service_request)
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_playbook_selects_by_playbook_id() -> None:
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from opspilot.api.routes.run import _resolve_provider_and_playbook
+    from opspilot.api.types import ApiRunRequest
+    from opspilot.orchestrator.types import load_playbook
+
+    pb_dir = Path(__file__).resolve().parents[1] / "playbooks"
+    incident = load_playbook(pb_dir / "pb_ticket_summary_zh")
+    request = load_playbook(pb_dir / "pb_request_fulfillment_zh")
+    state = SimpleNamespace(
+        playbook=incident,
+        request_fulfillment_pb=request,
+        chat_provider=object(),
+    )
+
+    # No playbook_id → incident default.
+    _, pb_default = _resolve_provider_and_playbook(ApiRunRequest(input={}), state)
+    assert pb_default.id == "pb_ticket_summary_zh"
+
+    # playbook_id selects the service-request playbook.
+    _, pb_req = _resolve_provider_and_playbook(
+        ApiRunRequest(input={}, playbook_id="pb_request_fulfillment_zh"), state
+    )
+    assert pb_req.id == "pb_request_fulfillment_zh"
+    assert pb_req.output_schema == "request_fulfillment_v1"

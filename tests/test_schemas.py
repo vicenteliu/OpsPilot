@@ -38,6 +38,7 @@ REQUIRED_SCHEMAS = (
     "lint-issue",
     "provider-config",
     "incident_summary_v1",
+    "request_fulfillment_v1",
 )
 
 
@@ -105,6 +106,63 @@ class TestIncidentSummarySchema:
     def test_ticket_summary_v1_still_registered_as_alias(self, repo_root: Path) -> None:
         # Deprecated alias must remain valid for one version.
         assert "ticket_summary_v1" in registry(repo_root)
+
+
+def _valid_request() -> dict:
+    """A minimal artifact that satisfies request_fulfillment_v1."""
+    return {
+        "schema_version": "request_fulfillment_v1",
+        "work_item_ref": "REQ-001",
+        "work_item_type": "service_request",
+        "summary": "New hire needs VPN access provisioned.",
+        "requested_item": "VPN access for a new employee",
+        "approval_needed": True,
+        "missing_fields": ["manager approver"],
+        "tasks": [
+            {"ref": "task-1", "action": "Create the VPN account",
+             "rationale": "Standard onboarding step", "tier": "L1",
+             "citations": ["kb-1"]},
+        ],
+        "citations": [
+            {"id": "kb-1", "chunk_id": "chk_abcd1234", "document_id": "doc_abcd1234"},
+        ],
+    }
+
+
+class TestRequestFulfillmentSchema:
+    def test_valid_instance_passes(self, repo_root: Path) -> None:
+        validate("request_fulfillment_v1", _valid_request(), repo_root=repo_root)
+
+    def test_wrong_work_item_type_fails(self, repo_root: Path) -> None:
+        bad = _valid_request()
+        bad["work_item_type"] = "incident"
+        with pytest.raises(SchemaError):
+            validate("request_fulfillment_v1", bad, repo_root=repo_root)
+
+    def test_missing_requested_item_fails(self, repo_root: Path) -> None:
+        bad = _valid_request()
+        del bad["requested_item"]
+        with pytest.raises(SchemaError):
+            validate("request_fulfillment_v1", bad, repo_root=repo_root)
+
+    def test_approval_needed_must_be_bool(self, repo_root: Path) -> None:
+        bad = _valid_request()
+        bad["approval_needed"] = "yes"
+        with pytest.raises(SchemaError):
+            validate("request_fulfillment_v1", bad, repo_root=repo_root)
+
+    def test_reuses_task_object_with_tier(self, repo_root: Path) -> None:
+        bad = _valid_request()
+        bad["tasks"][0]["tier"] = "L9"
+        with pytest.raises(SchemaError):
+            validate("request_fulfillment_v1", bad, repo_root=repo_root)
+
+    def test_no_incident_fields_allowed(self, repo_root: Path) -> None:
+        # additionalProperties:false — incident-only fields must be rejected.
+        bad = _valid_request()
+        bad["severity_suggested"] = "P2"
+        with pytest.raises(SchemaError):
+            validate("request_fulfillment_v1", bad, repo_root=repo_root)
 
 
 class TestRegistry:

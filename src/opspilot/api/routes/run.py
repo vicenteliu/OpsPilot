@@ -25,8 +25,15 @@ def _sse(event: str, data: dict[str, Any]) -> str:
 
 
 def _resolve_provider_and_playbook(body: ApiRunRequest, state: Any) -> tuple[Any, Any]:
-    """Return (chat_provider, effective_playbook) for a run request."""
+    """Return (chat_provider, effective_playbook) for a run request.
+
+    The base playbook is selected by ``playbook_id`` (incident default vs the
+    service-request playbook); model overrides then apply to the selected one.
+    """
     pb = state.playbook
+    request_pb = getattr(state, "request_fulfillment_pb", None)
+    if body.playbook_id and request_pb is not None and body.playbook_id == request_pb.id:
+        pb = request_pb
     primary_id = f"{pb.model.provider_id}/{pb.model.name}"
     override_model = (
         next(

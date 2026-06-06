@@ -854,6 +854,16 @@
             </div>
             <p>{s.summary}</p>
           </div>
+          {#if s.requested_item}
+          <div class="card">
+            <div class="card-header">
+              <h3>Requested Item</h3>
+              <button class="btn-copy" onclick={() => copyText(s.requested_item ?? '')}>Copy</button>
+            </div>
+            <p>{s.requested_item}</p>
+          </div>
+          {/if}
+          {#if s.symptoms?.length}
           <div class="card">
             <div class="card-header">
               <h3>Symptoms</h3>
@@ -863,6 +873,7 @@
               {#each s.symptoms as symptom}<li>{symptom}</li>{/each}
             </ul>
           </div>
+          {/if}
           <div class="card">
             <div class="card-header">
               <h3>Tasks</h3>
@@ -878,14 +889,25 @@
               {/each}
             </ol>
           </div>
+          {#if s.severity_suggested}
           <div class="card">
             <div class="card-header">
               <h3>Severity</h3>
-              <button class="btn-copy" onclick={() => copyText(s.severity_suggested + (s.escalation_hint ? '\n' + s.escalation_hint : ''))}>Copy</button>
+              <button class="btn-copy" onclick={() => copyText((s.severity_suggested ?? '') + (s.escalation_hint ? '\n' + s.escalation_hint : ''))}>Copy</button>
             </div>
             <span class="severity-badge">{s.severity_suggested}</span>
             {#if s.escalation_hint}<p class="escalation">{s.escalation_hint}</p>{/if}
           </div>
+          {/if}
+          {#if s.approval_needed !== undefined}
+          <div class="card">
+            <div class="card-header">
+              <h3>Approval</h3>
+              <button class="btn-copy" onclick={() => copyText(s.approval_needed ? 'Approval needed' : 'Auto-fulfill')}>Copy</button>
+            </div>
+            <span class="severity-badge">{s.approval_needed ? 'Approval needed' : 'Auto-fulfill'}</span>
+          </div>
+          {/if}
         </section>
       {/snippet}
 
