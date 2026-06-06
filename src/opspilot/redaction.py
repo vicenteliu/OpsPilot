@@ -140,6 +140,22 @@ class Redactor:
             rules_version=str(data.get("version", "")) or None,
         )
 
+    def with_secret(self, secret: bytes) -> Redactor:
+        """Return a cheap clone bound to *secret*.
+
+        Rules and policy are immutable and shared, so callers re-seed the
+        placeholder secret per session (see ``run_ticket_summary``) without
+        re-parsing the YAML — same raw value collapses to the same placeholder
+        *within* a session, but cannot be correlated or brute-forced across
+        sessions.
+        """
+        return Redactor(
+            self.rules,
+            policy=self.policy,
+            secret=secret,
+            rules_version=self.rules_version,
+        )
+
     # ── Core API ───────────────────────────────────────────────────────
 
     def _placeholder_for(self, original: str, placeholder_type: str) -> str:
@@ -203,6 +219,15 @@ class Redactor:
         out_parts.append(text[cursor:])
 
         redacted = "".join(out_parts)
+
+        # 5) Fail-closed post-check (policy ``post_check_required``): if any
+        #    rule still matches the output — a pattern missed something, or
+        #    overlap resolution dropped a match — refuse to emit. PII must
+        #    never slip silently to the model/KB; better to abort the session.
+        if self.policy.post_check_required and self.has_residual_pii(redacted):
+            msg = "post-check failed: residual PII detected after redaction"
+            raise RedactionError(msg)
+
         summary = dict(Counter(h.rule_id for h in hits))
         return RedactionResult(text=redacted, hits=tuple(hits), summary=summary)
 
@@ -212,10 +237,19 @@ class Redactor:
         """Run the rules again on *text*; return True if any rule still matches.
 
         Used by the spec's ``post_check_required`` policy: after redaction the
-        output should be free of any rule's pattern.
+        output should be free of any rule's pattern. Matches that fall entirely
+        inside an existing ``[REDACTED:...]`` marker are ignored so a placeholder
+        is never mistaken for residual PII.
         """
+        protected = [
+            (m.start(), m.end())
+            for m in re.finditer(r"\[REDACTED:[^\[\]]*\]", text)
+        ]
         for rule in self.rules:
             for m in rule.pattern.finditer(text):
-                if m.group(0) not in rule.exceptions:
-                    return True
+                if m.group(0) in rule.exceptions:
+                    continue
+                if any(ps <= m.start() and m.end() <= pe for ps, pe in protected):
+                    continue
+                return True
         return False

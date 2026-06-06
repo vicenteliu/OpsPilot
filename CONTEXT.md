@@ -112,6 +112,16 @@ _Avoid_: model name, model string
 A discrete UI feature (e.g. `run`, `ingest`, `harness`) that can be toggled on/off via `ui.modules` in config. Not an auth concept — single-user local deployment only.
 _Avoid_: feature, page, view
 
+### Action execution (Stage 4+)
+
+**Approval gate**:
+A heuristic check that *flags* an action as requiring human sign-off before apply (denylist of risky command patterns + prod-env / irreversibility flags). It is a **defense-in-depth signal and audit aid, not a security boundary** — the real boundary is the Docker L2 hardened container plus network policy. See ADR-0005.
+_Avoid_: security boundary, sandbox (the gate is not the sandbox)
+
+**Sandbox (L2)**:
+The ephemeral hardened Docker container an action runs inside: read-only rootfs, `cap-drop ALL`, no-new-privileges, seccomp, tmpfs workdir, no host mounts. This — not the **approval gate** — is what actually contains an action's blast radius.
+_Avoid_: container, jail, isolation layer
+
 ## Relationships
 
 - A **Work item** has exactly one **Work item type** — declared by the source, or assigned by **Classification** when absent
@@ -143,3 +153,4 @@ _Avoid_: feature, page, view
 - "session" in some LLM frameworks means a conversation window — in OpsPilot it means a single playbook run with its full audit trail, not a multi-turn conversation.
 - "ticket" was the catch-all for any inbound work — resolved: the umbrella is **Work item**, with subtypes **Incident** / **Service Request** / **Task**. "ticket" is colloquial and conflates them; avoid it in specs/schemas. The legacy code names `ticket_ref` / `ticket_summary_v1` are pre-Work-item and migrate toward `work_item_ref` / `incident_summary_*`.
 - "task" (lowercase: a step or next-action in prose) is **not** a **Task** work item. A **Task** is a first-class, assignable unit with a **Tier**; a summary's "next steps" only become **Tasks** once decomposed. (Note: a **Session** is also not a **Task** — see the Session entry's _Avoid_ list.)
+- "signed" was used (in older README copy) for the **trace** and **artifact** — resolved: nothing is cryptographically signed. Artifacts are *content-addressed* (`art_<sha256[:16]>`); traces are *append-only, seq-stamped*. Both give tamper-evidence against accidental corruption, not signatures. Say "content-addressed" / "append-only", never "signed".

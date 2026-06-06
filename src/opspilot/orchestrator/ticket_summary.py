@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import os
 import re
 from collections.abc import Callable
 from typing import Any, Literal
@@ -67,6 +68,12 @@ def run_ticket_summary(
     """Run the playbook end-to-end. Returns a :class:`RunResult`."""
     _prog = on_progress or (lambda _: None)
     pb = request.playbook
+
+    # Re-seed the redactor with a per-session random secret so placeholders
+    # collapse consistently within this run but cannot be correlated or
+    # brute-forced across sessions (the shared app-level redactor carries no
+    # secret). Cheap clone — rules/policy are immutable and shared.
+    redactor = redactor.with_secret(os.urandom(16))
 
     # ── 1. Load + redact input ──────────────────────────────────────
     ticket = _load_ticket(request.input_path)

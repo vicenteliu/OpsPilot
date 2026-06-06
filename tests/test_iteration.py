@@ -129,6 +129,9 @@ def test_validate_example_passes():
 
 def test_engine_sense():
     engine = IterationEngine()
-    result = engine.sense(SIGNALS_FILE)
+    # Pin the reference time so the fixed-date fixture stays inside the 30-day
+    # feedback window regardless of when the test runs.
+    as_of = datetime(2026, 5, 1, 13, 0, 0, tzinfo=timezone.utc)
+    result = engine.sense(SIGNALS_FILE, as_of=as_of)
     assert result.should_trigger is True
     assert result.aggregate_weight >= 5.0

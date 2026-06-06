@@ -11,7 +11,12 @@ import pytest
 from opspilot.sandbox.docker_l2 import _build_docker_args
 from opspilot.sandbox.engine import SandboxEngine
 from opspilot.sandbox.gate import check_approval_required
-from opspilot.sandbox.types import ActionRequest, RollbackHint
+from opspilot.sandbox.types import (
+    ActionRequest,
+    NetworkPolicy,
+    RequestedPolicy,
+    RollbackHint,
+)
 
 
 def _req(**kwargs) -> ActionRequest:
@@ -68,6 +73,52 @@ def test_gate_drop_table_triggers():
 
 def test_gate_dev_env_passes():
     assert not check_approval_required(_req(target_environment="dev"))
+
+
+# ── Gate: previously-bypassable denylist patterns (ADR-0005 signal patches) ──
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "rm -r -f /tmp/x",          # split recursive/force flags
+        "rm --recursive --force /x",
+        "rm -f -r /tmp/x",          # reversed split flags
+        "find / -name '*.log' -delete",
+        "dd if=/dev/zero of=/dev/sda",
+        "mkfs.ext4 /dev/sdb1",
+        "cat payload > /dev/sda",
+        "git push --force origin main",
+        "kubectl delete namespace prod",
+        "psql -c 'DELETE FROM users'",
+    ],
+)
+def test_gate_catches_dangerous_variants(command: str):
+    assert check_approval_required(_req(payload={"command": command}))
+
+
+def test_gate_plain_rm_without_force_passes():
+    # Recursive-only or force-only (not both) is not treated as catastrophic.
+    assert not check_approval_required(_req(payload={"command": "rm -r /tmp/scratch"}))
+    assert not check_approval_required(_req(payload={"command": "rm -f /tmp/one"}))
+
+
+# ── Gate: opening the network forces approval ────────────────────────────────
+
+
+def test_gate_network_open_triggers():
+    pol = RequestedPolicy(network=NetworkPolicy(mode="open"))
+    assert check_approval_required(_req(requested_policy=pol))
+
+
+def test_gate_network_allowlist_triggers():
+    pol = RequestedPolicy(network=NetworkPolicy(mode="allowlist"))
+    assert check_approval_required(_req(requested_policy=pol))
+
+
+def test_gate_network_deny_all_safe_command_passes():
+    pol = RequestedPolicy(network=NetworkPolicy(mode="deny-all"))
+    assert not check_approval_required(_req(requested_policy=pol))
 
 
 # ── Docker args ───────────────────────────────────────────────────────────

@@ -9,6 +9,7 @@ import pytest
 from opspilot.errors import RedactionError
 from opspilot.redaction import (
     DEFAULT_RULES_PATH,
+    RedactionPolicy,
     RedactionRule,
     Redactor,
 )
@@ -178,6 +179,71 @@ class TestResidualCheck:
 
     def test_residual_in_raw_text(self, redactor: Redactor) -> None:
         assert redactor.has_residual_pii("a@x.com leaked")
+
+    def test_placeholder_not_counted_as_residual(self, redactor: Redactor) -> None:
+        # A bare placeholder must never be mistaken for residual PII.
+        assert not redactor.has_residual_pii("[REDACTED:email:aabbccdd] ok")
+
+
+# ──────────────────────────────────────────────────────────────────────────
+#  Fail-closed post-check enforcement (policy ``post_check_required``)
+# ──────────────────────────────────────────────────────────────────────────
+
+
+class TestFailClosed:
+    def _redactor(self, *, post_check: bool) -> Redactor:
+        rules = [
+            RedactionRule.from_dict(
+                {"id": "r.digits", "pattern": r"\d{3}", "placeholder_type": "num"}
+            )
+        ]
+        return Redactor(rules, policy=RedactionPolicy(post_check_required=post_check))
+
+    def test_raises_when_residual_remains(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        r = self._redactor(post_check=True)
+        # Force the post-check to report residual PII regardless of the text.
+        monkeypatch.setattr(r, "has_residual_pii", lambda _text: True)
+        with pytest.raises(RedactionError, match="residual PII"):
+            r.redact("123")
+
+    def test_no_raise_when_policy_disabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        r = self._redactor(post_check=False)
+        monkeypatch.setattr(r, "has_residual_pii", lambda _text: True)
+        # post_check_required is off → residual is not enforced, no raise.
+        assert "[REDACTED:num:" in r.redact("123").text
+
+    def test_clean_text_passes_post_check(self) -> None:
+        r = self._redactor(post_check=True)
+        # "123" is fully redacted → output has no residual → no raise.
+        out = r.redact("call 123 now")
+        assert "[REDACTED:num:" in out.text
+
+
+# ──────────────────────────────────────────────────────────────────────────
+#  Per-session secret (``with_secret``)
+# ──────────────────────────────────────────────────────────────────────────
+
+
+class TestWithSecret:
+    def test_different_secrets_give_different_placeholders(self, redactor: Redactor) -> None:
+        a = redactor.with_secret(b"secret-A")
+        b = redactor.with_secret(b"secret-B")
+        pa = a.redact("mail a@x.com").text
+        pb = b.redact("mail a@x.com").text
+        assert pa != pb  # same PII, different session → uncorrelatable placeholders
+
+    def test_same_secret_is_stable_within_session(self, redactor: Redactor) -> None:
+        a = redactor.with_secret(b"secret-A")
+        out = a.redact("a@x.com and again a@x.com")
+        # Same raw value collapses to the same placeholder within a session.
+        placeholders = [h.placeholder for h in out.hits]
+        assert len(set(placeholders)) == 1
+
+    def test_clone_preserves_rules_and_policy(self, redactor: Redactor) -> None:
+        clone = redactor.with_secret(b"x")
+        assert clone.rules is redactor.rules
+        assert clone.policy is redactor.policy
+        assert clone.secret == b"x"
 
 
 # ──────────────────────────────────────────────────────────────────────────
