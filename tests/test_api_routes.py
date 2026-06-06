@@ -49,12 +49,11 @@ def _mock_playbook(extra_models=None):
     class FakeRetrieval:
         mode = "prefetch"
 
-    pb = SimpleNamespace(
+    return SimpleNamespace(
         model=primary,
         extra_models=extra_models or [],
         retrieval=FakeRetrieval(),
     )
-    return pb
 
 
 # ── /api/sessions ─────────────────────────────────────────────────────────

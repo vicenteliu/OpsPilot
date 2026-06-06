@@ -12,19 +12,19 @@ from opspilot.harness.types import EvalResult, EvaluatorResult
 
 def _make_result(**kwargs) -> EvalResult:
     ev = EvaluatorResult(id="ev_a", type="rule.regex", score=1.0, passed=True, details={})
-    defaults = dict(
-        run_id="run_test",
-        fixture_id="fix_test",
-        fixture_version="1.0.0",
-        playbook_ref="pb_test@1.0.0",
-        model_ref="test/model@v1",
-        ts="2026-05-05T00:00:00Z",
-        evaluators=[ev],
-        scores={"weighted": 1.0, "by_type": {}},
-        passed=True,
-        output={"session_id": "sess_test"},
-        latency_ms={"total": 123},
-    )
+    defaults = {
+        "run_id": "run_test",
+        "fixture_id": "fix_test",
+        "fixture_version": "1.0.0",
+        "playbook_ref": "pb_test@1.0.0",
+        "model_ref": "test/model@v1",
+        "ts": "2026-05-05T00:00:00Z",
+        "evaluators": [ev],
+        "scores": {"weighted": 1.0, "by_type": {}},
+        "passed": True,
+        "output": {"session_id": "sess_test"},
+        "latency_ms": {"total": 123},
+    }
     defaults.update(kwargs)
     return EvalResult(**defaults)
 

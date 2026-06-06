@@ -154,7 +154,7 @@ def test_stdio_env_resolution(monkeypatch):
     monkeypatch.setenv("TEST_KEY", "resolved_val")
     proc = _make_proc([])
     with patch("opspilot.mcp.transport.subprocess.Popen", return_value=proc) as mock_popen:
-        t = StdioTransport("echo", [], env={"API_KEY": "${TEST_KEY}"})
+        StdioTransport("echo", [], env={"API_KEY": "${TEST_KEY}"})
     call_kwargs = mock_popen.call_args[1]
     assert call_kwargs["env"]["API_KEY"] == "resolved_val"
 

@@ -87,7 +87,7 @@ def _classify_conflict(
 ) -> str:
     if doc_a_valid_from and doc_b_valid_from:
         try:
-            from datetime import datetime, timezone
+            from datetime import datetime
 
             da = datetime.strptime(doc_a_valid_from[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=UTC)
             db = datetime.strptime(doc_b_valid_from[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=UTC)

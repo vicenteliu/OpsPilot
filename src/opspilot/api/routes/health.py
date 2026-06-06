@@ -6,7 +6,9 @@ import time
 
 from fastapi import APIRouter, Request
 
-from opspilot import __version__ as _VERSION
+from opspilot import (
+    __version__ as _VERSION,  # noqa: N812  (alias avoids rebinding this module's __version__)
+)
 
 router = APIRouter(tags=["ops"])
 

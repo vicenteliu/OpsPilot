@@ -56,9 +56,7 @@ class McpServerClient:
     def _allowed(self, tool_name: str) -> bool:
         if self.cfg.tools_allowlist is not None and tool_name not in self.cfg.tools_allowlist:
             return False
-        if self.cfg.tools_denylist and tool_name in self.cfg.tools_denylist:
-            return False
-        return True
+        return not (self.cfg.tools_denylist and tool_name in self.cfg.tools_denylist)
 
     def call(self, tool_name: str, arguments: dict[str, Any]) -> McpCallResult:
         if not self._allowed(tool_name):

@@ -20,8 +20,7 @@ async def kb_stats(request: Request) -> dict[str, Any]:
     """Return aggregate KB health counts (docs, chunks, open conflicts, corrections)."""
     state = request.app.state
     loop = asyncio.get_event_loop()
-    stats = await loop.run_in_executor(None, state.sqlite.kb_stats)
-    return stats
+    return await loop.run_in_executor(None, state.sqlite.kb_stats)
 
 
 @router.get("/kb/docs")

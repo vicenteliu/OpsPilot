@@ -8,7 +8,7 @@ import pytest
 
 from opspilot.errors import ConfigError
 from opspilot.mcp.registry import McpRegistry, McpServerClient
-from opspilot.mcp.types import McpCallResult, McpConfig, McpContent, McpServerConfig
+from opspilot.mcp.types import McpCallResult, McpConfig, McpServerConfig
 
 # ── helpers ───────────────────────────────────────────────────────────────
 

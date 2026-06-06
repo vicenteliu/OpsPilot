@@ -278,14 +278,14 @@ def test_detect_idempotent_on_same_pair(two_doc_kb: Any) -> None:
     lance = MagicMock()
     lance.ann_search.return_value = [ann_hit]
 
-    kwargs: dict[str, Any] = dict(
-        new_doc_id=new_doc_id,
-        new_chunks=new_chunks,
-        lance=lance,
-        sqlite=sqlite,
-        embed_fn=lambda t: [1.0, 0.0, 0.0],
-        similarity_threshold=0.85,
-    )
+    kwargs: dict[str, Any] = {
+        "new_doc_id": new_doc_id,
+        "new_chunks": new_chunks,
+        "lance": lance,
+        "sqlite": sqlite,
+        "embed_fn": lambda t: [1.0, 0.0, 0.0],
+        "similarity_threshold": 0.85,
+    }
     detect_and_store_conflicts(**kwargs)
     created2 = detect_and_store_conflicts(**kwargs)  # second call must be a no-op
 
