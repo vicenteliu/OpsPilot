@@ -1,15 +1,15 @@
-"""GET /metrics — Prometheus text format."""
+"""GET /metrics — Prometheus exposition (ADR-0007)."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter
-from fastapi.responses import PlainTextResponse
+from fastapi import APIRouter, Response
 
-from ..middleware import metrics_text
+from ...observability import render_metrics
 
 router = APIRouter(tags=["ops"])
 
 
-@router.get("/metrics", response_class=PlainTextResponse)
-def metrics() -> str:
-    return metrics_text()
+@router.get("/metrics")
+def metrics() -> Response:
+    body, content_type = render_metrics()
+    return Response(content=body, media_type=content_type)

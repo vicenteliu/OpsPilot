@@ -39,6 +39,7 @@ dependencies = [
     "fastapi >= 0.111",               # Stage 2: API server
     "uvicorn[standard] >= 0.30",      # Stage 2: ASGI server
     "textual >= 8.0",                 # PR-20: TUI shell
+    "prometheus-client >= 0.20",      # Stage 5: metrics (ADR-0007)
 ]
 
 [project.optional-dependencies]

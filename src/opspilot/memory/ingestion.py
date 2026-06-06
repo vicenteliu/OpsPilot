@@ -43,6 +43,7 @@ from typing import Final
 
 from ..errors import OpsPilotError
 from ..ids import new_ulid_id
+from ..observability import record_ingest
 from ..redaction import Redactor
 from ..timeutil import now_rfc3339
 from .chunker import Chunk, ChunkConfig, chunk_markdown
@@ -225,6 +226,8 @@ def ingest(
         chunks_total=chunks_total,
         redaction_hits=redaction_hits_total,
     )
+
+    record_ingest(succeeded=succeeded, failed=failed)
 
     return IngestStats(
         run_id=run_id,

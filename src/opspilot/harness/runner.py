@@ -28,6 +28,7 @@ from typing import Any
 from ..ids import new_ulid_id
 from ..memory.lance_store import LanceStore
 from ..memory.sqlite_store import SqliteStore
+from ..observability import record_harness
 from ..orchestrator import RunRequest, RunResult, run_ticket_summary
 from ..orchestrator.types import PlaybookSpec
 from ..providers.base import ProviderProtocol
@@ -134,6 +135,8 @@ def run_harness(
             "schema_valid": run_result.schema_valid,
             "error": run_result.error,
         }
+
+    record_harness(provider=playbook.model.provider_id, passed=passed)
 
     return EvalResult(
         run_id=run_id,
