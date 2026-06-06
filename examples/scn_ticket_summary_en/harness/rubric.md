@@ -11,7 +11,7 @@
 ## Task definition
 
 **Input**: a redacted IT ticket (body + log attachment snippet) plus retrieved KB chunks (with citations).
-**Expected output**: structured JSON conforming to `ticket_summary_v1`; every citation must resolve to a `source_path:line_range`.
+**Expected output**: structured JSON conforming to `incident_summary_v1`; every citation must resolve to a `source_path:line_range`.
 
 ## Scoring dimensions (aligned with expected_structured)
 
@@ -45,7 +45,7 @@ conditions, and return a JSON object:
 {
   "dimensions": {
     "symptom": 0-4, "scope": 0-4, "tried_steps": 0-4,
-    "missing_fields": 0-4, "next_actions": 0-4,
+    "missing_fields": 0-4, "tasks": 0-4,
     "severity": 0-4, "citation_validity": 0-4
   },
   "weighted_score": 0.0-1.0,

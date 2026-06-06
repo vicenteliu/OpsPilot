@@ -1,0 +1,17 @@
+# Artifact sidecar (per session/SPEC.md §4)
+artifact_id: "art_21ced918d3d0b388"
+filename: "art_21ced918d3d0b388.json"
+content_type: "application/json"
+content_sha256: "21ced918d3d0b38853e30c4f93f7d799441786c3af51eea2ee1803b636685406"
+size_bytes: 1408
+
+schema:
+  ref: "examples/scn_request_fulfillment_zh/harness/golden.json#schema_check"
+  name: "request_fulfillment_v1"
+
+redacted: true
+redaction_rules_version: "1.0.0"
+created_at: "2026-05-08T09:02:10.000Z"
+
+cited_chunks:
+  - "chk_0cf89826"

@@ -1,0 +1,8 @@
+{
+  "ticket_id": "REQ-2001",
+  "channel": "portal",
+  "submitted_at": "2026-05-08T09:00:00Z",
+  "submitter_role": "manager",
+  "subject": "为新员工开通 VPN 权限",
+  "body": "新入职员工（研发组）需要 VPN 访问权限以连接内网开发环境，请按标准流程开通。"
+}

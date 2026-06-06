@@ -4,6 +4,6 @@
 2026-05-01T10:08:36.420Z	model:anthropic:claude-sonnet-4-6:2026-04	tool_call	kb.search	{"action_id":"act_01J0Z9ZQXK7M6P3F0XK5K7C5KA","scopes":["opspilot:public-kb"]}
 2026-05-01T10:08:36.832Z	tool:kb.search	tool_result	kb.search	{"action_id":"act_01J0Z9ZQXK7M6P3F0XK5K7C5KA","status":"ok","candidates":3,"latency_ms":412,"cost_usd":0.0008}
 2026-05-01T10:08:42.001Z	model:anthropic:claude-sonnet-4-6:2026-04	tool_call	artifact.write	{"action_id":"act_01J0Z9ZQXK7M6P3F0XK5K7C5KB"}
-2026-05-01T10:08:42.512Z	tool:artifact.write	tool_result	artifact.write	{"action_id":"act_01J0Z9ZQXK7M6P3F0XK5K7C5KB","status":"ok","artifact_id":"art_75fa2fb140c268a4","bytes":1830}
-2026-05-01T10:09:08.130Z	user:vicente@example.com	user_action	accept	{"target":"art_75fa2fb140c268a4"}
+2026-05-01T10:08:42.512Z	tool:artifact.write	tool_result	artifact.write	{"action_id":"act_01J0Z9ZQXK7M6P3F0XK5K7C5KB","status":"ok","artifact_id":"art_d8135d82e59e9ad5","bytes":1830}
+2026-05-01T10:09:08.130Z	user:vicente@example.com	user_action	accept	{"target":"art_d8135d82e59e9ad5"}
 2026-05-01T10:09:14.812Z	system	state_change	sess_01J0Z9ZQXK7M6P3F0XK5K7C5K0	{"from":"active","to":"archived","reason":"user_action.accept"}

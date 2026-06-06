@@ -2,11 +2,11 @@
 # canonical 路径：artifacts/<artifact_id>.<ext>
 # sidecar 路径： artifacts/<artifact_id>.meta.yaml
 
-artifact_id: "art_75fa2fb140c268a4"
-filename: "art_75fa2fb140c268a4.json"
+artifact_id: "art_d8135d82e59e9ad5"
+filename: "art_d8135d82e59e9ad5.json"
 content_type: "application/json"
-content_sha256: "75fa2fb140c268a4411ff4bc571ea8615dc43f23b04cdf42ddda127bfd9d85e1"
-size_bytes: 1830
+content_sha256: "d8135d82e59e9ad5ad52d3db88a5a71e1e08eddb753e8d8e19cd567d35c2a882"
+size_bytes: 2044
 
 session_id: "sess_01J0Z9ZQXK7M6P3F0XK5K7C5K0"
 produced_by:
@@ -16,7 +16,7 @@ produced_by:
 
 schema:
   ref: "examples/scn_ticket_summary_zh/harness/golden.json#schema_check"
-  name: "ticket_summary_v1"
+  name: "incident_summary_v1"
 
 redacted: true
 redaction_rules_version: "1.0.0"
@@ -31,4 +31,4 @@ cited_chunks:
 #   - summary.structured.json
 #   - art_d3bf317bf67a4293.json + art_d3bf317bf67a4293.meta.yaml （早期错误 ID 的副本）
 #   - art_56d3a0e44dd6d022.json + art_56d3a0e44dd6d022.meta.yaml （Fix 1 之前的副本）
-# canonical 是本 sidecar 指向的 art_75fa2fb140c268a4.json；其余请在 host 上 rm。
+# canonical 是本 sidecar 指向的 art_d8135d82e59e9ad5.json；其余请在 host 上 rm。

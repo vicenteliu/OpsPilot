@@ -14,7 +14,7 @@
 3. The model issues a `kb.search` tool call, retrieving the
    "VPN Troubleshooting / Authentication errors" section from the English KB
    (`kb/sop_vpn_en.md`) — see `retrieval/response.json`.
-4. The model produces a structured summary (`session/artifacts/art_84cc55e02c54c4ce.json`)
+4. The model produces a structured summary (`session/artifacts/art_35bdeeb64e8242c9.json`)
    with citations traceable back to `source_path:line_range`.
 5. Harness runs evaluators (`harness/run-config.yaml` → `harness/results.jsonl`)
    including the three RAG types: `rag.recall_at_k` / `rag.precision_at_k` /
@@ -41,7 +41,7 @@
    │  │  4. tool_call: kb.search ──────────────▶  │  │ retrieval/request.json
    │  │  5. tool_result: chunks ◀──────────────   │  │ retrieval/response.json
    │  │  6. response: NL summary + footnote       │  │
-   │  │  7. tool_call: artifact.write ─────────▶  │  │ artifacts/art_84cc55e02c54c4ce.json
+   │  │  7. tool_call: artifact.write ─────────▶  │  │ artifacts/art_35bdeeb64e8242c9.json
    │  │  8. tool_result: artifact written         │  │
    │  │  9. user_action: accept                   │  │
    │  │ 10. system: state_change → archived       │  │
@@ -86,10 +86,10 @@ fixed in the schemas/templates:
 - `harness/fixture.json#expected_retrieval_doc_ids[]`
   ↔ `retrieval/response.json#results[].document_id`
   ↔ `kb/doc-meta.json#id` (`doc_afe80531`)
-- `session/trace.jsonl#tool_result.artifact_ids[]` (`art_84cc55e02c54c4ce`)
-  ↔ filename of `session/artifacts/art_84cc55e02c54c4ce.json`
+- `session/trace.jsonl#tool_result.artifact_ids[]` (`art_35bdeeb64e8242c9`)
+  ↔ filename of `session/artifacts/art_35bdeeb64e8242c9.json`
 - `harness/results.jsonl#evaluators[rag.citation_validity].details.invalid_citations`
-  ↔ `session/artifacts/art_84cc55e02c54c4ce.json#citations[].chunk_id`
+  ↔ `session/artifacts/art_35bdeeb64e8242c9.json#citations[].chunk_id`
   ↔ `kb/chunks.jsonl#id` (`chk_e3fe2afe`)
 
 `checks.md` lists every cross-reference with the corresponding schema field.
