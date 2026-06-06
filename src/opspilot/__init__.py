@@ -3,4 +3,9 @@
 Stage 1 PR-1: skeleton + JSON schema validation tooling.
 """
 
-__version__ = "0.1.0"
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("opspilot")
+except PackageNotFoundError:  # running from a raw checkout without an install
+    __version__ = "0.0.0+unknown"
