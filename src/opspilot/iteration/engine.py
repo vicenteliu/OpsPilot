@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 
 import yaml
@@ -16,10 +17,17 @@ class IterationEngine:
     def __init__(self, policy: IterationPolicy | None = None) -> None:
         self.policy = policy or IterationPolicy()
 
-    def sense(self, signals_file: Path) -> AggregateResult:
-        """Load feedback signals and compute aggregate weight."""
+    def sense(
+        self, signals_file: Path, *, as_of: datetime | None = None
+    ) -> AggregateResult:
+        """Load feedback signals and compute aggregate weight.
+
+        ``as_of`` sets the reference time for the feedback window (defaults to
+        now). Pass it to make aggregation deterministic, e.g. in tests against
+        fixed-date fixtures.
+        """
         signals = load_signals(signals_file)
-        return aggregate_signals(signals, self.policy)
+        return aggregate_signals(signals, self.policy, as_of=as_of)
 
     def evaluate(self, iteration_dir: Path) -> list[VariantVerdict]:
         """Apply promotion gates to pre-computed eval results in iteration_dir/eval/."""
