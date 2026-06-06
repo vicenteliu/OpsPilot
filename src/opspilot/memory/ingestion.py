@@ -36,10 +36,9 @@ import re
 import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from pathlib import Path
 from typing import Final
-
 
 from ..errors import OpsPilotError
 from ..ids import new_ulid_id
@@ -89,8 +88,8 @@ class IngestConfig:
     chunk_strategy: str = "headings_then_size"
     redaction_rules_version: str = "1.0.0"
     chunk_config: ChunkConfig = field(default_factory=ChunkConfig)
-    detect_conflicts: bool = True           # run conflict detection after each doc
-    source_authority: str = "internal"      # official | vendor | internal | unverified
+    detect_conflicts: bool = True  # run conflict detection after each doc
+    source_authority: str = "internal"  # official | vendor | internal | unverified
     conflict_similarity_threshold: float = 0.82
 
 
@@ -518,6 +517,7 @@ def _extract_valid_from(path: Path, markdown: str) -> str:
         if end > 0:
             try:
                 import yaml  # noqa: PLC0415
+
                 fm = yaml.safe_load(markdown[3:end])
                 if isinstance(fm, dict):
                     for key in ("date", "valid_from", "updated", "last_updated", "created"):
@@ -535,7 +535,7 @@ def _extract_valid_from(path: Path, markdown: str) -> str:
     # 3. File mtime
     try:
         mtime = path.stat().st_mtime
-        return datetime.fromtimestamp(mtime, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        return datetime.fromtimestamp(mtime, tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     except OSError:
         pass
 

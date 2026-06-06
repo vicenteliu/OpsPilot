@@ -108,9 +108,7 @@ class HarnessScreen(Widget):
         playbook_dir = repo_root / "playbooks" / "pb_ticket_summary_zh"
 
         if not fixture_path.is_file():
-            self.app.call_from_thread(
-                self.notify, "Golden fixture not found", severity="error"
-            )
+            self.app.call_from_thread(self.notify, "Golden fixture not found", severity="error")
             return
 
         self._run_harness_sync(fixture_path, golden_path, playbook_dir)
@@ -123,9 +121,7 @@ class HarnessScreen(Widget):
 
         self._run_harness_sync(Path(fixture), Path(golden), Path(playbook))
 
-    def _run_harness_sync(
-        self, fixture_path: Any, golden_path: Any, playbook_dir: Any
-    ) -> None:
+    def _run_harness_sync(self, fixture_path: Any, golden_path: Any, playbook_dir: Any) -> None:
         from ...config import load_config
         from ...harness import load_fixture, load_golden, run_harness
         from ...memory.lance_store import LanceStore
@@ -146,7 +142,9 @@ class HarnessScreen(Widget):
             playbook = load_playbook(playbook_dir)
 
             sqlite = SqliteStore(init_sqlite(kb_dir / "sqlite.db"))
-            lance = LanceStore.open_or_create(kb_dir / "lancedb", dim=768, embedding_model=cfg.embed_model)
+            lance = LanceStore.open_or_create(
+                kb_dir / "lancedb", dim=768, embedding_model=cfg.embed_model
+            )
             provider = make_provider(
                 playbook.model.provider_id,
                 kind=playbook.model.kind,
@@ -175,7 +173,9 @@ class HarnessScreen(Widget):
 
             score = result.scores.get("weighted", 0.0)
             passed = result.passed
-            msg = f"{'✓ PASS' if passed else '✗ FAIL'} score={score:.3f} fixture={result.fixture_id}"
+            msg = (
+                f"{'✓ PASS' if passed else '✗ FAIL'} score={score:.3f} fixture={result.fixture_id}"
+            )
             sev = "information" if passed else "warning"
         except Exception as exc:  # noqa: BLE001
             msg = f"Harness error: {exc}"

@@ -186,11 +186,9 @@ def kb_search(
     rows_by_chunk = _fetch_chunk_rows(sqlite, candidate_ids)
 
     # Batch-fetch source_authority for all candidate documents.
-    candidate_doc_ids = list({
-        str(rows_by_chunk[cid]["document_id"])
-        for cid in candidate_ids
-        if cid in rows_by_chunk
-    })
+    candidate_doc_ids = list(
+        {str(rows_by_chunk[cid]["document_id"]) for cid in candidate_ids if cid in rows_by_chunk}
+    )
     source_authorities = sqlite.get_source_authorities(candidate_doc_ids)
 
     def _sort_key(cid: str) -> tuple[float, int, str]:
@@ -207,9 +205,7 @@ def kb_search(
 
     # Check which source documents carry open (unresolved) conflicts.
     hit_doc_ids = [
-        str(rows_by_chunk[cid]["document_id"])
-        for cid in ordered_ids
-        if cid in rows_by_chunk
+        str(rows_by_chunk[cid]["document_id"]) for cid in ordered_ids if cid in rows_by_chunk
     ]
     docs_with_conflicts = sqlite.get_docs_with_open_conflicts(hit_doc_ids)
 

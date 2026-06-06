@@ -7,13 +7,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from opspilot.errors import ProviderError
 from opspilot.mcp.transport import (
     HttpTransport,
     StdioTransport,
     _resolve_env_value,
 )
-from opspilot.errors import ProviderError
-
 
 # ── _resolve_env_value ────────────────────────────────────────────────────
 
@@ -80,7 +79,9 @@ def test_stdio_initialize_sends_method(monkeypatch):
 
 
 def test_stdio_list_tools(monkeypatch):
-    tools_resp = _json_ok({"tools": [{"name": "read_file", "description": "reads", "inputSchema": {}}]}, id=1)
+    tools_resp = _json_ok(
+        {"tools": [{"name": "read_file", "description": "reads", "inputSchema": {}}]}, id=1
+    )
     proc = _make_proc([tools_resp])
     with patch("opspilot.mcp.transport.subprocess.Popen", return_value=proc):
         t = StdioTransport("echo", [])
@@ -164,9 +165,7 @@ def test_stdio_env_resolution(monkeypatch):
 def _http_transport(responses: list[dict]) -> HttpTransport:
     """Returns an HttpTransport whose httpx.Client is mocked."""
     mock_client = MagicMock()
-    mock_client.post.side_effect = [
-        _mock_response(r) for r in responses
-    ]
+    mock_client.post.side_effect = [_mock_response(r) for r in responses]
     with patch("opspilot.mcp.transport.httpx.Client", return_value=mock_client):
         t = HttpTransport("http://localhost:3000/rpc")
     t._client = mock_client
@@ -198,19 +197,24 @@ def test_http_list_tools_empty():
 
 
 def test_http_call_tool():
-    t = _http_transport([{"jsonrpc": "2.0", "id": 1, "result": {"content": [{"type": "text", "text": "ok"}]}}])
+    t = _http_transport(
+        [{"jsonrpc": "2.0", "id": 1, "result": {"content": [{"type": "text", "text": "ok"}]}}]
+    )
     result = t.call_tool("search", {"query": "foo"})
     assert result["content"][0]["text"] == "ok"
 
 
 def test_http_raises_on_rpc_error():
-    t = _http_transport([{"jsonrpc": "2.0", "id": 1, "error": {"code": -32600, "message": "Invalid Request"}}])
+    t = _http_transport(
+        [{"jsonrpc": "2.0", "id": 1, "error": {"code": -32600, "message": "Invalid Request"}}]
+    )
     with pytest.raises(ProviderError, match="MCP error"):
         t.initialize()
 
 
 def test_http_raises_on_http_error():
     import httpx
+
     mock_client = MagicMock()
     mock_client.post.side_effect = httpx.HTTPError("connection refused")
     with patch("opspilot.mcp.transport.httpx.Client", return_value=mock_client):

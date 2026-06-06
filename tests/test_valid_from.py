@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import time
+from datetime import UTC
 from pathlib import Path
 
 import pytest
@@ -168,9 +169,8 @@ def test_filename_no_date_falls_through_to_mtime(tmp_path: Path) -> None:
     assert _is_iso(result)
     # result should match the actual mtime of the file
     from datetime import datetime, timezone
-    expected = datetime.fromtimestamp(doc.stat().st_mtime, tz=timezone.utc).strftime(
-        "%Y-%m-%dT%H:%M:%SZ"
-    )
+
+    expected = datetime.fromtimestamp(doc.stat().st_mtime, tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     assert result == expected
 
 
@@ -188,9 +188,8 @@ def test_mtime_fallback_matches_actual_mtime(tmp_path: Path) -> None:
     doc = tmp_path / "plain.md"
     doc.write_text("content")
     from datetime import datetime, timezone
-    expected = datetime.fromtimestamp(doc.stat().st_mtime, tz=timezone.utc).strftime(
-        "%Y-%m-%dT%H:%M:%SZ"
-    )
+
+    expected = datetime.fromtimestamp(doc.stat().st_mtime, tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     result = _extract_valid_from(doc, doc.read_text())
     assert result == expected
 
@@ -206,7 +205,8 @@ def test_now_fallback_for_nonexistent_path() -> None:
     after = time.time()
     assert _is_iso(result)
     from datetime import datetime, timezone
+
     # Strip optional fractional seconds before parsing
     result_secs = result.rstrip("Z").split(".")[0] + "Z"
-    ts = datetime.strptime(result_secs, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp()
+    ts = datetime.strptime(result_secs, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC).timestamp()
     assert before - 2 <= ts <= after + 2

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from pathlib import Path
 
 from .types import AggregateResult, FeedbackSignal, IterationPolicy
@@ -29,7 +29,7 @@ def aggregate_signals(
     the iteration-policy.template.yaml threshold of 5.0.
     """
     if as_of is None:
-        as_of = datetime.now(tz=timezone.utc)
+        as_of = datetime.now(tz=UTC)
 
     cutoff_ts = as_of.timestamp() - policy.feedback_window_days * 86400
 
@@ -57,5 +57,5 @@ def aggregate_signals(
 
 def _ts(dt: datetime) -> float:
     if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc).timestamp()
+        return dt.replace(tzinfo=UTC).timestamp()
     return dt.timestamp()

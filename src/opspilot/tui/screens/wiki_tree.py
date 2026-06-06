@@ -134,9 +134,8 @@ class WikiTreeScreen(Widget):
         try:
             from ...config import load_config
             from ...providers.ollama import OllamaProvider
-            from ...wiki.query_to_page import QueryToPageConfig
-            from ...wiki.query_to_page import query_to_page, scan_and_convert
             from ...session import SessionManager
+            from ...wiki.query_to_page import QueryToPageConfig, query_to_page, scan_and_convert
 
             cfg = load_config()
             provider = OllamaProvider(base_url=cfg.ollama_base_url)

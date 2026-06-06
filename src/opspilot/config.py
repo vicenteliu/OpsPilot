@@ -33,7 +33,9 @@ class Config:
 def load_config() -> Config:
     """Load config from optional YAML file, then overlay environment variables."""
     home_str = os.environ.get("OPSPILOT_HOME")
-    home = Path(os.path.expandvars(home_str)).expanduser() if home_str else Path.home() / ".opspilot"
+    home = (
+        Path(os.path.expandvars(home_str)).expanduser() if home_str else Path.home() / ".opspilot"
+    )
 
     # Load optional YAML config file.
     yaml_data: dict[str, Any] = {}

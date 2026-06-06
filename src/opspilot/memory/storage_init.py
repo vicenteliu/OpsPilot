@@ -51,17 +51,15 @@ def _read_schema_sql() -> str:
 
 _COLUMN_MIGRATIONS: Final[tuple[tuple[str, str, str], ...]] = (
     # (table, column, definition) — applied when column is absent
-    ("kb_documents", "valid_from",        "TEXT"),
-    ("kb_documents", "source_authority",  "TEXT NOT NULL DEFAULT 'internal'"),
-    ("kb_chunks",    "valid_from",        "TEXT"),
-    ("kb_chunks",    "superseded_by",     "TEXT"),
+    ("kb_documents", "valid_from", "TEXT"),
+    ("kb_documents", "source_authority", "TEXT NOT NULL DEFAULT 'internal'"),
+    ("kb_chunks", "valid_from", "TEXT"),
+    ("kb_chunks", "superseded_by", "TEXT"),
 )
 
 
 def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
-    cur = conn.execute(
-        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?", (table,)
-    )
+    cur = conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?", (table,))
     return bool(cur.fetchone()[0])
 
 

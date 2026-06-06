@@ -17,12 +17,15 @@ from __future__ import annotations
 
 import hashlib
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .lance_store import LanceStore
     from .sqlite_store import SqliteStore
+
+from datetime import UTC
 
 from ..timeutil import now_rfc3339
 
@@ -35,7 +38,7 @@ _CONTRADICTION_PAIRS = [
     (r"\bdisabled?\b", r"\benabled?\b"),
     (r"\bfails?\b", r"\bsucceeds?\b"),
     (r"\bnot supported\b", r"\bsupported\b"),
-    (r"禁用", r"启用"),          # CJK: no \b — word boundaries don't apply
+    (r"禁用", r"启用"),  # CJK: no \b — word boundaries don't apply
     (r"不支持", r"支持"),
     (r"不允许", r"允许"),
 ]
@@ -85,12 +88,9 @@ def _classify_conflict(
     if doc_a_valid_from and doc_b_valid_from:
         try:
             from datetime import datetime, timezone
-            da = datetime.strptime(doc_a_valid_from[:19], "%Y-%m-%dT%H:%M:%S").replace(
-                tzinfo=timezone.utc
-            )
-            db = datetime.strptime(doc_b_valid_from[:19], "%Y-%m-%dT%H:%M:%S").replace(
-                tzinfo=timezone.utc
-            )
+
+            da = datetime.strptime(doc_a_valid_from[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=UTC)
+            db = datetime.strptime(doc_b_valid_from[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=UTC)
             diff_days = abs((da - db).days)
             if diff_days >= 30:
                 return "temporal_supersede"
@@ -107,8 +107,8 @@ def detect_and_store_conflicts(
     *,
     new_doc_id: str,
     new_chunks: list[dict],
-    lance: "LanceStore",
-    sqlite: "SqliteStore",
+    lance: LanceStore,
+    sqlite: SqliteStore,
     embed_fn: Callable[[str], list[float]],
     similarity_threshold: float = DEFAULT_SIMILARITY_THRESHOLD,
 ) -> int:
@@ -147,9 +147,7 @@ def detect_and_store_conflicts(
 
             # Fetch doc metadata for type classification
             doc_a = doc_cache.setdefault(new_doc_id, sqlite.get_document(new_doc_id) or {})
-            doc_b = doc_cache.setdefault(
-                nb.document_id, sqlite.get_document(nb.document_id) or {}
-            )
+            doc_b = doc_cache.setdefault(nb.document_id, sqlite.get_document(nb.document_id) or {})
 
             # Fetch neighbor chunk content for contradiction heuristic
             nb_chunk = sqlite.get_chunk(nb.chunk_id)
@@ -186,7 +184,7 @@ def resolve_conflict(
     resolution: str,
     resolved_by: str,
     note: str = "",
-    sqlite: "SqliteStore",
+    sqlite: SqliteStore,
 ) -> None:
     """Apply a resolution to a conflict record.
 

@@ -11,13 +11,13 @@ import json
 import logging
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
-from ..observability import HTTP_REQUESTS, HTTP_REQUEST_DURATION, request_id_var
+from ..observability import HTTP_REQUEST_DURATION, HTTP_REQUESTS, request_id_var
 
 # Contextual extras emitted on a log line when the call site passes them.
 _CONTEXT_FIELDS = ("path", "method", "status", "duration_s", "session_id", "playbook")
@@ -34,9 +34,10 @@ class JsonFormatter(logging.Formatter):
     """
 
     def format(self, record: logging.LogRecord) -> str:
-        ts = datetime.fromtimestamp(record.created, tz=timezone.utc).strftime(
-            "%Y-%m-%dT%H:%M:%S.%f"
-        )[:-3] + "Z"
+        ts = (
+            datetime.fromtimestamp(record.created, tz=UTC).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3]
+            + "Z"
+        )
         entry: dict = {
             "ts": ts,
             "severity": record.levelname,
@@ -92,7 +93,10 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
 
         self._logger.info(
             "%s %s %s %.3fs",
-            method, path, status, duration,
+            method,
+            path,
+            status,
+            duration,
             extra={"path": path, "method": method, "status": status, "duration_s": duration},
         )
         request_id_var.reset(token)

@@ -66,9 +66,7 @@ def test_gate_truncate_triggers():
 
 
 def test_gate_drop_table_triggers():
-    assert check_approval_required(
-        _req(payload={"command": "psql -c 'DROP TABLE users'"})
-    )
+    assert check_approval_required(_req(payload={"command": "psql -c 'DROP TABLE users'"}))
 
 
 def test_gate_dev_env_passes():
@@ -81,9 +79,9 @@ def test_gate_dev_env_passes():
 @pytest.mark.parametrize(
     "command",
     [
-        "rm -r -f /tmp/x",          # split recursive/force flags
+        "rm -r -f /tmp/x",  # split recursive/force flags
         "rm --recursive --force /x",
-        "rm -f -r /tmp/x",          # reversed split flags
+        "rm -f -r /tmp/x",  # reversed split flags
         "find / -name '*.log' -delete",
         "dd if=/dev/zero of=/dev/sda",
         "mkfs.ext4 /dev/sdb1",
@@ -170,8 +168,8 @@ def test_engine_dry_run_no_approval_for_safe():
 def test_engine_dry_run_flags_approval_for_dangerous():
     req = _req(payload={"command": "rm -rf /work"})
     result = SandboxEngine().dry_run(req)
-    assert result.status == "dry_run"       # still returns preview
-    assert result.approval_required         # but flags it
+    assert result.status == "dry_run"  # still returns preview
+    assert result.approval_required  # but flags it
 
 
 def test_engine_execute_dry_run_flag():

@@ -17,9 +17,7 @@ class IterationEngine:
     def __init__(self, policy: IterationPolicy | None = None) -> None:
         self.policy = policy or IterationPolicy()
 
-    def sense(
-        self, signals_file: Path, *, as_of: datetime | None = None
-    ) -> AggregateResult:
+    def sense(self, signals_file: Path, *, as_of: datetime | None = None) -> AggregateResult:
         """Load feedback signals and compute aggregate weight.
 
         ``as_of`` sets the reference time for the feedback window (defaults to
@@ -113,4 +111,6 @@ class IterationEngine:
             path = iteration_dir / "iteration" / name
             if path.exists():
                 return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-        raise FileNotFoundError(f"No iteration/record.yaml or iteration/recipe.yaml in {iteration_dir}")
+        raise FileNotFoundError(
+            f"No iteration/record.yaml or iteration/recipe.yaml in {iteration_dir}"
+        )

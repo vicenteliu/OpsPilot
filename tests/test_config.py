@@ -39,11 +39,13 @@ def test_load_config_from_yaml(monkeypatch, tmp_path: Path):
     monkeypatch.delenv("OPSPILOT_OLLAMA_BASE_URL", raising=False)
     config_file = tmp_path / "config.yaml"
     config_file.write_text(
-        yaml.dump({
-            "ollama_base_url": "http://yaml-host:11434",
-            "anthropic_api_key": "sk-from-yaml",
-            "embed_model": "custom-embed",
-        }),
+        yaml.dump(
+            {
+                "ollama_base_url": "http://yaml-host:11434",
+                "anthropic_api_key": "sk-from-yaml",
+                "embed_model": "custom-embed",
+            }
+        ),
         encoding="utf-8",
     )
     cfg = load_config()

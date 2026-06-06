@@ -88,12 +88,18 @@ def test_metrics_format_has_type_comment(tmp_path: Path):
 def test_json_formatter_produces_valid_json():
     import json
     import logging
+
     from opspilot.api.middleware import JsonFormatter
 
     formatter = JsonFormatter()
     record = logging.LogRecord(
-        name="test", level=logging.INFO, pathname="", lineno=0,
-        msg="hello %s", args=("world",), exc_info=None,
+        name="test",
+        level=logging.INFO,
+        pathname="",
+        lineno=0,
+        msg="hello %s",
+        args=("world",),
+        exc_info=None,
     )
     output = formatter.format(record)
     data = json.loads(output)
@@ -106,6 +112,7 @@ def test_json_formatter_produces_valid_json():
 def test_json_formatter_emits_request_id_and_extras():
     import json
     import logging
+
     from opspilot.api.middleware import JsonFormatter
     from opspilot.observability import request_id_var
 
@@ -113,8 +120,13 @@ def test_json_formatter_emits_request_id_and_extras():
     try:
         formatter = JsonFormatter()
         record = logging.LogRecord(
-            name="test", level=logging.INFO, pathname="", lineno=0,
-            msg="done", args=(), exc_info=None,
+            name="test",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg="done",
+            args=(),
+            exc_info=None,
         )
         record.session_id = "sess_01"  # contextual extra
         record.path = "/run"

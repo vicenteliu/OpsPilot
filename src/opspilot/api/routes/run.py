@@ -6,8 +6,9 @@ import asyncio
 import dataclasses
 import json
 import tempfile
+from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import Any, AsyncGenerator
+from typing import Any
 
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
@@ -95,7 +96,9 @@ def _resolve_run_plan(
 
     declared = declared_type(body.input)
     if declared is not None:
-        provider, pb = _apply_model_override(body, state, _select_playbook_for_type(declared, state))
+        provider, pb = _apply_model_override(
+            body, state, _select_playbook_for_type(declared, state)
+        )
         return provider, pb, None, False
 
     result = classify_work_item(
@@ -242,7 +245,9 @@ async def run_ticket_stream(body: ApiRunRequest, request: Request) -> StreamingR
                         "input_tokens": result.usage.input_tokens,
                         "output_tokens": result.usage.output_tokens,
                         "cost_usd": result.usage.cost_usd,
-                    } if result.usage else None,
+                    }
+                    if result.usage
+                    else None,
                     "classification": classification,
                     "needs_confirmation": False,
                 }

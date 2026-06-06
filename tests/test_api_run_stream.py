@@ -406,5 +406,3 @@ class TestRunStreamEventFormat:
         data = result_event["data"]
         for key in ("session_id", "artifact_id", "schema_valid", "result", "error", "usage"):
             assert key in data, f"missing key: {key}"
-
-

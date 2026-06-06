@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import shutil
+from datetime import UTC
 from pathlib import Path
 
 import yaml
@@ -61,7 +62,8 @@ def promote_variant(
 
     # Compute rollback window (30 days from now)
     from datetime import datetime, timedelta, timezone
-    window_until = (datetime.now(tz=timezone.utc) + timedelta(days=rollback_days)).strftime(
+
+    window_until = (datetime.now(tz=UTC) + timedelta(days=rollback_days)).strftime(
         "%Y-%m-%dT%H:%M:%SZ"
     )
 

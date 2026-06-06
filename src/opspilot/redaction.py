@@ -241,10 +241,7 @@ class Redactor:
         inside an existing ``[REDACTED:...]`` marker are ignored so a placeholder
         is never mistaken for residual PII.
         """
-        protected = [
-            (m.start(), m.end())
-            for m in re.finditer(r"\[REDACTED:[^\[\]]*\]", text)
-        ]
+        protected = [(m.start(), m.end()) for m in re.finditer(r"\[REDACTED:[^\[\]]*\]", text)]
         for rule in self.rules:
             for m in rule.pattern.finditer(text):
                 if m.group(0) in rule.exceptions:

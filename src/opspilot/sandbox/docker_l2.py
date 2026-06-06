@@ -35,7 +35,9 @@ def _build_docker_args(request: ActionRequest, image: str) -> list[str]:
     disk = p.resource.disk_tmpfs
 
     args: list[str] = [
-        "docker", "run", "--rm",
+        "docker",
+        "run",
+        "--rm",
         "--read-only",
         f"--tmpfs={workdir}:size={disk},uid=1000",
         "--cap-drop=ALL",
@@ -63,7 +65,9 @@ def dry_run_preview(request: ActionRequest, image: str = _DEFAULT_IMAGE) -> DryR
     args = _build_docker_args(request, image)
     # Redact absolute seccomp path in the preview.
     safe_args = [
-        "--security-opt=seccomp=<profile>" if "seccomp=" in a and a != "--security-opt=no-new-privileges" else a
+        "--security-opt=seccomp=<profile>"
+        if "seccomp=" in a and a != "--security-opt=no-new-privileges"
+        else a
         for a in args
     ]
     preview = "[dry-run] " + " ".join(safe_args[:12])
@@ -92,12 +96,16 @@ def run_l2(request: ActionRequest, image: str = _DEFAULT_IMAGE) -> ApplyResult:
     except subprocess.TimeoutExpired:
         duration_ms = int((time.monotonic() - start) * 1000)
         return ApplyResult(
-            exit_code=-1, stdout="", stderr="[sandbox] timeout expired",
-            duration_ms=duration_ms, timeout_killed=True,
+            exit_code=-1,
+            stdout="",
+            stderr="[sandbox] timeout expired",
+            duration_ms=duration_ms,
+            timeout_killed=True,
         )
     except FileNotFoundError:
         return ApplyResult(
-            exit_code=-1, stdout="",
+            exit_code=-1,
+            stdout="",
             stderr="[sandbox] docker not found — install Docker to use apply mode",
             duration_ms=0,
         )
