@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opspilot.dev/schemas/incident-summary-v1.schema.json",
+  "title": "Incident Summary v1",
+  "description": "Structured artifact emitted by pb_ticket_summary_* incident playbooks under the Work item model. Evolves ticket_summary_v1 (kept as a deprecated alias for one version): renames ticket_ref -> work_item_ref, adds work_item_type, and upgrades next_actions[] into first-class tasks[]. All fields are advisory — the external system of record owns final values (ADR-0006).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "work_item_ref",
+    "work_item_type",
+    "summary",
+    "symptoms",
+    "scope",
+    "tried_steps",
+    "missing_fields",
+    "tasks",
+    "severity_suggested",
+    "citations"
+  ],
+  "properties": {
+    "_comment": {
+      "type": "string",
+      "description": "Optional human note; ignored by validators."
+    },
+    "schema_version": {
+      "const": "incident_summary_v1"
+    },
+    "work_item_ref": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Work item external identifier (already redacted)."
+    },
+    "work_item_type": {
+      "const": "incident"
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "description": "One-paragraph synthesis suitable for a service-desk lead."
+    },
+    "symptoms": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1
+    },
+    "scope": {
+      "type": "string",
+      "enum": ["single_user", "multiple_users", "site_wide", "unknown"]
+    },
+    "tried_steps": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "missing_fields": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "tasks": {
+      "type": "array",
+      "minItems": 3,
+      "description": "Decomposition of the incident into assignable, tiered tasks (advisory).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["ref", "action", "rationale", "tier"],
+        "properties": {
+          "ref": {
+            "type": "string",
+            "pattern": "^task-[0-9]+$",
+            "description": "Local task handle, e.g. 'task-1'."
+          },
+          "action": { "type": "string", "minLength": 1 },
+          "rationale": { "type": "string", "minLength": 1 },
+          "tier": {
+            "type": "string",
+            "enum": ["L1", "L2", "L3"],
+            "description": "Suggested support line — not an assignment."
+          },
+          "citations": {
+            "type": "array",
+            "items": { "type": "string" },
+            "default": []
+          }
+        }
+      }
+    },
+    "severity_suggested": {
+      "type": "string",
+      "pattern": "^P[0-4]$"
+    },
+    "escalation_hint": {
+      "type": ["string", "null"],
+      "description": "Optional incident-level routing note (e.g. 'L2 网络组'). Per-task routing lives in tasks[].tier."
+    },
+    "citations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "chunk_id", "document_id"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^kb-[0-9]+$",
+            "description": "Local citation handle, e.g. 'kb-1'."
+          },
+          "chunk_id": {
+            "type": "string",
+            "pattern": "^chk_[a-f0-9]{8}$"
+          },
+          "document_id": {
+            "type": "string",
+            "pattern": "^doc_[a-f0-9]{8}$"
+          },
+          "source_path": { "type": "string" },
+          "line_start": { "type": "integer", "minimum": 1 },
+          "line_end": { "type": "integer", "minimum": 1 },
+          "anchor": { "type": ["string", "null"] },
+          "heading_path": {
+            "type": "array",
+            "items": { "type": "string" },
+            "default": []
+          }
+        }
+      }
+    }
+  }
+}

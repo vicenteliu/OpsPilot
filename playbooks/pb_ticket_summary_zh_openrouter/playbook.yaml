@@ -16,7 +16,7 @@ description: |
 system_prompt: "prompt.md"
 
 # Output artifact schema (registered in opspilot.schemas registry).
-output_schema: "ticket_summary_v1"
+output_schema: "incident_summary_v1"
 
 # Tools the orchestrator exposes to the LLM.
 tools:

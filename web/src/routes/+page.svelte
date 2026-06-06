@@ -5,7 +5,7 @@
     getKBStats, listKBDocs, searchKB, wikiIngest, wikiQueryToPage, wikiLint, wikiPromote, listMCPServers,
     listConflicts, resolveConflict, correctChunk, listCorrections, generateVendorDocStream,
     listWikiPages, listVendorDocs, getWikiPage, getVendorDoc, chatStream,
-    type RunResponse, type TicketSummary, type NextAction, type SessionSummary, type ModelOption, type SkillLineage,
+    type RunResponse, type TicketSummary, type NextAction, type Task, type SessionSummary, type ModelOption, type SkillLineage,
     type KBDoc, type KBHit, type KBConflict, type KBStats, type KBCorrection, type WikiLintIssue, type MCPServer,
     type VendorDoc, type VendorDocSection, type WikiPageSummary, type VendorDocSummary, type WikiPageDetail,
     type ChatMessage,
@@ -441,6 +441,25 @@
     return actions.map((a, i) => `${i + 1}. **${a.action}**\n   ${a.rationale}`).join('\n\n');
   }
 
+  // incident_summary_v1 emits structured tasks[]; fall back to legacy
+  // next_actions[] (no tier) for old session-history artifacts.
+  function summaryTasks(s: TicketSummary): Task[] {
+    if (s.tasks && s.tasks.length) return s.tasks;
+    return (s.next_actions ?? []).map((a, i) => ({
+      ref: `task-${i + 1}`,
+      action: a.action,
+      rationale: a.rationale,
+      tier: undefined as unknown as Task['tier'],
+      citations: a.citations,
+    }));
+  }
+
+  function formatTasks(tasks: Task[]): string {
+    return tasks
+      .map((t, i) => `${i + 1}. ${t.tier ? `[${t.tier}] ` : ''}**${t.action}**\n   ${t.rationale}`)
+      .join('\n\n');
+  }
+
   // --- History Handlers ---
   async function refreshHistory() {
     historyLoading = true;
@@ -846,14 +865,15 @@
           </div>
           <div class="card">
             <div class="card-header">
-              <h3>Next Actions</h3>
-              <button class="btn-copy" onclick={() => copyText(formatNextActions(s.next_actions ?? []))}>Copy</button>
+              <h3>Tasks</h3>
+              <button class="btn-copy" onclick={() => copyText(formatTasks(summaryTasks(s)))}>Copy</button>
             </div>
             <ol>
-              {#each s.next_actions as action}
+              {#each summaryTasks(s) as task}
                 <li>
-                  <strong>{action.action}</strong>
-                  <p class="rationale">{action.rationale}</p>
+                  {#if task.tier}<span class="tier-badge tier-{task.tier}">{task.tier}</span>{/if}
+                  <strong>{task.action}</strong>
+                  <p class="rationale">{task.rationale}</p>
                 </li>
               {/each}
             </ol>
@@ -2048,6 +2068,21 @@
     color: var(--warn-text);
     border: 1px solid var(--warn-border);
   }
+
+  .tier-badge {
+    display: inline-block;
+    margin-right: 0.4rem;
+    padding: 0.05rem 0.45rem;
+    border-radius: 9999px;
+    font-weight: 700;
+    font-size: 0.75rem;
+    vertical-align: middle;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+  }
+  .tier-badge.tier-L1 { background: #e6f4ea; color: #1e7e34; border-color: #b7dfc2; }
+  .tier-badge.tier-L2 { background: #fff4e5; color: #b26a00; border-color: #f0d2a0; }
+  .tier-badge.tier-L3 { background: #fde8e8; color: #b02a37; border-color: #f2c0c4; }
 
   .escalation { margin-top: 0.5rem; font-size: 0.9rem; color: var(--warn-text2); }
 

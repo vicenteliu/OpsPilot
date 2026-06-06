@@ -154,10 +154,11 @@ def redactor() -> Redactor:
 
 
 def _good_summary_json() -> dict[str, Any]:
-    """Hand-crafted summary that satisfies ticket_summary_v1."""
+    """Hand-crafted summary that satisfies incident_summary_v1."""
     return {
-        "schema_version": "ticket_summary_v1",
-        "ticket_ref": "T-XXXX",
+        "schema_version": "incident_summary_v1",
+        "work_item_ref": "T-XXXX",
+        "work_item_type": "incident",
         "summary": (
             "上午 10:00 起多名用户 VPN 认证失败；终端/网络已交叉验证可排除；"
             "建议优先排查 VPN 网关与认证后端。"
@@ -166,20 +167,26 @@ def _good_summary_json() -> dict[str, Any]:
         "scope": "multiple_users",
         "tried_steps": ["重启客户端", "更换网络（4G 热点）"],
         "missing_fields": ["VPN 客户端版本", "受影响账号"],
-        "next_actions": [
+        "tasks": [
             {
+                "ref": "task-1",
                 "action": "确认 VPN 网关 / 认证服务（RADIUS / AD LDAP）健康",
                 "rationale": "多人同时认证失败基本指向服务端鉴权链路",
+                "tier": "L2",
                 "citations": ["kb-1"],
             },
             {
+                "ref": "task-2",
                 "action": "向用户索取客户端版本与受影响账号清单",
                 "rationale": "缺失字段会阻碍 L2 复现",
+                "tier": "L1",
                 "citations": [],
             },
             {
+                "ref": "task-3",
                 "action": "检查 10:00 前后是否有变更窗口（DNS / 证书 / 防火墙）",
                 "rationale": "证书过期或时间不同步会引发认证失败",
+                "tier": "L2",
                 "citations": ["kb-1"],
             },
         ],
@@ -269,7 +276,7 @@ def test_exit_criterion_run_produces_valid_artifact(
     assert result.schema_valid is True
     assert result.error is None
     assert result.artifact_id is not None and result.artifact_id.startswith("art_")
-    assert result.summary["schema_version"] == "ticket_summary_v1"
+    assert result.summary["schema_version"] == "incident_summary_v1"
     assert result.summary["scope"] == "multiple_users"
 
     # Two chat rounds expected: tool_call + final.
@@ -426,7 +433,7 @@ def test_run_schema_check_failure_aborts(
 ) -> None:
     """A response that's valid JSON but missing required fields should abort."""
     sqlite, lance = populated_kb
-    bad = {"schema_version": "ticket_summary_v1", "ticket_ref": "T-X"}  # too thin
+    bad = {"schema_version": "incident_summary_v1", "work_item_ref": "T-X"}  # too thin
     provider = _ScriptedProvider(
         [
             ChatResponse(
@@ -557,7 +564,7 @@ def test_run_unknown_tool_records_failed_result(
 def test_load_playbook_reads_yaml_and_prompt() -> None:
     pb = load_playbook(PLAYBOOK_DIR)
     assert pb.id == "pb_ticket_summary_zh"
-    assert pb.output_schema == "ticket_summary_v1"
+    assert pb.output_schema == "incident_summary_v1"
     assert pb.tools[0].name == "kb_search"
     assert "OpsPilot" in pb.system_prompt
 
@@ -739,10 +746,11 @@ def test_parse_summary_json_balances_dropped_outer_brace() -> None:
 
     # Mirror the actual broken shape: well-formed JSON minus the final `}`.
     truncated = (
-        '{"schema_version":"ticket_summary_v1","ticket_ref":"T-1",'
+        '{"schema_version":"incident_summary_v1","work_item_ref":"T-1",'
+        '"work_item_type":"incident",'
         '"summary":"x","symptoms":["a"],"scope":"single_user",'
         '"tried_steps":[],"missing_fields":[],'
-        '"next_actions":[{"action":"a","rationale":"r","citations":[]}],'
+        '"tasks":[{"ref":"task-1","action":"a","rationale":"r","tier":"L1","citations":[]}],'
         '"severity_suggested":"P3",'
         '"citations":[{"id":"kb-1","chunk_id":"chk_x","document_id":"doc_x",'
         '"source_path":"x","line_start":1,"line_end":2}]'
@@ -750,8 +758,8 @@ def test_parse_summary_json_balances_dropped_outer_brace() -> None:
 
     parsed, err = _parse_summary_json(truncated)
     assert err is None
-    assert parsed["schema_version"] == "ticket_summary_v1"
-    assert parsed["ticket_ref"] == "T-1"
+    assert parsed["schema_version"] == "incident_summary_v1"
+    assert parsed["work_item_ref"] == "T-1"
 
 
 def test_parse_summary_json_does_not_pad_grossly_broken_output() -> None:

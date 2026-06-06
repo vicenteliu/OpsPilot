@@ -86,7 +86,8 @@ def _summary_text(artifact: dict[str, Any]) -> str:
     parts.extend(str(s) for s in artifact.get("symptoms") or [])
     parts.extend(str(s) for s in artifact.get("tried_steps") or [])
     parts.extend(str(s) for s in artifact.get("missing_fields") or [])
-    for na in artifact.get("next_actions") or []:
+    # incident_summary_v1 emits tasks[]; fall back to legacy next_actions[].
+    for na in artifact.get("tasks") or artifact.get("next_actions") or []:
         parts.append(str(na.get("action", "")))
         parts.append(str(na.get("rationale", "")))
     if artifact.get("escalation_hint"):

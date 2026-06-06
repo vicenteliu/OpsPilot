@@ -37,7 +37,74 @@ REQUIRED_SCHEMAS = (
     "wiki-link",
     "lint-issue",
     "provider-config",
+    "incident_summary_v1",
 )
+
+
+def _valid_incident() -> dict:
+    """A minimal artifact that satisfies incident_summary_v1."""
+    return {
+        "schema_version": "incident_summary_v1",
+        "work_item_ref": "INC-001",
+        "work_item_type": "incident",
+        "summary": "VPN unreachable site-wide since 10:00.",
+        "symptoms": ["users cannot connect", "gateway unresponsive"],
+        "scope": "site_wide",
+        "tried_steps": ["restarted client"],
+        "missing_fields": ["affected user list"],
+        "tasks": [
+            {"ref": "task-1", "action": "Restart the VPN gateway",
+             "rationale": "Gateway unresponsive per runbook", "tier": "L2",
+             "citations": ["kb-1"]},
+            {"ref": "task-2", "action": "Notify affected users",
+             "rationale": "Site-wide impact", "tier": "L1"},
+            {"ref": "task-3", "action": "Open a vendor case",
+             "rationale": "May be upstream", "tier": "L3"},
+        ],
+        "severity_suggested": "P1",
+        "citations": [
+            {"id": "kb-1", "chunk_id": "chk_abcd1234", "document_id": "doc_abcd1234"},
+        ],
+    }
+
+
+class TestIncidentSummarySchema:
+    def test_valid_instance_passes(self, repo_root: Path) -> None:
+        validate("incident_summary_v1", _valid_incident(), repo_root=repo_root)
+
+    def test_missing_work_item_type_fails(self, repo_root: Path) -> None:
+        bad = _valid_incident()
+        del bad["work_item_type"]
+        with pytest.raises(SchemaError):
+            validate("incident_summary_v1", bad, repo_root=repo_root)
+
+    def test_bad_tier_fails(self, repo_root: Path) -> None:
+        bad = _valid_incident()
+        bad["tasks"][0]["tier"] = "L4"
+        with pytest.raises(SchemaError):
+            validate("incident_summary_v1", bad, repo_root=repo_root)
+
+    def test_bad_task_ref_fails(self, repo_root: Path) -> None:
+        bad = _valid_incident()
+        bad["tasks"][0]["ref"] = "t1"
+        with pytest.raises(SchemaError):
+            validate("incident_summary_v1", bad, repo_root=repo_root)
+
+    def test_fewer_than_three_tasks_fails(self, repo_root: Path) -> None:
+        bad = _valid_incident()
+        bad["tasks"] = bad["tasks"][:2]
+        with pytest.raises(SchemaError):
+            validate("incident_summary_v1", bad, repo_root=repo_root)
+
+    def test_bad_severity_fails(self, repo_root: Path) -> None:
+        bad = _valid_incident()
+        bad["severity_suggested"] = "P5"
+        with pytest.raises(SchemaError):
+            validate("incident_summary_v1", bad, repo_root=repo_root)
+
+    def test_ticket_summary_v1_still_registered_as_alias(self, repo_root: Path) -> None:
+        # Deprecated alias must remain valid for one version.
+        assert "ticket_summary_v1" in registry(repo_root)
 
 
 class TestRegistry:
