@@ -386,6 +386,12 @@ class TestFactory:
             if isinstance(p, OllamaProvider):
                 p.close()
 
+    @pytest.mark.parametrize("provider_id", ["gemini", "grok"])
+    def test_openai_compatible_providers_infer_openai_kind(self, provider_id: str) -> None:
+        p = make_provider(provider_id, api_key="test-key")
+        assert p.kind == "openai"
+        assert p.provider_id == provider_id
+
 
 # ──────────────────────────────────────────────────────────────────────────
 #  Integration tests (require a running Ollama)

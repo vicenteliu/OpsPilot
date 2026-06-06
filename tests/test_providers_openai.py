@@ -190,6 +190,43 @@ class TestMissingApiKeyRaises:
         with pytest.raises(ProviderError, match="OPENROUTER_API_KEY"):
             OpenAIProvider(provider_id="openrouter", api_key=None)
 
+    def test_gemini_missing_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+
+        with pytest.raises(ProviderError, match="GEMINI_API_KEY"):
+            OpenAIProvider(provider_id="gemini", api_key=None)
+
+    def test_grok_missing_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("GROK_API_KEY", raising=False)
+
+        with pytest.raises(ProviderError, match="GROK_API_KEY"):
+            OpenAIProvider(provider_id="grok", api_key=None)
+
+
+# ---------------------------------------------------------------------------
+# Test: base_url resolves per provider_id
+# ---------------------------------------------------------------------------
+
+
+class TestBaseUrlResolution:
+    @pytest.mark.parametrize(
+        "provider_id, expected_base_url",
+        [
+            ("openai", "https://api.openai.com/v1"),
+            ("openrouter", "https://openrouter.ai/api/v1"),
+            ("gemini", "https://generativelanguage.googleapis.com/v1beta/openai"),
+            ("grok", "https://api.x.ai/v1"),
+        ],
+    )
+    def test_base_url_resolved_per_provider(
+        self, provider_id: str, expected_base_url: str
+    ) -> None:
+        with patch("opspilot.providers.openai_compat.OpenAI") as mock_cls:
+            OpenAIProvider(provider_id=provider_id, api_key="test-key")
+
+        _, kwargs = mock_cls.call_args
+        assert kwargs["base_url"] == expected_base_url
+
 
 # ---------------------------------------------------------------------------
 # Test: embed raises ProviderError
