@@ -1,7 +1,8 @@
 .PHONY: install install-dev install-ui dev ensure-venv test test-cov test-ollama lint format \
         typecheck validate serve build-ui lint-ui ci-ui ci \
         ollama-up ollama-down ollama-pull ollama-logs harness golden golden-kb docker-build \
-        rust-dev rust-build bench clean help golden-openrouter golden-gemini
+        rust-dev rust-build bench clean help golden-openrouter golden-gemini \
+        golden-ollama golden-openai golden-grok harness-matrix package-macos
 
 # Use python3.12 explicitly; on macOS this resolves to brew's installation.
 PYTHON ?= python3.12
@@ -172,6 +173,13 @@ harness-matrix: golden golden-gemini golden-openrouter golden-ollama golden-open
 docker-build: ## Build the multi-stage docker image (opspilot:latest).
 	docker build -t opspilot:latest .
 	docker run --rm opspilot:latest opspilot --version
+
+package-macos: ## Build a wheel + install opspilot as an isolated uv tool (ADR-0008; needs uv).
+	@command -v uv >/dev/null || { echo "uv not found — see https://docs.astral.sh/uv/"; exit 1; }
+	rm -f dist/opspilot-*.whl
+	uv build --wheel
+	uv tool install --force "$$(ls -t dist/opspilot-*.whl | head -1)"
+	@echo "✓ opspilot installed via uv tool. Ensure $$(uv tool dir --bin) is on PATH, then: opspilot --version"
 
 # ── PR-16/18: Rust extension build chain ───────────────────────────────
 rust-dev: ensure-venv ## Build all Rust extensions (debug) and install into venv.
