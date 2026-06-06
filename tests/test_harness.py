@@ -172,10 +172,11 @@ def redactor() -> Redactor:
 
 
 def _good_summary() -> dict[str, Any]:
-    """Hand-crafted artifact matching ticket_summary_v1 + golden assertions."""
+    """Hand-crafted artifact matching incident_summary_v1 + golden assertions."""
     return {
-        "schema_version": "ticket_summary_v1",
-        "ticket_ref": "T-XXXX",
+        "schema_version": "incident_summary_v1",
+        "work_item_ref": "T-XXXX",
+        "work_item_type": "incident",
         "summary": (
             "上午 10:00 起多名用户 VPN 认证失败 (authentication failed)；"
             "建议优先排查 VPN 网关与认证后端。"
@@ -184,20 +185,26 @@ def _good_summary() -> dict[str, Any]:
         "scope": "multiple_users",
         "tried_steps": ["重启客户端", "更换网络（4G 热点）"],
         "missing_fields": ["VPN 客户端版本", "受影响账号"],
-        "next_actions": [
+        "tasks": [
             {
+                "ref": "task-1",
                 "action": "确认 VPN 网关 / 认证服务（RADIUS / AD LDAP）健康",
                 "rationale": "多人同时认证失败基本指向服务端鉴权链路",
+                "tier": "L2",
                 "citations": ["kb-1"],
             },
             {
+                "ref": "task-2",
                 "action": "向用户索取客户端版本与受影响账号清单",
                 "rationale": "缺失字段会阻碍 L2 复现",
+                "tier": "L1",
                 "citations": [],
             },
             {
+                "ref": "task-3",
                 "action": "检查 10:00 前后是否有变更窗口",
                 "rationale": "证书过期或时间不同步会引发认证失败",
+                "tier": "L2",
                 "citations": ["kb-1"],
             },
         ],

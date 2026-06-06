@@ -17,18 +17,31 @@ export interface RunResponse {
   usage: TokenUsage | null;
 }
 
+// incident_summary_v1 artifact. Legacy ticket_summary_v1 fields
+// (ticket_ref, next_actions) are kept optional for old session history.
 export interface TicketSummary {
   schema_version: string;
-  ticket_ref: string;
+  work_item_ref?: string;
+  work_item_type?: string;
+  ticket_ref?: string;
   summary: string;
   symptoms: string[];
   scope: string;
   tried_steps: string[];
   missing_fields: string[];
-  next_actions: NextAction[];
+  tasks?: Task[];
+  next_actions?: NextAction[];
   severity_suggested: string;
   escalation_hint?: string;
   citations: Citation[];
+}
+
+export interface Task {
+  ref: string;
+  action: string;
+  rationale: string;
+  tier: 'L1' | 'L2' | 'L3';
+  citations?: string[];
 }
 
 export interface NextAction {

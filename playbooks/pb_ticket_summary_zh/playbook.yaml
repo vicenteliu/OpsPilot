@@ -1,14 +1,18 @@
 # Playbook: pb_ticket_summary_zh
-# 中文工单摘要；产物 schema = ticket_summary_v1
+# 中文 Incident 摘要；产物 schema = incident_summary_v1
 # 路径约定：playbooks/<id>/{playbook.yaml, prompt.md}
 
 id: "pb_ticket_summary_zh"
-version: "1.4.0"
+version: "2.0.0"
 
 description: |
-  Given a redacted IT ticket (JSON), produce a structured summary
-  conforming to ticket_summary_v1, with citations traceable to KB
+  Given a redacted IT incident (JSON), produce a structured summary
+  conforming to incident_summary_v1, with citations traceable to KB
   chunks via kb.search.
+
+  v2.0.0: Work item model — output_schema migrates ticket_summary_v1
+  -> incident_summary_v1 (work_item_ref, work_item_type, and
+  next_actions[] upgraded to structured, tiered tasks[]).
 
   v1.4.0 (PR-8.5): retrieval.mode=prefetch — orchestrator runs
   kb_search once before the chat loop and folds the hits into the
@@ -20,7 +24,7 @@ description: |
 system_prompt: "prompt.md"
 
 # Output artifact schema (registered in opspilot.schemas registry).
-output_schema: "ticket_summary_v1"
+output_schema: "incident_summary_v1"
 
 # Tools the orchestrator exposes to the LLM.
 # `kb_search` = retrieval over the configured KB; results returned as
