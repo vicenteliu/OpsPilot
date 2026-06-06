@@ -1661,7 +1661,7 @@ def mcp_probe(
     ),
 ) -> None:
     """Probe a single MCP server — connect, list tools, and report health."""
-    from .mcp import McpRegistry, load_mcp_config
+    from .mcp import load_mcp_config
     from .mcp.registry import McpServerClient
 
     cfg = load_mcp_config(config)

@@ -20,14 +20,14 @@ from opspilot.sandbox.types import (
 
 
 def _req(**kwargs) -> ActionRequest:
-    defaults: dict = dict(
-        id="act_01TEST000000000000000000000",
-        session_id="sess_01TEST000000000000000000000",
-        proposed_by="user:test",
-        created_at="2026-05-05T00:00:00Z",
-        type="shell",
-        payload={"command": "uptime", "shell": "/bin/sh"},
-    )
+    defaults: dict = {
+        "id": "act_01TEST000000000000000000000",
+        "session_id": "sess_01TEST000000000000000000000",
+        "proposed_by": "user:test",
+        "created_at": "2026-05-05T00:00:00Z",
+        "type": "shell",
+        "payload": {"command": "uptime", "shell": "/bin/sh"},
+    }
     defaults.update(kwargs)
     return ActionRequest(**defaults)
 

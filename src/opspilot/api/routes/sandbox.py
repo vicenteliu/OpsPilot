@@ -26,8 +26,7 @@ async def sandbox_dry_run(body: SandboxRequest, request: Request) -> dict[str, A
 
     def _run() -> Any:
         req = ActionRequest.model_validate(body.action)
-        result = SandboxEngine().dry_run(req)
-        return result
+        return SandboxEngine().dry_run(req)
 
     result = await loop.run_in_executor(None, _run)
 

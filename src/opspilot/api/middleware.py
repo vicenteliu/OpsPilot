@@ -11,7 +11,7 @@ import json
 import logging
 import time
 import uuid
-from datetime import UTC, datetime, timezone
+from datetime import UTC, datetime
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request

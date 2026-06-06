@@ -61,7 +61,7 @@ def promote_variant(
     shutil.copy2(src_skill, promoted_dir / "SKILL.md")
 
     # Compute rollback window (30 days from now)
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     window_until = (datetime.now(tz=UTC) + timedelta(days=rollback_days)).strftime(
         "%Y-%m-%dT%H:%M:%SZ"

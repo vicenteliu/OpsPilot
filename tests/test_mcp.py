@@ -7,14 +7,14 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
 from opspilot.errors import ConfigError
 from opspilot.mcp.config_loader import load_mcp_config
 from opspilot.mcp.registry import McpRegistry, McpServerClient
-from opspilot.mcp.types import McpConfig, McpServerConfig
+from opspilot.mcp.types import McpServerConfig
 
 EXAMPLE_CONFIG = Path(__file__).parents[1] / "examples" / "mcp_config" / "mcp-config.yaml"
 
@@ -170,16 +170,16 @@ def test_placeholder_with_plain_default_allowed(tmp_path: Path):
 
 
 def _make_server_cfg(**kwargs: Any) -> McpServerConfig:
-    defaults = dict(
-        id="test",
-        name="Test",
-        transport="stdio",
-        command="echo",
-        args=[],
-        tools_prefix="mcp__test__",
-        enabled=True,
-        trust="trusted",
-    )
+    defaults = {
+        "id": "test",
+        "name": "Test",
+        "transport": "stdio",
+        "command": "echo",
+        "args": [],
+        "tools_prefix": "mcp__test__",
+        "enabled": True,
+        "trust": "trusted",
+    }
     defaults.update(kwargs)
     return McpServerConfig(**defaults)
 
@@ -263,7 +263,6 @@ def test_registry_loads_all_enabled():
 
 
 def test_http_transport_posts_jsonrpc(respx_mock=None):
-    import json
     import unittest.mock as mock
 
     from opspilot.mcp.transport import HttpTransport

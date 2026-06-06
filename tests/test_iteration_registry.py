@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 import yaml
 
 from opspilot.iteration.registry import (
@@ -19,16 +18,16 @@ from opspilot.iteration.types import LineageEntry
 
 
 def _entry(**kwargs) -> LineageEntry:
-    defaults = dict(
-        version="1.1.0",
-        parent="1.0.0",
-        iteration="iter_001",
-        promoted_at="2026-05-05T00:00:00Z",
-        promoted_by="ci",
-        summary="improved accuracy",
-        promoted_variant_id="v_winner",
-        losing_variant_ids=["v_loser"],
-    )
+    defaults = {
+        "version": "1.1.0",
+        "parent": "1.0.0",
+        "iteration": "iter_001",
+        "promoted_at": "2026-05-05T00:00:00Z",
+        "promoted_by": "ci",
+        "summary": "improved accuracy",
+        "promoted_variant_id": "v_winner",
+        "losing_variant_ids": ["v_loser"],
+    }
     defaults.update(kwargs)
     return LineageEntry(**defaults)
 

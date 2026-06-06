@@ -86,7 +86,9 @@ select = [
 ignore = ["E501"] # line-too-long handled by formatter
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["B011"] # allow plain assert in tests
+# B011: plain assert; SIM117: stacked `with patch(...)` mocks read better nested;
+# N806: tests use UPPERCASE local constants (DIM, MODEL) by convention.
+"tests/**" = ["B011", "SIM117", "N806"]
 
 [tool.mypy]
 python_version = "3.12"
