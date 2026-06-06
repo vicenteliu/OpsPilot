@@ -63,6 +63,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     playbook_id = os.environ.get("OPSPILOT_DEFAULT_PLAYBOOK", "pb_ticket_summary_zh")
     playbook = load_playbook(playbooks_base / playbook_id)
     vendor_doc_pb = load_playbook(playbooks_base / "pb_vendor_doc_en")
+    request_fulfillment_pb = load_playbook(playbooks_base / "pb_request_fulfillment_zh")
 
     # Build the active_model_ref string returned by /api/config.
     active_model_ref = (
@@ -117,6 +118,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.cfg = cfg
     app.state.playbook = playbook
     app.state.vendor_doc_pb = vendor_doc_pb
+    app.state.request_fulfillment_pb = request_fulfillment_pb
     app.state.vendor_doc_provider = vendor_doc_provider
     app.state.active_model_ref = active_model_ref
     app.state.sqlite = sqlite

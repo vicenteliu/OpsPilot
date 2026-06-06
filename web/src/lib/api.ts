@@ -25,14 +25,17 @@ export interface TicketSummary {
   work_item_type?: string;
   ticket_ref?: string;
   summary: string;
-  symptoms: string[];
-  scope: string;
-  tried_steps: string[];
+  symptoms?: string[];
+  scope?: string;
+  tried_steps?: string[];
   missing_fields: string[];
   tasks?: Task[];
   next_actions?: NextAction[];
-  severity_suggested: string;
+  severity_suggested?: string;
   escalation_hint?: string;
+  // service_request (request_fulfillment_v1) extension
+  requested_item?: string;
+  approval_needed?: boolean;
   citations: Citation[];
 }
 

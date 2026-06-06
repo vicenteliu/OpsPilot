@@ -295,6 +295,92 @@ def test_exit_criterion_run_produces_valid_artifact(
     assert session_manager.load(result.session_id).status == "archived"
 
 
+# ── Service Request fulfillment (#5) ─────────────────────────────────
+
+
+REQUEST_PLAYBOOK_DIR = REPO_ROOT / "playbooks" / "pb_request_fulfillment_zh"
+
+
+def _good_request_json() -> dict[str, Any]:
+    """Hand-crafted artifact that satisfies request_fulfillment_v1."""
+    return {
+        "schema_version": "request_fulfillment_v1",
+        "work_item_ref": "REQ-1001",
+        "work_item_type": "service_request",
+        "summary": "新员工申请 VPN 权限，需经理审批后由一线开通。",
+        "requested_item": "新员工 VPN 权限开通",
+        "approval_needed": True,
+        "missing_fields": ["经理审批人"],
+        "tasks": [
+            {
+                "ref": "task-1",
+                "action": "确认经理审批",
+                "rationale": "特权资源需签核",
+                "tier": "L2",
+                "citations": ["kb-1"],
+            },
+            {
+                "ref": "task-2",
+                "action": "在 VPN 网关创建账号并分组",
+                "rationale": "按开通 SOP 操作",
+                "tier": "L1",
+                "citations": ["kb-1"],
+            },
+        ],
+        "citations": [
+            {
+                "id": "kb-1",
+                "chunk_id": "chk_0cf89826",
+                "document_id": "doc_88a277cf",
+                "source_path": "examples/scn_ticket_summary_zh/kb/sop_vpn_zh.md",
+                "line_start": 37,
+                "line_end": 46,
+            }
+        ],
+    }
+
+
+def test_request_fulfillment_run_produces_valid_artifact(
+    session_manager: SessionManager,
+    populated_kb: tuple[SqliteStore, LanceStore],
+    redactor: Redactor,
+) -> None:
+    sqlite, lance = populated_kb
+    provider = _ScriptedProvider(
+        [
+            ChatResponse(
+                content=json.dumps(_good_request_json(), ensure_ascii=False),
+                finish_reason="stop",
+                tool_calls=None,
+                usage=Usage(input_tokens=300, output_tokens=200, cost_usd=0.0),
+            )
+        ]
+    )
+    pb = load_playbook(REQUEST_PLAYBOOK_DIR)
+    pb = dataclasses.replace(
+        pb, retrieval=PlaybookRetrieval(mode="tool", prefetch=pb.retrieval.prefetch)
+    )
+    req = RunRequest(playbook=pb, input_path=SAMPLE_TICKET, owner="vicente@example.com")
+
+    result = run_ticket_summary(
+        req,
+        session_manager=session_manager,
+        provider=provider,
+        redactor=redactor,
+        embed_fn=_topic_embed,
+        sqlite_store=sqlite,
+        lance_store=lance,
+    )
+
+    assert result.schema_valid is True
+    assert result.error is None
+    assert result.summary["schema_version"] == "request_fulfillment_v1"
+    assert result.summary["work_item_type"] == "service_request"
+    assert result.summary["approval_needed"] is True
+    assert len(result.summary["tasks"]) == 2
+    assert result.summary["tasks"][0]["tier"] == "L2"
+
+
 def test_run_writes_expected_trace_event_types(
     session_manager: SessionManager,
     populated_kb: tuple[SqliteStore, LanceStore],
