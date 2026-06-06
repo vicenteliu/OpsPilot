@@ -79,6 +79,14 @@ extra_models:
       temperature: 0.2
       top_p: 0.9
       max_tokens: 3000
+  - provider_id: "ollama-local"
+    kind: "ollama"
+    name: "gemma4:12b-mlx"
+    version: "2026-06"
+    params:
+      temperature: 0.2
+      top_p: 0.9
+      max_tokens: 4096
 
 # Loop bounds.
 limits:
