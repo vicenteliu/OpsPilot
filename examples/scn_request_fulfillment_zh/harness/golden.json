@@ -1,0 +1,41 @@
+{
+  "_comment": "Harness golden for the service-request scenario.",
+  "id": "gold_req2001",
+  "fixture_id": "fix_req2001",
+  "scenario_id": "scn_request_fulfillment_zh",
+  "version": "1.0.0",
+  "expected_structured": {
+    "schema_version": "request_fulfillment_v1",
+    "work_item_ref": "REQ-2001",
+    "work_item_type": "service_request",
+    "requested_item": "新员工 VPN 访问权限开通",
+    "approval_needed": true,
+    "tasks_min_count": 1,
+    "must_have_citation_to_chunk": "chk_0cf89826"
+  },
+  "must_contain": [
+    "VPN",
+    "审批"
+  ],
+  "must_not_contain": [
+    "[REDACTED:"
+  ],
+  "schema_check": {
+    "name": "request_fulfillment_v1",
+    "rules": {
+      "required_keys": [
+        "schema_version",
+        "work_item_ref",
+        "work_item_type",
+        "summary",
+        "requested_item",
+        "approval_needed",
+        "tasks",
+        "missing_fields",
+        "citations"
+      ],
+      "tasks_min_items": 1,
+      "citations_min_items": 1
+    }
+  }
+}

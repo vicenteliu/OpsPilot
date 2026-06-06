@@ -1,0 +1,50 @@
+{
+  "_comment": "Sample request_fulfillment_v1 artifact for the service-request scenario.",
+  "schema_version": "request_fulfillment_v1",
+  "work_item_ref": "REQ-2001",
+  "work_item_type": "service_request",
+  "summary": "研发组新员工申请 VPN 权限；属标准开通请求，需经理审批后由一线按 SOP 开通。",
+  "requested_item": "新员工 VPN 访问权限开通",
+  "approval_needed": true,
+  "missing_fields": [
+    "员工工号",
+    "经理审批人"
+  ],
+  "tasks": [
+    {
+      "ref": "task-1",
+      "action": "确认经理审批与员工工号",
+      "rationale": "特权资源开通前需签核，且缺工号无法建账",
+      "tier": "L2",
+      "citations": [
+        "kb-1"
+      ]
+    },
+    {
+      "ref": "task-2",
+      "action": "在 VPN 网关创建账号并加入研发访问组",
+      "rationale": "按 VPN 开通 SOP 分配最小必要权限",
+      "tier": "L1",
+      "citations": [
+        "kb-1"
+      ]
+    },
+    {
+      "ref": "task-3",
+      "action": "向员工发送客户端安装与首次登录指引",
+      "rationale": "减少后续一线问询",
+      "tier": "L1",
+      "citations": []
+    }
+  ],
+  "citations": [
+    {
+      "id": "kb-1",
+      "chunk_id": "chk_0cf89826",
+      "document_id": "doc_88a277cf",
+      "source_path": "examples/scn_ticket_summary_zh/kb/sop_vpn_zh.md",
+      "line_start": 12,
+      "line_end": 20
+    }
+  ]
+}

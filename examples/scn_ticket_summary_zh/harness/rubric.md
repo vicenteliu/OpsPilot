@@ -11,7 +11,7 @@
 ## 任务定义
 
 输入：脱敏后 IT 工单（含正文 + 附件 log 片段）+ 检索到的 KB chunks（含 citation）。
-期望输出：符合 `ticket_summary_v1` 的结构化 JSON；引用必须可定位到 `source_path:line_range`。
+期望输出：符合 `incident_summary_v1` 的结构化 JSON；引用必须可定位到 `source_path:line_range`。
 
 ## 评分维度（与 expected_structured 对齐）
 
@@ -44,7 +44,7 @@
 {
   "dimensions": {
     "symptom": 0-4, "scope": 0-4, "tried_steps": 0-4,
-    "missing_fields": 0-4, "next_actions": 0-4,
+    "missing_fields": 0-4, "tasks": 0-4,
     "severity": 0-4, "citation_validity": 0-4
   },
   "weighted_score": 0.0-1.0,
