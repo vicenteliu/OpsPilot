@@ -8,7 +8,7 @@ Design:
 * The tool returns a JSON-shaped dict the LLM can consume verbatim.
 * Citations include ``source_path / line_start / line_end / heading_path``
   so the model can populate the ``citations[]`` array of
-  ``ticket_summary_v1`` without inventing fields.
+  ``incident_summary_v1`` without inventing fields.
 """
 
 from __future__ import annotations
@@ -77,7 +77,7 @@ def make_kb_search_tool(
             "Returns up to top_k hits, each with chunk_id, document_id, "
             "the chunk content, and a citation block "
             "(source_path/line_start/line_end/heading_path) to plug into "
-            "your final ticket_summary_v1 JSON."
+            "your final structured JSON."
         ),
         parameters={
             "type": "object",

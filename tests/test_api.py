@@ -35,14 +35,15 @@ _SAMPLE_TICKET = {
 }
 
 _MOCK_SUMMARY = {
-    "schema_version": "ticket_summary_v1",
-    "ticket_ref": "TKT-001",
+    "schema_version": "incident_summary_v1",
+    "work_item_ref": "TKT-001",
+    "work_item_type": "incident",
     "summary": "VPN connection failure",
     "symptoms": ["Cannot connect to VPN"],
-    "scope": "single user",
+    "scope": "single_user",
     "tried_steps": [],
     "missing_fields": [],
-    "next_actions": [],
+    "tasks": [],
     "severity_suggested": "P2",
     "citations": [],
 }
@@ -137,7 +138,7 @@ class TestPostRun:
         assert data["artifact_id"] == "art_01"
         assert data["schema_valid"] is True
         assert data["error"] is None
-        assert data["result"]["ticket_ref"] == "TKT-001"
+        assert data["result"]["work_item_ref"] == "TKT-001"
 
     def test_post_run_error(self) -> None:
         run_result = _make_run_result(error="JSON parse error: ...", schema_valid=False)

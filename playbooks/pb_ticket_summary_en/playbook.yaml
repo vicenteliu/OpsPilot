@@ -1,5 +1,5 @@
 # Playbook: pb_ticket_summary_en
-# English IT ticket summarisation; artifact schema = ticket_summary_v1
+# English IT ticket summarisation; artifact schema = incident_summary_v1
 # Path convention: playbooks/<id>/{playbook.yaml, prompt.md}
 
 id: "pb_ticket_summary_en"
@@ -7,7 +7,7 @@ version: "1.0.0"
 
 description: |
   Given a redacted IT ticket (JSON), produce a structured summary
-  conforming to ticket_summary_v1, with citations traceable to KB
+  conforming to incident_summary_v1, with citations traceable to KB
   chunks via kb.search.
 
   v1.0.0: English mirror of pb_ticket_summary_zh@1.4.0.

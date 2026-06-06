@@ -104,9 +104,9 @@ class TestIncidentSummarySchema:
         with pytest.raises(SchemaError):
             validate("incident_summary_v1", bad, repo_root=repo_root)
 
-    def test_ticket_summary_v1_still_registered_as_alias(self, repo_root: Path) -> None:
-        # Deprecated alias must remain valid for one version.
-        assert "ticket_summary_v1" in registry(repo_root)
+    def test_ticket_summary_v1_alias_removed(self, repo_root: Path) -> None:
+        # Deprecation window closed (#11): the alias is gone.
+        assert "ticket_summary_v1" not in registry(repo_root)
 
 
 def _valid_request() -> dict:

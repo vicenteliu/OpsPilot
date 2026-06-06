@@ -30,14 +30,15 @@ _SAMPLE_TICKET = {
 }
 
 _MOCK_SUMMARY = {
-    "schema_version": "ticket_summary_v1",
-    "ticket_ref": "TKT-002",
+    "schema_version": "incident_summary_v1",
+    "work_item_ref": "TKT-002",
+    "work_item_type": "incident",
     "summary": "DB connection pool exhausted",
     "symptoms": ["Connection timeout"],
-    "scope": "production",
+    "scope": "site_wide",
     "tried_steps": [],
     "missing_fields": [],
-    "next_actions": [],
+    "tasks": [],
     "severity_suggested": "P1",
     "citations": [],
 }
@@ -178,7 +179,7 @@ class TestRunStreamSuccess:
 
         events = _parse_sse(body)
         result_event = next(e for e in events if e["type"] == "result")
-        assert result_event["data"]["result"]["ticket_ref"] == "TKT-002"
+        assert result_event["data"]["result"]["work_item_ref"] == "TKT-002"
         assert result_event["data"]["result"]["severity_suggested"] == "P1"
 
     def test_result_payload_no_error(self) -> None:

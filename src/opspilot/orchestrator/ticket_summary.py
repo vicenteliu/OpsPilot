@@ -1,7 +1,7 @@
 """End-to-end ticket-summary orchestrator.
 
 Connects PR-3 provider → PR-4 retrieval (via kb_search tool) → PR-5 redaction
-→ PR-6 session/trace/artifact, producing a ``ticket_summary_v1`` artifact.
+→ PR-6 session/trace/artifact, producing a ``incident_summary_v1`` artifact.
 
 Loop shape::
 
@@ -18,7 +18,7 @@ Loop shape::
         elif finish_reason == stop:
             write response event
             break
-    parse final content as JSON → schema_validate("ticket_summary_v1") →
+    parse final content as JSON → schema_validate("incident_summary_v1") →
     write artifact + final user_action(approve)
     transition session → archived
 

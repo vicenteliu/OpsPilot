@@ -19,7 +19,7 @@ A reusable AI task template distilled from high-scoring sessions. Has a lifecycl
 _Avoid_: tool, capability, agent
 
 **Artifact**:
-Structured output written by a session — a JSON file validated against a versioned schema (e.g. `ticket_summary_v1`).
+Structured output written by a session — a JSON file validated against a versioned schema (e.g. `incident_summary_v1`).
 _Avoid_: result, output, response
 
 ### Knowledge layer

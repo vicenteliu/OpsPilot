@@ -8,7 +8,7 @@ Two layers:
 
 The Stage 1 exit-criterion test asserts the harness against the spec
 example produces a passing :class:`EvalResult` (weighted_score ≥ 0.85)
-when the orchestrator emits the canonical ``ticket_summary_v1`` JSON.
+when the orchestrator emits the canonical ``incident_summary_v1`` JSON.
 """
 
 from __future__ import annotations
@@ -286,7 +286,7 @@ def test_schema_check_pass(golden: Golden) -> None:
 
 
 def test_schema_check_fail_on_missing_required(golden: Golden) -> None:
-    bad = {"schema_version": "ticket_summary_v1"}  # too thin
+    bad = {"schema_version": "incident_summary_v1"}  # too thin
     r = evaluate_schema_check(_ctx(artifact=bad, golden=golden))
     assert not r.passed and r.score == 0.0
 

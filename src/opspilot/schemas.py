@@ -37,7 +37,7 @@ SCHEMA_SEARCH_DIRS: tuple[str, ...] = (
     "harness",
     "skills",
     "wiki",
-    "orchestrator",  # PR-7: ticket_summary_v1 + future playbook output schemas
+    "orchestrator",  # PR-7: incident_summary_v1 + future playbook output schemas
 )
 
 

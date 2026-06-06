@@ -479,7 +479,7 @@ def run(
         "[green]yes[/green]" if result.schema_valid else "[red]no[/red]",
     )
     if result.summary:
-        table.add_row("ticket_ref", str(result.summary.get("ticket_ref", "?")))
+        table.add_row("work_item_ref", str(result.summary.get("work_item_ref", "?")))
         table.add_row(
             "summary",
             (result.summary.get("summary") or "")[:200],

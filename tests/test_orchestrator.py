@@ -7,7 +7,7 @@ according to a queue of canned :class:`ChatResponse` objects.
 Covers the **PR-7 exit criterion** from
 ``IMPLEMENTATION_STAGE_1.md §763``: a full ``opspilot run`` against
 ``pb_ticket_summary_zh`` ends with a session whose artifact validates
-against ``ticket_summary_v1``.
+against ``incident_summary_v1``.
 """
 
 from __future__ import annotations

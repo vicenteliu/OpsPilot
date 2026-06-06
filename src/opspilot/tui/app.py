@@ -300,7 +300,7 @@ class OpsPilotApp(App[None]):
 
             s = result.summary or {}
             w(f"\n[bold green]✓ Done[/bold green]  session [cyan]{result.session_id}[/cyan]")
-            w(f"  Ticket:   {s.get('ticket_ref', '—')}")
+            w(f"  Work item: {s.get('work_item_ref', '—')} ({s.get('work_item_type', '—')})")
             w(f"  Severity: {s.get('severity_suggested', '—')}")
             w(f"  Summary:  {s.get('summary', '—')}")
             symptoms = s.get("symptoms") or []
@@ -308,12 +308,12 @@ class OpsPilotApp(App[None]):
                 w("  Symptoms:")
                 for sym in symptoms:
                     w(f"    • {sym}")
-            actions = s.get("next_actions") or []
-            if actions:
-                w("  Next actions:")
-                for i, act in enumerate(actions, 1):
-                    w(f"    {i}. {act.get('action', '?')}")
-                    rat = act.get("rationale", "")
+            tasks = s.get("tasks") or []
+            if tasks:
+                w("  Tasks:")
+                for i, task in enumerate(tasks, 1):
+                    w(f"    {i}. [{task.get('tier', '?')}] {task.get('action', '?')}")
+                    rat = task.get("rationale", "")
                     if rat:
                         w(f"       [dim]{rat}[/dim]")
             usage = result.usage
