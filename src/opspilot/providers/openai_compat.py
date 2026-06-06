@@ -1,12 +1,13 @@
-"""OpenAI-compatible provider — supports OpenAI, OpenRouter, and Gemini.
+"""OpenAI-compatible provider — supports OpenAI, OpenRouter, Gemini, and Grok.
 
-All three services expose the OpenAI chat completions API, so one provider
+All four services expose the OpenAI chat completions API, so one provider
 class handles all of them. Differentiate by ``base_url`` and ``api_key``:
 
 * OpenAI     — https://api.openai.com/v1         (OPENAI_API_KEY)
 * OpenRouter — https://openrouter.ai/api/v1      (OPENROUTER_API_KEY)
 * Gemini     — https://generativelanguage.googleapis.com/v1beta/openai
                                                   (GEMINI_API_KEY)
+* Grok (xAI) — https://api.x.ai/v1               (GROK_API_KEY)
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ _DEFAULT_BASE_URLS: dict[str, str] = {
     "openai": "https://api.openai.com/v1",
     "openrouter": "https://openrouter.ai/api/v1",
     "gemini": "https://generativelanguage.googleapis.com/v1beta/openai",
+    "grok": "https://api.x.ai/v1",
 }
 
 _FINISH_REASON_MAP: dict[str, FinishReason] = {

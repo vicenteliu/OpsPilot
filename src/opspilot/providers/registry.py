@@ -7,6 +7,7 @@ Supported kinds:
   * ``openai``      — OpenAI API
   * ``openrouter``  — OpenRouter (OpenAI-compatible)
   * ``gemini``      — Google Gemini (OpenAI-compatible endpoint)
+  * ``grok``        — xAI Grok (OpenAI-compatible endpoint)
 
 Caller code stays stable as new providers arrive::
 
@@ -23,7 +24,7 @@ from .base import ProviderProtocol
 from .ollama import OllamaProvider
 from .openai_compat import OpenAIProvider
 
-_OPENAI_COMPATIBLE_PREFIXES = ("openai", "openrouter", "gemini")
+_OPENAI_COMPATIBLE_PREFIXES = ("openai", "openrouter", "gemini", "grok")
 
 
 def _infer_kind(provider_id: str) -> str:
@@ -65,5 +66,5 @@ def make_provider(
 
     raise ConfigError(
         f"Provider kind '{resolved_kind}' (from provider_id='{provider_id}') is not supported. "
-        "Supported kinds: ollama, anthropic, openai, openrouter, gemini."
+        "Supported kinds: ollama, anthropic, openai, openrouter, gemini, grok."
     )
