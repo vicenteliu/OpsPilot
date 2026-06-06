@@ -398,12 +398,22 @@
     };
   }
 
-  async function handleRun() {
+  let lastRunInput = $state<Record<string, unknown> | null>(null);
+
+  const PLAYBOOK_BY_TYPE: Record<string, string> = {
+    incident: 'pb_ticket_summary_zh',
+    service_request: 'pb_request_fulfillment_zh',
+  };
+
+  async function handleRun(playbookId?: string) {
     fetchError = null;
     result = null;
     statusLines = [];
     let input: Record<string, unknown>;
-    if (inputMode === 'nl') {
+    if (playbookId && lastRunInput) {
+      // Confirm re-run: reuse the prior input, force the chosen playbook.
+      input = lastRunInput;
+    } else if (inputMode === 'nl') {
       if (!nlInput.trim()) { fetchError = 'Please describe the issue.'; return; }
       input = buildTicketFromNL();
     } else {
@@ -414,14 +424,15 @@
         return;
       }
     }
+    lastRunInput = input;
     loading = true;
     try {
-      for await (const event of runTicketStream(input, selectedModelId || undefined)) {
+      for await (const event of runTicketStream(input, selectedModelId || undefined, playbookId)) {
         if (event.type === 'status') {
           statusLines = [...statusLines, event.message];
         } else if (event.type === 'result') {
           result = event.data;
-          if (modules.history) await refreshHistory();
+          if (modules.history && !event.data.needs_confirmation) await refreshHistory();
         } else if (event.type === 'error') {
           fetchError = event.message;
         }
@@ -431,6 +442,10 @@
     } finally {
       loading = false;
     }
+  }
+
+  function confirmWorkItemType(workItemType: string) {
+    handleRun(PLAYBOOK_BY_TYPE[workItemType] ?? PLAYBOOK_BY_TYPE.incident);
   }
 
   function copyText(text: string) {
@@ -813,7 +828,7 @@
         {/if}
 
         <div class="run-row">
-          <button class="btn-run" onclick={handleRun} disabled={loading}>
+          <button class="btn-run" onclick={() => handleRun()} disabled={loading}>
             {#if loading}
               <span class="spinner"></span> Running...
             {:else}
@@ -910,6 +925,26 @@
           {/if}
         </section>
       {/snippet}
+
+      {#if result?.needs_confirmation && result.classification}
+        <div class="confirm-banner">
+          <p>
+            <strong>Low confidence — please confirm the work item type.</strong>
+            Best guess: <span class="wi-badge">{result.classification.work_item_type}</span>
+            ({(result.classification.confidence * 100).toFixed(0)}%) —
+            {result.classification.rationale}
+          </p>
+          <div class="confirm-actions">
+            <button class="btn-confirm" onclick={() => confirmWorkItemType('incident')}>Run as Incident</button>
+            <button class="btn-confirm" onclick={() => confirmWorkItemType('service_request')}>Run as Service Request</button>
+          </div>
+        </div>
+      {:else if result?.classification}
+        <p class="classified-note">
+          Classified as <span class="wi-badge">{result.classification.work_item_type}</span>
+          ({(result.classification.confidence * 100).toFixed(0)}% confidence)
+        </p>
+      {/if}
 
       {#if summary}
         {@render outputCards(summary as TicketSummary)}
@@ -2105,6 +2140,36 @@
   .tier-badge.tier-L1 { background: #e6f4ea; color: #1e7e34; border-color: #b7dfc2; }
   .tier-badge.tier-L2 { background: #fff4e5; color: #b26a00; border-color: #f0d2a0; }
   .tier-badge.tier-L3 { background: #fde8e8; color: #b02a37; border-color: #f2c0c4; }
+
+  .wi-badge {
+    display: inline-block;
+    padding: 0.05rem 0.45rem;
+    border-radius: 9999px;
+    font-weight: 700;
+    font-size: 0.8rem;
+    background: var(--accent-bg, #e8f0fe);
+    color: var(--accent-text, #1a56db);
+    border: 1px solid var(--border);
+  }
+  .confirm-banner {
+    margin: 0.75rem 0;
+    padding: 0.75rem 1rem;
+    border-radius: 0.5rem;
+    background: var(--warn-bg);
+    border: 1px solid var(--warn-border);
+  }
+  .confirm-banner p { margin: 0 0 0.6rem; }
+  .confirm-actions { display: flex; gap: 0.5rem; }
+  .btn-confirm {
+    padding: 0.4rem 0.9rem;
+    border-radius: 0.4rem;
+    border: 1px solid var(--border);
+    background: var(--surface, #fff);
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .btn-confirm:hover { background: var(--accent-bg, #e8f0fe); }
+  .classified-note { margin: 0.5rem 0; color: var(--text-muted); font-size: 0.9rem; }
 
   .escalation { margin-top: 0.5rem; font-size: 0.9rem; color: var(--warn-text2); }
 

@@ -30,6 +30,8 @@ _SAMPLE_TICKET = {
     "submitted_at": "2026-05-01T10:00:00Z",
     "subject": "VPN not connecting",
     "body": "Cannot connect to VPN since morning.",
+    # Declared type → run goes straight to the incident playbook (no classify).
+    "work_item_type": "incident",
 }
 
 _MOCK_SUMMARY = {
@@ -63,6 +65,10 @@ def _make_test_app() -> FastAPI:
         app.state.embed_fn = lambda text: [0.0] * 768
         app.state.session_mgr = MagicMock()
         app.state.redactor = MagicMock()
+        app.state.request_fulfillment_pb = MagicMock()
+        app.state.classify_pb = MagicMock()
+        app.state.classify_threshold = 0.7
+        app.state.mcp_registry = None
         yield
 
     test_app = FastAPI(lifespan=test_lifespan)
@@ -186,3 +192,65 @@ def test_resolve_playbook_selects_by_playbook_id() -> None:
     )
     assert pb_req.id == "pb_request_fulfillment_zh"
     assert pb_req.output_schema == "request_fulfillment_v1"
+
+
+# ---------------------------------------------------------------------------
+# Classification routing (#6 — declared-first, classify on absence)
+# ---------------------------------------------------------------------------
+
+
+_UNTYPED_TICKET = {k: v for k, v in _SAMPLE_TICKET.items() if k != "work_item_type"}
+
+
+class TestClassificationRouting:
+    def test_high_confidence_auto_routes_and_runs(self) -> None:
+        from opspilot.orchestrator.classify import ClassificationResult
+
+        app = _make_test_app()
+        cls = ClassificationResult("incident", 0.9, "service outage")
+        with (
+            patch("opspilot.api.routes.run.classify_work_item", return_value=cls) as mock_cls,
+            patch("opspilot.api.routes.run.run_ticket_summary", return_value=_make_run_result()),
+            TestClient(app) as client,
+        ):
+            resp = client.post("/api/run", json={"input": _UNTYPED_TICKET})
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert mock_cls.called
+        assert data["needs_confirmation"] is False
+        assert data["classification"]["work_item_type"] == "incident"
+        assert data["session_id"] == "sess_01"
+
+    def test_low_confidence_returns_needs_confirmation_without_running(self) -> None:
+        from opspilot.orchestrator.classify import ClassificationResult
+
+        app = _make_test_app()
+        cls = ClassificationResult("service_request", 0.4, "ambiguous ask")
+        with (
+            patch("opspilot.api.routes.run.classify_work_item", return_value=cls),
+            patch("opspilot.api.routes.run.run_ticket_summary") as mock_run,
+            TestClient(app) as client,
+        ):
+            resp = client.post("/api/run", json={"input": _UNTYPED_TICKET})
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["needs_confirmation"] is True
+        assert data["classification"]["confidence"] == 0.4
+        assert data["session_id"] == ""
+        assert data["result"] == {}
+        mock_run.assert_not_called()
+
+    def test_declared_type_skips_classification(self) -> None:
+        app = _make_test_app()
+        with (
+            patch("opspilot.api.routes.run.classify_work_item") as mock_cls,
+            patch("opspilot.api.routes.run.run_ticket_summary", return_value=_make_run_result()),
+            TestClient(app) as client,
+        ):
+            resp = client.post("/api/run", json={"input": _SAMPLE_TICKET})
+
+        assert resp.status_code == 200
+        assert resp.json()["needs_confirmation"] is False
+        mock_cls.assert_not_called()

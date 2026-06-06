@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opspilot.dev/schemas/work-item-classification-v1.schema.json",
+  "title": "Work Item Classification v1",
+  "description": "Output of pb_classify_work_item_* — assigns a Work item type to an input that does not declare one. Advisory: a low confidence value triggers a human-confirm step rather than auto-routing (ADR-0006, declared-first policy).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["work_item_type", "confidence", "rationale"],
+  "properties": {
+    "_comment": {
+      "type": "string",
+      "description": "Optional human note; ignored by validators."
+    },
+    "schema_version": {
+      "const": "work_item_classification_v1"
+    },
+    "work_item_type": {
+      "type": "string",
+      "enum": ["incident", "service_request"]
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "0..1 — below the configured threshold, a human confirms before routing."
+    },
+    "rationale": {
+      "type": "string",
+      "minLength": 1,
+      "description": "One-line justification for the chosen type."
+    }
+  }
+}
