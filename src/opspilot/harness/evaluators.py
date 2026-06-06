@@ -4,7 +4,7 @@ Each evaluator is a small function that consumes the run output + golden
 + retrieved chunks and returns an :class:`EvaluatorResult` with score in
 [0, 1] and a boolean ``passed``. Per IMPLEMENTATION_STAGE_1.md §786-797:
 
-* ``schema_check``           — artifact validates against ticket_summary_v1
+* ``schema_check``           — artifact validates against the golden's schema
 * ``must_contain``           — every required substring appears in summary
 * ``must_not_contain``       — no leaked-string substring appears
 * ``rag.recall_at_k``        — fraction of golden chunks present in retrieved
@@ -30,7 +30,7 @@ from .types import EvaluatorResult, Golden
 class EvalContext:
     """Bundle of inputs every evaluator needs."""
 
-    artifact: dict[str, Any]  # the orchestrator's final ticket_summary_v1 JSON
+    artifact: dict[str, Any]  # the orchestrator's final work-item JSON
     golden: Golden
     retrieved_chunk_ids: list[str]  # in retrieval order, top-k
     kb_chunk_lookup: dict[str, dict[str, Any]] | None = None
@@ -43,7 +43,7 @@ class EvalContext:
 
 def evaluate_schema_check(ctx: EvalContext) -> EvaluatorResult:
     """artifact must validate against the schema named in golden.schema_check."""
-    schema_name = ctx.golden.schema_check.get("name", "ticket_summary_v1")
+    schema_name = ctx.golden.schema_check.get("name", "incident_summary_v1")
     try:
         schema_validate(schema_name, ctx.artifact)
         return EvaluatorResult(
@@ -69,7 +69,7 @@ def evaluate_schema_check(ctx: EvalContext) -> EvaluatorResult:
 def _summary_text(artifact: dict[str, Any]) -> str:
     """Concatenate narrative text fields from the artifact for must_contain checks.
 
-    Handles both ticket_summary_v1 and vendor_doc_v1 schemas. Citations
+    Handles incident_summary_v1 / request_fulfillment_v1 and vendor_doc_v1. Citations
     and metadata fields are excluded — only human-readable narrative text.
     """
     if artifact.get("schema_version") == "vendor_doc_v1":
@@ -81,15 +81,14 @@ def _summary_text(artifact: dict[str, Any]) -> str:
             parts.append(str(artifact["scope_note"]))
         return "\n".join(parts)
 
-    # ticket_summary_v1 (default)
+    # work-item summary (incident_summary_v1 / request_fulfillment_v1)
     parts = [str(artifact.get("summary") or "")]
     parts.extend(str(s) for s in artifact.get("symptoms") or [])
     parts.extend(str(s) for s in artifact.get("tried_steps") or [])
     parts.extend(str(s) for s in artifact.get("missing_fields") or [])
-    # incident_summary_v1 emits tasks[]; fall back to legacy next_actions[].
-    for na in artifact.get("tasks") or artifact.get("next_actions") or []:
-        parts.append(str(na.get("action", "")))
-        parts.append(str(na.get("rationale", "")))
+    for task in artifact.get("tasks") or []:
+        parts.append(str(task.get("action", "")))
+        parts.append(str(task.get("rationale", "")))
     if artifact.get("escalation_hint"):
         parts.append(str(artifact["escalation_hint"]))
     return "\n".join(parts)

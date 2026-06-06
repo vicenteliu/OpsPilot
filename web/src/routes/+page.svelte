@@ -5,7 +5,7 @@
     getKBStats, listKBDocs, searchKB, wikiIngest, wikiQueryToPage, wikiLint, wikiPromote, listMCPServers,
     listConflicts, resolveConflict, correctChunk, listCorrections, generateVendorDocStream,
     listWikiPages, listVendorDocs, getWikiPage, getVendorDoc, chatStream,
-    type RunResponse, type TicketSummary, type NextAction, type Task, type SessionSummary, type ModelOption, type SkillLineage,
+    type RunResponse, type TicketSummary, type Task, type SessionSummary, type ModelOption, type SkillLineage,
     type KBDoc, type KBHit, type KBConflict, type KBStats, type KBCorrection, type WikiLintIssue, type MCPServer,
     type VendorDoc, type VendorDocSection, type WikiPageSummary, type VendorDocSummary, type WikiPageDetail,
     type ChatMessage,
@@ -462,21 +462,8 @@
     navigator.clipboard.writeText(text).catch(() => {});
   }
 
-  function formatNextActions(actions: NextAction[]): string {
-    return actions.map((a, i) => `${i + 1}. **${a.action}**\n   ${a.rationale}`).join('\n\n');
-  }
-
-  // incident_summary_v1 emits structured tasks[]; fall back to legacy
-  // next_actions[] (no tier) for old session-history artifacts.
   function summaryTasks(s: TicketSummary): Task[] {
-    if (s.tasks && s.tasks.length) return s.tasks;
-    return (s.next_actions ?? []).map((a, i) => ({
-      ref: `task-${i + 1}`,
-      action: a.action,
-      rationale: a.rationale,
-      tier: undefined as unknown as Task['tier'],
-      citations: a.citations,
-    }));
+    return s.tasks ?? [];
   }
 
   function formatTasks(tasks: Task[]): string {

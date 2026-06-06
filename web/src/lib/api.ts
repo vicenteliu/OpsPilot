@@ -27,20 +27,17 @@ export interface RunResponse {
   needs_confirmation?: boolean;
 }
 
-// incident_summary_v1 artifact. Legacy ticket_summary_v1 fields
-// (ticket_ref, next_actions) are kept optional for old session history.
+// A work-item artifact: incident_summary_v1 or request_fulfillment_v1.
 export interface TicketSummary {
   schema_version: string;
   work_item_ref?: string;
   work_item_type?: string;
-  ticket_ref?: string;
   summary: string;
   symptoms?: string[];
   scope?: string;
   tried_steps?: string[];
   missing_fields: string[];
   tasks?: Task[];
-  next_actions?: NextAction[];
   severity_suggested?: string;
   escalation_hint?: string;
   // service_request (request_fulfillment_v1) extension
@@ -55,12 +52,6 @@ export interface Task {
   rationale: string;
   tier: 'L1' | 'L2' | 'L3';
   citations?: string[];
-}
-
-export interface NextAction {
-  action: string;
-  rationale: string;
-  citations: string[];
 }
 
 export interface Citation {
