@@ -4,6 +4,40 @@ AI-augmented IT operations workbench that turns tickets, logs, runbooks, and doc
 
 ## Language
 
+### Work item types
+
+**Work item**:
+The umbrella for any inbound unit of IT support work OpsPilot processes. Its authoritative state lives in an external system of record (ITSM or a JSON input) — OpsPilot is a *processing layer*, not the owner (see ADR-0006). Subtypes: **Incident**, **Service Request**, **Task**.
+_Avoid_: ticket (colloquial — conflates the subtypes), case, issue
+
+**Incident**:
+An unplanned disruption or degradation of a service — "something is broken." Carries a suggested **Severity** (P0–P4).
+_Avoid_: outage (that is a P0/P1 incident), ticket, bug
+
+**Service Request**:
+A standard, pre-approved ask for something — access, a reset, provisioning — not a break.
+_Avoid_: request (bare word is overloaded), order
+
+**Task**:
+A concrete, assignable unit of work with a target **Tier**. Primarily an *output* — OpsPilot decomposes an **Incident**/**Service Request** into Tasks — but a standalone Task can also be an input that gets triaged on its own.
+_Avoid_: action, step, next_action, subtask
+
+**Work item type**:
+The discriminator (`incident` | `service_request` | `task`). Trusted from the input when declared; otherwise assigned by **Classification**.
+_Avoid_: category, kind
+
+**Classification**:
+The step that assigns a **Work item type** when the input does not declare one. Skipped when the type is already declared.
+_Avoid_: triage (broader), detection, routing
+
+**Severity**:
+The impact/urgency grade of an **Incident**: P0 (critical / site-wide) → P4 (minimal). OpsPilot *suggests* it; the system of record owns the final value.
+_Avoid_: priority (often a separate ITSM field), criticality
+
+**Tier**:
+The support line a **Task** is routed to — L1 (service desk), L2 (specialist), L3 (engineering / vendor). A suggestion, not an assignment.
+_Avoid_: level, line (ambiguous), group
+
 ### Core execution units
 
 **Session**:
@@ -90,6 +124,10 @@ _Avoid_: container, jail, isolation layer
 
 ## Relationships
 
+- A **Work item** has exactly one **Work item type** — declared by the source, or assigned by **Classification** when absent
+- A **Session** processes one **Work item** and writes a type-specific **Artifact** (e.g. `incident_summary`, `request_fulfillment`)
+- Processing an **Incident** or **Service Request** decomposes it into zero or more **Tasks**, each with a suggested **Tier**
+- An **Incident** carries a suggested **Severity** (P0–P4); the external system of record owns the final value
 - A **Playbook** specifies the **retrieval mode** and output schema for a **Session**
 - A **Session** reads from the **KB** (via retrieval) and writes one or more **Artifacts**
 - A **Session** appends **trace events** (prompt / response / tool_call / tool_result / redaction / user_action / system) to an append-only log
@@ -104,8 +142,15 @@ _Avoid_: container, jail, isolation layer
 > **Dev:** "And what goes in the artifact?"
 > **Domain expert:** "The artifact is the validated JSON output — summary, symptoms, next actions, citations. Citations reference chunk IDs from the KB. The harness checks whether those chunk IDs actually exist and whether the right ones were retrieved."
 
+> **Dev:** "A 'VPN down site-wide' comes in with no type field. What happens?"
+> **Domain expert:** "Classification assigns it `incident` — it's a break, not a request. The incident playbook runs, suggests a Severity (probably P1), and decomposes it into Tasks: 'restart gateway' → L2, 'notify affected users' → L1, 'open vendor case' → L3. Each Task is a first-class assignable item, not just a line in the summary."
+> **Dev:** "Who owns the incident's status after that?"
+> **Domain expert:** "Not us. OpsPilot is a processing layer — the ITSM system of record owns the lifecycle. We suggest severity and tiers; it decides."
+
 ## Flagged ambiguities
 
 - "tool" was used to mean both a retrieval mode (`tool` mode) and a callable function (`kb_search` tool) — context disambiguates: retrieval mode is a playbook setting, tool is a callable registered with the provider.
 - "session" in some LLM frameworks means a conversation window — in OpsPilot it means a single playbook run with its full audit trail, not a multi-turn conversation.
+- "ticket" was the catch-all for any inbound work — resolved: the umbrella is **Work item**, with subtypes **Incident** / **Service Request** / **Task**. "ticket" is colloquial and conflates them; avoid it in specs/schemas. The legacy code names `ticket_ref` / `ticket_summary_v1` are pre-Work-item and migrate toward `work_item_ref` / `incident_summary_*`.
+- "task" (lowercase: a step or next-action in prose) is **not** a **Task** work item. A **Task** is a first-class, assignable unit with a **Tier**; a summary's "next steps" only become **Tasks** once decomposed. (Note: a **Session** is also not a **Task** — see the Session entry's _Avoid_ list.)
 - "signed" was used (in older README copy) for the **trace** and **artifact** — resolved: nothing is cryptographically signed. Artifacts are *content-addressed* (`art_<sha256[:16]>`); traces are *append-only, seq-stamped*. Both give tamper-evidence against accidental corruption, not signatures. Say "content-addressed" / "append-only", never "signed".
