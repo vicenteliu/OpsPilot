@@ -33,11 +33,13 @@ import contextlib
 import json
 import os
 import re
+import time
 from collections.abc import Callable
 from typing import Any, Literal
 
 from ..errors import ProviderError
 from ..mcp.registry import McpRegistry
+from ..observability import record_run
 from ..providers.base import ProviderProtocol
 from ..providers.registry import make_provider
 from ..providers.types import Message, SamplingParams, ToolDef
@@ -67,6 +69,7 @@ def run_ticket_summary(
 ) -> RunResult:
     """Run the playbook end-to-end. Returns a :class:`RunResult`."""
     _prog = on_progress or (lambda _: None)
+    _t0 = time.monotonic()
     pb = request.playbook
 
     # Re-seed the redactor with a per-session random secret so placeholders
@@ -389,6 +392,17 @@ def run_ticket_summary(
         target = "archived" if schema_valid else "aborted"
         with contextlib.suppress(Exception):
             session_manager.transition(sess.id, target)
+
+    outcome = "error" if error else ("passed" if schema_valid else "failed")
+    record_run(
+        playbook=pb.id,
+        work_item_type=str(summary.get("work_item_type") or "unknown"),
+        outcome=outcome,
+        duration_s=time.monotonic() - _t0,
+        provider=provider.provider_id,
+        input_tokens=total_input_tokens,
+        output_tokens=total_output_tokens,
+    )
 
     return RunResult(
         session_id=sess.id,

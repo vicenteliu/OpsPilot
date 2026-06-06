@@ -8,7 +8,7 @@ from types import SimpleNamespace
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from opspilot.api.middleware import ObservabilityMiddleware, metrics_text
+from opspilot.api.middleware import ObservabilityMiddleware
 from opspilot.api.routes.health import router as health_router
 from opspilot.api.routes.metrics import router as metrics_router
 
@@ -82,25 +82,6 @@ def test_metrics_format_has_type_comment(tmp_path: Path):
     assert "# TYPE" in resp.text
 
 
-# ── metrics_text() unit ───────────────────────────────────────────────────
-
-
-def test_metrics_text_counter():
-    from opspilot.api.middleware import inc
-    inc("test_counter_xyz", {"label": "val"})
-    text = metrics_text()
-    assert "test_counter_xyz" in text
-    assert 'label="val"' in text
-
-
-def test_metrics_text_histogram():
-    from opspilot.api.middleware import observe
-    observe("test_histogram_xyz", 0.123)
-    text = metrics_text()
-    assert "test_histogram_xyz_seconds_count" in text
-    assert "test_histogram_xyz_seconds_sum" in text
-
-
 # ── JSON logging ──────────────────────────────────────────────────────────
 
 
@@ -119,3 +100,28 @@ def test_json_formatter_produces_valid_json():
     assert data["msg"] == "hello world"
     assert data["severity"] == "INFO"
     assert "ts" in data
+    assert "request_id" in data  # correlation handle always present (None outside a request)
+
+
+def test_json_formatter_emits_request_id_and_extras():
+    import json
+    import logging
+    from opspilot.api.middleware import JsonFormatter
+    from opspilot.observability import request_id_var
+
+    token = request_id_var.set("req-abc")
+    try:
+        formatter = JsonFormatter()
+        record = logging.LogRecord(
+            name="test", level=logging.INFO, pathname="", lineno=0,
+            msg="done", args=(), exc_info=None,
+        )
+        record.session_id = "sess_01"  # contextual extra
+        record.path = "/run"
+        data = json.loads(formatter.format(record))
+    finally:
+        request_id_var.reset(token)
+
+    assert data["request_id"] == "req-abc"
+    assert data["session_id"] == "sess_01"
+    assert data["path"] == "/run"
