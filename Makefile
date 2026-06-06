@@ -157,6 +157,18 @@ golden-openrouter: ensure-venv golden-kb ## Run the Stage 4 OpenRouter golden te
 golden-gemini: ensure-venv golden-kb ## Run the Stage 5 Gemini golden test (needs GEMINI_API_KEY + Ollama running).
 	$(OPSPL) harness golden-gemini
 
+golden-ollama: ensure-venv golden-kb ## Run the golden fixture on Ollama chat (needs Ollama running).
+	$(OPSPL) harness golden-provider --provider ollama-local --model gemma4:e4b
+
+golden-openai: ensure-venv golden-kb ## Run the golden fixture on OpenAI (needs OPENAI_API_KEY + Ollama running).
+	$(OPSPL) harness golden-provider --provider openai --model gpt-4o-mini
+
+golden-grok: ensure-venv golden-kb ## Run the golden fixture on Grok/xAI (needs GROK_API_KEY + Ollama running).
+	$(OPSPL) harness golden-provider --provider grok --model grok-3-mini
+
+harness-matrix: golden golden-gemini golden-openrouter golden-ollama golden-openai golden-grok ## Run the golden fixture across all 6 providers (needs every *_API_KEY + Ollama).
+	@echo "harness-matrix complete: anthropic / gemini / openrouter / ollama / openai / grok"
+
 docker-build: ## Build the multi-stage docker image (opspilot:latest).
 	docker build -t opspilot:latest .
 	docker run --rm opspilot:latest opspilot --version

@@ -23,9 +23,11 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import typer
 from rich.console import Console
@@ -58,6 +60,7 @@ from .schemas import (
     validate as schema_validate,
 )
 from .session import SessionManager
+from .session.types import Model
 from .iteration.engine import IterationEngine
 from .iteration.types import IterationPolicy
 from .wiki.ingest import WikiIngestConfig
@@ -921,15 +924,20 @@ def _harness_dispatch(
     embed_model_short: str,
     output: Path | None,
     user_msg_fn: Callable[[dict], str] | None = None,
+    model_override: Model | None = None,
 ) -> int:
     """Shared entrypoint for both ``run`` and ``golden`` subcommands.
 
-    Returns the desired CLI exit code.
+    When ``model_override`` is given the loaded playbook's chat model is
+    swapped for it (used by ``golden-provider`` to exercise the same
+    fixture across providers). Returns the desired CLI exit code.
     """
     cfg = load_config()
     fixture = load_fixture(fixture_path)
     golden = load_golden(golden_path)
     playbook = load_playbook(playbook_dir)
+    if model_override is not None:
+        playbook = dataclasses.replace(playbook, model=model_override)
 
     sqlite, lance = _open_kb_stores(
         home=cfg.home,
@@ -1126,6 +1134,73 @@ def harness_golden_openrouter(
         embedding_dim=embedding_dim,
         embed_model_short=embed_model_short,
         output=resolved_output,
+    )
+    if code != 0:
+        raise typer.Exit(code=code)
+
+
+def _infer_model_kind(provider_id: str) -> str:
+    """Map a provider id to a Model.kind (mirrors providers.registry)."""
+    if provider_id.startswith("anthropic"):
+        return "anthropic"
+    if provider_id.startswith("ollama"):
+        return "ollama"
+    return "openai"
+
+
+@harness_app.command("golden-provider")
+def harness_golden_provider(
+    provider: str = typer.Option(
+        ..., "--provider", help="Provider id, e.g. openai / grok / ollama-local."
+    ),
+    model: str = typer.Option(..., "--model", help="Chat model name for the provider."),
+    kind: str | None = typer.Option(
+        None, "--kind", help="Provider kind; inferred from the provider id when omitted."
+    ),
+    model_version: str = typer.Option(
+        "current", "--model-version", help="Model version tag (provenance only)."
+    ),
+    embedding_model: str = typer.Option(
+        "ollama-local/nomic-embed-text-v2-moe@2026-04", "--embedding-model"
+    ),
+    embedding_dim: int = typer.Option(768, "--embedding-dim"),
+    embed_model_short: str = typer.Option("nomic-embed-text-v2-moe", "--ollama-embed-model"),
+    output: Path | None = typer.Option(  # noqa: B008
+        None,
+        "--output",
+        "-o",
+        help="Append result row to this results.jsonl path.",
+    ),
+) -> None:
+    """Run the Stage 1 golden fixture against an arbitrary chat provider.
+
+    Reuses the base ``pb_ticket_summary_zh`` playbook (retrieval.mode=prefetch)
+    and only swaps the chat model, so any of the 6 providers can be exercised
+    on the same fixture without a dedicated playbook. Drives ``make
+    harness-matrix``. Requires the provider's API key env var (and Ollama for
+    embeddings).
+    """
+    if not GOLDEN_FIXTURE_PATH.is_file():
+        _err.print(f"[red]golden fixture not found:[/red] {GOLDEN_FIXTURE_PATH}")
+        raise typer.Exit(code=1)
+    resolved_kind: Any = kind or _infer_model_kind(provider)
+    model_override = Model(
+        provider_id=provider,
+        kind=resolved_kind,
+        name=model,
+        version=model_version,
+        params={"temperature": 0.2, "top_p": 0.9, "max_tokens": 4096},
+    )
+    code = _harness_dispatch(
+        fixture_path=GOLDEN_FIXTURE_PATH,
+        golden_path=GOLDEN_GOLDEN_PATH,
+        playbook_dir=GOLDEN_PLAYBOOK_DIR,
+        owner="harness@opspilot",
+        embedding_model=embedding_model,
+        embedding_dim=embedding_dim,
+        embed_model_short=embed_model_short,
+        output=output,
+        model_override=model_override,
     )
     if code != 0:
         raise typer.Exit(code=code)
