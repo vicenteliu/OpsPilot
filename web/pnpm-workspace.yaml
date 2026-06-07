@@ -1,2 +1,4 @@
-allowBuilds:
-  esbuild: set this to true or false
+# pnpm settings (pnpm 10+ reads build approvals here, not package.json).
+# Approve esbuild's install script so Vite's bundler binary is built.
+onlyBuiltDependencies:
+  - esbuild
