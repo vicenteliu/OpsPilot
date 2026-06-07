@@ -29,8 +29,8 @@ jobs:
           ruff check src/ tests/
           ruff format --check src/ tests/
       - name: Test (pytest)
-        # Mirrors `make test`: skips slow + live-Ollama tests. mypy (pre-existing
-        # findings) and the Rust benchmark gate are intentionally not run here.
+        # Mirrors `make test`: skips slow + live-Ollama tests. (mypy is not run
+        # here yet — pre-existing findings; the Rust bench runs in its own job.)
         run: pytest tests/ -m "not slow and not requires_ollama"
 
   web:
@@ -54,3 +54,25 @@ jobs:
         run: pnpm check
       - name: Build
         run: pnpm build
+
+  rust-bench:
+    name: Rust extensions (build + bench ≥5×)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build extensions (release) and benchmark
+        # maturin develop installs into the venv; the bench scripts exit 1 if the
+        # Rust speedup over the pure-Python path drops below 5× (~10× / ~42× local).
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          pip install -e ".[dev]" maturin
+          (cd crates/opspilot-chunker && maturin develop --release)
+          (cd crates/opspilot-tokenizer && maturin develop --release)
+          make bench
