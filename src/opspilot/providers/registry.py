@@ -62,6 +62,7 @@ def make_provider(
         return OllamaProvider(
             base_url=base_url or cfg.ollama_base_url,
             api_key=api_key,
+            timeout_s=cfg.ollama_timeout_s,
         )
 
     raise ConfigError(

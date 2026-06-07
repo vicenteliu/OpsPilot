@@ -14,6 +14,7 @@ from typing import Any
 import yaml
 
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
+DEFAULT_OLLAMA_TIMEOUT_S = 300.0
 DEFAULT_LOG_LEVEL = "INFO"
 
 
@@ -23,6 +24,7 @@ class Config:
 
     home: Path
     ollama_base_url: str = DEFAULT_OLLAMA_URL
+    ollama_timeout_s: float = DEFAULT_OLLAMA_TIMEOUT_S
     log_level: str = DEFAULT_LOG_LEVEL
     anthropic_api_key: str | None = None
     embed_model: str = "nomic-embed-text-v2-moe"
@@ -53,6 +55,16 @@ def load_config() -> Config:
         or DEFAULT_OLLAMA_URL
     )
 
+    ollama_timeout_raw = (
+        os.environ.get("OPSPILOT_OLLAMA_TIMEOUT_S")
+        or yaml_data.get("ollama_timeout_s")
+        or DEFAULT_OLLAMA_TIMEOUT_S
+    )
+    try:
+        ollama_timeout_s = float(ollama_timeout_raw)
+    except (TypeError, ValueError):
+        ollama_timeout_s = DEFAULT_OLLAMA_TIMEOUT_S
+
     log_level = (
         os.environ.get("OPSPILOT_LOG_LEVEL") or yaml_data.get("log_level") or DEFAULT_LOG_LEVEL
     )
@@ -76,6 +88,7 @@ def load_config() -> Config:
     return Config(
         home=home,
         ollama_base_url=str(ollama_base_url),
+        ollama_timeout_s=ollama_timeout_s,
         log_level=str(log_level),
         anthropic_api_key=str(anthropic_api_key) if anthropic_api_key else None,
         embed_model=str(embed_model),

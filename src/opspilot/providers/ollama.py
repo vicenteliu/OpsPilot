@@ -25,7 +25,10 @@ from ..errors import ProviderError
 from .types import ChatResponse, FinishReason, Message, SamplingParams, ToolCall, ToolDef, Usage
 
 DEFAULT_BASE_URL: Final[str] = "http://localhost:11434"
-DEFAULT_TIMEOUT_S: Final[float] = 90.0
+# Generous default: local models (esp. larger ones like gemma4:12b) can take
+# tens of seconds to cold-load and then generate. Overridable via the provider's
+# timeout_s / OPSPILOT_OLLAMA_TIMEOUT_S (see opspilot.config).
+DEFAULT_TIMEOUT_S: Final[float] = 300.0
 
 
 # Map OpenAI-style finish_reason values into our enum. Anything we don't
@@ -104,7 +107,7 @@ class OllamaProvider:
         model: str,
         params: SamplingParams,
         tools: list[ToolDef] | None = None,
-        timeout_ms: int = 90_000,
+        timeout_ms: int | None = None,
     ) -> ChatResponse:
         body: dict[str, Any] = {
             "model": model,
@@ -131,11 +134,13 @@ class OllamaProvider:
                 for t in tools
             ]
 
+        # Per-call override; otherwise use the provider's configured timeout.
+        timeout_s = timeout_ms / 1000.0 if timeout_ms is not None else self.timeout_s
         try:
             r = self._client.post(
                 "/v1/chat/completions",
                 json=body,
-                timeout=timeout_ms / 1000.0,
+                timeout=timeout_s,
             )
             r.raise_for_status()
         except httpx.HTTPStatusError as e:
