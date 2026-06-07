@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+from typing import Any, cast
 
 import yaml
 
@@ -105,12 +106,14 @@ class IterationEngine:
             lineage_file=lineage_file,
         )
 
-    def _load_record(self, iteration_dir: Path) -> dict:
+    def _load_record(self, iteration_dir: Path) -> dict[str, Any]:
         # Prefer record.yaml (post-run); fall back to recipe.yaml (pre-run)
         for name in ("record.yaml", "recipe.yaml"):
             path = iteration_dir / "iteration" / name
             if path.exists():
-                return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+                return cast(
+                    "dict[str, Any]", yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+                )
         raise FileNotFoundError(
             f"No iteration/record.yaml or iteration/recipe.yaml in {iteration_dir}"
         )

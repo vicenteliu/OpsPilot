@@ -61,7 +61,7 @@ def run_harness(
     weights: dict[str, float] | None = None,
     pass_threshold: float = WEIGHTED_SCORE_PASS_THRESHOLD,
     tmp_dir: Path | None = None,
-    user_msg_fn: Callable[[dict], str] | None = None,
+    user_msg_fn: Callable[[dict[str, Any]], str] | None = None,
 ) -> EvalResult:
     """Run one fixture end-to-end and return its :class:`EvalResult`."""
     weights = weights or DEFAULT_EVALUATOR_WEIGHTS

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+from typing import Any
+
 from textual import work
 from textual.app import ComposeResult
 from textual.widget import Widget
@@ -48,9 +51,7 @@ class IterationScreen(Widget):
         self.app.call_from_thread(update)
 
 
-def _read_lineage_rows(lineage_dir) -> list[tuple[str, ...]]:
-    from pathlib import Path
-
+def _read_lineage_rows(lineage_dir: Path) -> list[tuple[Any, ...]]:
     import yaml
 
     rows = []

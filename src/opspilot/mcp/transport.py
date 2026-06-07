@@ -16,7 +16,7 @@ import os
 import re
 import subprocess
 import threading
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 import httpx
 
@@ -85,7 +85,7 @@ class StdioTransport:
                 f"MCP error {resp['error'].get('code')}: {resp['error'].get('message')}",
                 error_code="mcp_rpc_error",
             )
-        return resp.get("result", {})
+        return cast("dict[str, Any]", resp.get("result", {}))
 
     def _notify(self, method: str) -> None:
         with self._lock:
@@ -108,7 +108,7 @@ class StdioTransport:
 
     def list_tools(self) -> list[dict[str, Any]]:
         result = self._send("tools/list")
-        return result.get("tools", [])
+        return cast("list[dict[str, Any]]", result.get("tools", []))
 
     def call_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         return self._send("tools/call", {"name": name, "arguments": arguments})
@@ -154,7 +154,7 @@ class HttpTransport:
                 f"MCP error {data['error'].get('code')}: {data['error'].get('message')}",
                 error_code="mcp_rpc_error",
             )
-        return data.get("result", {})
+        return cast("dict[str, Any]", data.get("result", {}))
 
     def initialize(self) -> dict[str, Any]:
         return self._send(
@@ -168,7 +168,7 @@ class HttpTransport:
 
     def list_tools(self) -> list[dict[str, Any]]:
         result = self._send("tools/list")
-        return result.get("tools", [])
+        return cast("list[dict[str, Any]]", result.get("tools", []))
 
     def call_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         return self._send("tools/call", {"name": name, "arguments": arguments})

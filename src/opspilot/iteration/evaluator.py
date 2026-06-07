@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any, cast
 
 from .types import (
     IterationPolicy,
@@ -13,8 +14,8 @@ from .types import (
 )
 
 
-def load_eval_result(eval_file: Path) -> dict:
-    return json.loads(eval_file.read_text(encoding="utf-8"))
+def load_eval_result(eval_file: Path) -> dict[str, Any]:
+    return cast("dict[str, Any]", json.loads(eval_file.read_text(encoding="utf-8")))
 
 
 def evaluate_variants(
@@ -33,7 +34,7 @@ def evaluate_variants(
     return verdicts
 
 
-def _apply_gates(data: dict, policy: IterationPolicy) -> VariantVerdict:
+def _apply_gates(data: dict[str, Any], policy: IterationPolicy) -> VariantVerdict:
     meta = data.get("iteration_meta", {})
     variant_id = meta.get("variant_id", data.get("run_id", "unknown"))
     run_id = data.get("run_id", "")

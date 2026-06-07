@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from .docker_l2 import _DEFAULT_IMAGE, dry_run_preview, run_l2
 from .docker_l3 import run_l3
 from .gate import check_approval_required
@@ -50,10 +52,11 @@ class SandboxEngine:
             run_l3(request, self._image) if self._level == "l3" else run_l2(request, self._image)
         )
 
-        if result.timeout_killed or result.oom_killed or result.exit_code != 0:
-            status = "failed"
-        else:
-            status = "applied"
+        status: Literal["applied", "failed"] = (
+            "failed"
+            if result.timeout_killed or result.oom_killed or result.exit_code != 0
+            else "applied"
+        )
 
         return ActionResult(
             action_id=request.id,

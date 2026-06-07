@@ -286,7 +286,7 @@ class SqliteStore:
     def list_conflicts(self, status: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
         """Return conflicts enriched with document titles."""
         where = "WHERE c.status = ?" if status else ""
-        params: tuple = (status, limit) if status else (limit,)
+        params: tuple[Any, ...] = (status, limit) if status else (limit,)
         cur = self._conn.execute(
             f"""
             SELECT c.*,

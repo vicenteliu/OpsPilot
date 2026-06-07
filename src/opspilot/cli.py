@@ -27,11 +27,14 @@ import dataclasses
 import json
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import typer
 from rich.console import Console
 from rich.table import Table
+
+if TYPE_CHECKING:
+    from .sandbox.types import ActionRequest
 
 from . import __version__
 from .config import ensure_home, load_config
@@ -934,7 +937,7 @@ def _harness_dispatch(
     embedding_dim: int,
     embed_model_short: str,
     output: Path | None,
-    user_msg_fn: Callable[[dict], str] | None = None,
+    user_msg_fn: Callable[[dict[str, Any]], str] | None = None,
     model_override: Model | None = None,
 ) -> int:
     """Shared entrypoint for both ``run`` and ``golden`` subcommands.
@@ -1696,7 +1699,7 @@ sandbox_app = typer.Typer(
 app.add_typer(sandbox_app)
 
 
-def _load_action(path: Path):  # type: ignore[return]
+def _load_action(path: Path) -> ActionRequest:
     import yaml
 
     from .sandbox.types import ActionRequest
@@ -1852,7 +1855,7 @@ def serve(
         configure_json_logging()
         _console.print("[dim]JSON logging enabled[/dim]")
 
-    frontend_proc: subprocess.Popen | None = None
+    frontend_proc: subprocess.Popen[bytes] | None = None
     if with_ui:
         web_dir = REPO_ROOT / "web"
         if not (web_dir / "package.json").exists():
@@ -1884,7 +1887,7 @@ def serve(
         port=port,
         workers=workers,
         reload=reload,
-        log_config=None if json_logs else uvicorn.config.LOGGING_CONFIG,  # type: ignore[attr-defined]
+        log_config=None if json_logs else uvicorn.config.LOGGING_CONFIG,
     )
 
 

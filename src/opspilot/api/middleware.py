@@ -12,8 +12,9 @@ import logging
 import time
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
 
@@ -38,7 +39,7 @@ class JsonFormatter(logging.Formatter):
             datetime.fromtimestamp(record.created, tz=UTC).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3]
             + "Z"
         )
-        entry: dict = {
+        entry: dict[str, Any] = {
             "ts": ts,
             "severity": record.levelname,
             "logger": record.name,
@@ -74,7 +75,7 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
 
     _logger = logging.getLogger("opspilot.api.access")
 
-    async def dispatch(self, request: Request, call_next) -> Response:  # type: ignore[override]
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         token = request_id_var.set(uuid.uuid4().hex)
         start = time.monotonic()
         try:

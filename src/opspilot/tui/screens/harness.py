@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Literal, cast
 
 from textual import work
 from textual.app import ComposeResult
@@ -182,7 +182,7 @@ class HarnessScreen(Widget):
             sev = "error"
 
         def refresh() -> None:
-            self.notify(msg, severity=sev)
+            self.notify(msg, severity=cast(Literal["information", "warning", "error"], sev))
             dt = self.query_one(DataTable)
             dt.clear()
             self.load_results()
