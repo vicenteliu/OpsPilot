@@ -29,7 +29,7 @@ def _mem_to_docker(mem: str) -> str:
     return mem
 
 
-def _build_docker_args(request: ActionRequest, image: str) -> list[str]:
+def _build_docker_args(request: ActionRequest, image: str, runtime: str | None = None) -> list[str]:
     p = request.requested_policy
     workdir = p.fs.workdir
     disk = p.resource.disk_tmpfs
@@ -47,6 +47,11 @@ def _build_docker_args(request: ActionRequest, image: str) -> list[str]:
         f"--pids-limit={p.resource.pids}",
     ]
 
+    # L3 selects an alternate OCI runtime (gVisor's runsc). The hardening flags
+    # above are unchanged — L3 = L2 surface + a stronger isolation boundary.
+    if runtime:
+        args.insert(2, f"--runtime={runtime}")
+
     if _SECCOMP_PROFILE.exists():
         args.append(f"--security-opt=seccomp={_SECCOMP_PROFILE}")
 
@@ -61,8 +66,10 @@ def _build_docker_args(request: ActionRequest, image: str) -> list[str]:
     return args
 
 
-def dry_run_preview(request: ActionRequest, image: str = _DEFAULT_IMAGE) -> DryRunPreview:
-    args = _build_docker_args(request, image)
+def dry_run_preview(
+    request: ActionRequest, image: str = _DEFAULT_IMAGE, runtime: str | None = None
+) -> DryRunPreview:
+    args = _build_docker_args(request, image, runtime)
     # Redact absolute seccomp path in the preview.
     safe_args = [
         "--security-opt=seccomp=<profile>"
@@ -80,9 +87,12 @@ def dry_run_preview(request: ActionRequest, image: str = _DEFAULT_IMAGE) -> DryR
     )
 
 
-def run_l2(request: ActionRequest, image: str = _DEFAULT_IMAGE) -> ApplyResult:
-    args = _build_docker_args(request, image)
-    timeout = request.requested_policy.resource.timeout_seconds
+def _exec_docker(args: list[str], timeout: int) -> ApplyResult:
+    """Run a prepared `docker run ...` argv and map it to an ApplyResult.
+
+    Shared by L2 and L3 — the only difference between the levels is the argv
+    (L3 adds `--runtime=runsc`), not the execution or result mapping.
+    """
     start = time.monotonic()
     try:
         proc = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
@@ -109,3 +119,8 @@ def run_l2(request: ActionRequest, image: str = _DEFAULT_IMAGE) -> ApplyResult:
             stderr="[sandbox] docker not found — install Docker to use apply mode",
             duration_ms=0,
         )
+
+
+def run_l2(request: ActionRequest, image: str = _DEFAULT_IMAGE) -> ApplyResult:
+    args = _build_docker_args(request, image)
+    return _exec_docker(args, request.requested_policy.resource.timeout_seconds)

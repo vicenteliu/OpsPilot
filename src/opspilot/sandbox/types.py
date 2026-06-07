@@ -4,6 +4,11 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
+# Isolation backend level. L2 = Docker hardened (shared host kernel);
+# L3 = L2 + gVisor runsc (user-space kernel). Selected operationally, not by
+# the proposing model — see ADR-0009.
+Level = Literal["l2", "l3"]
+
 
 class NetworkPolicy(BaseModel):
     mode: Literal["deny-all", "allowlist", "open"] = "deny-all"

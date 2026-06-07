@@ -27,7 +27,7 @@ import dataclasses
 import json
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 
 import typer
 from rich.console import Console
@@ -1690,7 +1690,7 @@ def mcp_probe(
 
 sandbox_app = typer.Typer(
     name="sandbox",
-    help="Sandbox action execution — L2 Docker hardened (PR-30).",
+    help="Sandbox action execution — L2 Docker hardened / L3 gVisor (PR-30, ADR-0009).",
     no_args_is_help=True,
 )
 app.add_typer(sandbox_app)
@@ -1705,9 +1705,18 @@ def _load_action(path: Path):  # type: ignore[return]
     return ActionRequest.model_validate(raw)
 
 
+def _parse_level(level: str) -> Literal["l2", "l3"]:
+    norm = level.strip().lower()
+    if norm not in ("l2", "l3"):
+        _err.print(f"[red]✗[/red] invalid --level {level!r}; expected 'l2' or 'l3'")
+        raise typer.Exit(2)
+    return cast('Literal["l2", "l3"]', norm)
+
+
 @sandbox_app.command("dry-run")
 def sandbox_dry_run(
     action: Path = typer.Argument(..., exists=True, help="Action YAML file."),  # noqa: B008
+    level: str = typer.Option("l2", "--level", help="Isolation backend: l2 | l3 (gVisor)."),
 ) -> None:
     """Preview a sandbox action without executing it."""
     from rich.syntax import Syntax
@@ -1715,7 +1724,7 @@ def sandbox_dry_run(
     from .sandbox.engine import SandboxEngine
 
     req = _load_action(action)
-    result = SandboxEngine().dry_run(req)
+    result = SandboxEngine(level=_parse_level(level)).dry_run(req)
 
     _console.print(f"\n[bold]Action[/bold] {result.action_id}  status=[cyan]{result.status}[/cyan]")
     if result.approval_required:
@@ -1736,12 +1745,13 @@ def sandbox_dry_run(
 def sandbox_run(
     action: Path = typer.Argument(..., exists=True, help="Action YAML file."),  # noqa: B008
     approve: bool = typer.Option(False, "--approve", help="Bypass approval gate."),
+    level: str = typer.Option("l2", "--level", help="Isolation backend: l2 | l3 (gVisor)."),
 ) -> None:
-    """Execute a sandbox action in a Docker L2 container."""
+    """Execute a sandbox action in a Docker L2 (hardened) or L3 (gVisor) container."""
     from .sandbox.engine import SandboxEngine
 
     req = _load_action(action)
-    result = SandboxEngine().execute(req, force_approve=approve)
+    result = SandboxEngine(level=_parse_level(level)).execute(req, force_approve=approve)
 
     _console.print(f"\n[bold]Action[/bold] {result.action_id}  status=[cyan]{result.status}[/cyan]")
 

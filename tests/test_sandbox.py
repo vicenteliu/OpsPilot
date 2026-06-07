@@ -183,3 +183,50 @@ def test_engine_execute_blocks_dangerous_without_approve():
     result = SandboxEngine().execute(req)
     assert result.status == "approval_pending"
     assert result.rejection_reason is not None
+
+
+# ── L3 / gVisor (ADR-0009) ──────────────────────────────────────────────────
+
+
+def test_docker_args_l3_adds_runsc_runtime():
+    args = _build_docker_args(_req(), "alpine:3.19", runtime="runsc")
+    assert "--runtime=runsc" in args
+    # runtime is injected right after `docker run`, before the hardening flags.
+    assert args[:3] == ["docker", "run", "--runtime=runsc"]
+
+
+def test_docker_args_l3_keeps_all_l2_hardening():
+    args = _build_docker_args(_req(), "alpine:3.19", runtime="runsc")
+    flat = " ".join(args)
+    assert "--read-only" in flat
+    assert "--cap-drop=ALL" in flat
+    assert "--security-opt=no-new-privileges" in flat
+    assert "--network=none" in flat
+
+
+def test_docker_args_l2_has_no_runtime_flag():
+    args = _build_docker_args(_req(), "alpine:3.19")
+    assert not any(a.startswith("--runtime=") for a in args)
+
+
+def test_engine_l3_dry_run_preview_shows_runsc():
+    result = SandboxEngine(level="l3").dry_run(_req())
+    assert result.dry_run_preview is not None
+    assert "--runtime=runsc" in result.dry_run_preview.docker_args
+
+
+def test_engine_l2_dry_run_preview_has_no_runsc():
+    result = SandboxEngine(level="l2").dry_run(_req())
+    assert result.dry_run_preview is not None
+    assert "--runtime=runsc" not in result.dry_run_preview.docker_args
+
+
+def test_l3_fails_closed_when_runsc_unavailable(monkeypatch):
+    # When runsc is not registered, L3 must NOT silently fall back to L2.
+    from opspilot.sandbox import docker_l3
+
+    monkeypatch.setattr(docker_l3, "runsc_available", lambda: False)
+    result = docker_l3.run_l3(_req(), "alpine:3.19")
+    assert result.exit_code == -1
+    assert "fail-closed" in result.stderr
+    assert "runsc" in result.stderr
