@@ -465,7 +465,7 @@ class OpsPilotApp(App[None]):
             for sid in ids:
                 try:
                     s = sm.load(sid)
-                    color = "green" if str(s.status) == "done" else "yellow"
+                    color = "green" if s.status == "archived" else "yellow"
                     w(
                         f"  [{color}]{s.status:8}[/{color}]  [cyan]{sid[:32]}[/cyan]  {s.created_at[:19]}"
                     )
@@ -488,7 +488,7 @@ class OpsPilotApp(App[None]):
             sm = SessionManager(home=cfg.home)
             s = sm.load(session_id)
 
-            color = "green" if str(s.status) == "done" else "yellow"
+            color = "green" if s.status == "archived" else "yellow"
             w(f"\n[bold cyan]Session: {session_id}[/bold cyan]")
             w(f"  Status:  [{color}]{s.status}[/{color}]")
             w(f"  Created: {s.created_at}")
