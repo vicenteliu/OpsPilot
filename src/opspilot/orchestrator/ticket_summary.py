@@ -695,6 +695,9 @@ def _format_ticket(ticket: dict[str, Any]) -> str:
 
 
 _JSON_FENCE_RE = re.compile(r"^```(?:json)?\s*\n?|\n?```\s*$", re.MULTILINE)
+# A backslash that does not begin a valid JSON escape (\" \\ \/ \b \f \n \r \t
+# \uXXXX). Weak local models emit these inside strings, e.g. a regex `\|`.
+_INVALID_ESCAPE_RE = re.compile(r'\\(?!["\\/bfnrtu])')
 
 
 def _try_balance_brackets(text: str, *, max_pad: int = 3) -> str:
@@ -751,8 +754,13 @@ def _parse_summary_json(content: str) -> tuple[dict[str, Any], str | None]:
     text = _try_balance_brackets(text)
     try:
         d = json.loads(text)
-    except json.JSONDecodeError as e:
-        return {}, f"JSON parse error: {e}"
+    except json.JSONDecodeError:
+        # Repair invalid backslash escapes (e.g. a regex `\|` inside a string)
+        # that weak local models emit, then retry once before giving up.
+        try:
+            d = json.loads(_INVALID_ESCAPE_RE.sub(r"\\\\", text))
+        except json.JSONDecodeError as e:
+            return {}, f"JSON parse error: {e}"
     if not isinstance(d, dict):
         return {}, "model returned non-object JSON"
     return d, None
