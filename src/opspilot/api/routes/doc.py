@@ -8,7 +8,7 @@ import json
 import tempfile
 from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
@@ -224,4 +224,4 @@ async def get_vendor_doc(filename: str, request: Request) -> dict[str, Any]:
     json_file = vd_dir / filename
     if not json_file.is_file() or json_file.suffix != ".json":
         raise HTTPException(status_code=404, detail=f"Vendor doc '{filename}' not found")
-    return json.loads(json_file.read_text(encoding="utf-8"))
+    return cast("dict[str, Any]", json.loads(json_file.read_text(encoding="utf-8")))

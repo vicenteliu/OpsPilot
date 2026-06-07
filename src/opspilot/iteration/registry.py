@@ -6,6 +6,7 @@ import hashlib
 import shutil
 from datetime import UTC
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -13,13 +14,13 @@ from ..timeutil import now_rfc3339
 from .types import LineageEntry
 
 
-def read_lineage(lineage_file: Path) -> dict:
+def read_lineage(lineage_file: Path) -> dict[str, Any]:
     return yaml.safe_load(lineage_file.read_text(encoding="utf-8")) or {}
 
 
 def append_lineage_entry(lineage_file: Path, entry: LineageEntry) -> None:
     data = read_lineage(lineage_file)
-    versions: list = data.setdefault("versions", [])
+    versions: list[Any] = data.setdefault("versions", [])
     versions.append(entry.model_dump(exclude_none=False))
     lineage_file.write_text(yaml.dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
 
@@ -29,7 +30,7 @@ def compute_skill_checksum(skill_md: Path) -> str:
     return f"sha256:{digest}"
 
 
-def read_variant_meta(variants_dir: Path, variant_id: str) -> dict:
+def read_variant_meta(variants_dir: Path, variant_id: str) -> dict[str, Any]:
     meta_file = variants_dir / variant_id / "meta.yaml"
     return yaml.safe_load(meta_file.read_text(encoding="utf-8")) or {}
 
@@ -38,7 +39,7 @@ def verify_variant_checksum(variants_dir: Path, variant_id: str) -> bool:
     """Return True if meta.yaml checksum matches sha256 of SKILL.md."""
     skill_md = variants_dir / variant_id / "SKILL.md"
     meta = read_variant_meta(variants_dir, variant_id)
-    expected = meta.get("checksum", "")
+    expected = str(meta.get("checksum", ""))
     return expected == compute_skill_checksum(skill_md)
 
 

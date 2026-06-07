@@ -198,7 +198,7 @@ def kb_search(
         authority = source_authorities.get(doc_id, "internal")
         authority_rank = _AUTHORITY_RANK.get(authority, 1)
         # Newer valid_from wins ties within the same authority tier.
-        vf: str = row.get("valid_from") or ""  # type: ignore[assignment]
+        vf: str = row.get("valid_from") or ""
         return (score, authority_rank, vf)
 
     ordered_ids = sorted(candidate_ids, key=_sort_key, reverse=True)[:top_k]
@@ -228,7 +228,7 @@ def kb_search(
                 document_id=doc_id,
                 namespace=str(row["namespace"]),
                 content=str(content) if content is not None else None,
-                valid_from=row.get("valid_from"),  # type: ignore[arg-type]
+                valid_from=row.get("valid_from"),
                 has_open_conflicts=doc_id in docs_with_conflicts,
                 source_authority=source_authorities.get(doc_id),
             )

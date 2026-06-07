@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import AsyncGenerator
-from typing import Any
+from typing import Any, Literal, cast
 
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
@@ -84,7 +84,11 @@ async def chat_stream(body: ChatRequest, request: Request) -> StreamingResponse:
             ]
             for m in body.messages:
                 if m.role in ("user", "assistant"):
-                    provider_msgs.append(Message(role=m.role, content=m.content))
+                    provider_msgs.append(
+                        Message(
+                            role=cast('Literal["user", "assistant"]', m.role), content=m.content
+                        )
+                    )
 
             resp = await loop.run_in_executor(
                 None,

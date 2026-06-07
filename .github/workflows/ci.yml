@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   python:
-    name: Python (lint + test)
+    name: Python (lint + type + test)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,9 +28,10 @@ jobs:
         run: |
           ruff check src/ tests/
           ruff format --check src/ tests/
+      - name: Type-check (mypy)
+        run: mypy src/
       - name: Test (pytest)
-        # Mirrors `make test`: skips slow + live-Ollama tests. (mypy is not run
-        # here yet — pre-existing findings; the Rust bench runs in its own job.)
+        # Mirrors `make test`: skips slow + live-Ollama tests.
         run: pytest tests/ -m "not slow and not requires_ollama"
 
   web:

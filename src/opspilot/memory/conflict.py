@@ -19,7 +19,7 @@ import hashlib
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .lance_store import LanceStore
@@ -106,7 +106,7 @@ def _classify_conflict(
 def detect_and_store_conflicts(
     *,
     new_doc_id: str,
-    new_chunks: list[dict],
+    new_chunks: list[dict[str, Any]],
     lance: LanceStore,
     sqlite: SqliteStore,
     embed_fn: Callable[[str], list[float]],
@@ -119,7 +119,7 @@ def detect_and_store_conflicts(
 
     Returns the number of new conflict records created.
     """
-    doc_cache: dict[str, dict] = {}
+    doc_cache: dict[str, dict[str, Any]] = {}
     created = 0
 
     for chunk in new_chunks:

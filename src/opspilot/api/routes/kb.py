@@ -7,7 +7,7 @@ from __future__ import annotations
 import asyncio
 import sqlite3
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel
@@ -232,11 +232,14 @@ async def correct_chunk(chunk_id: str, body: CorrectRequest, request: Request) -
     loop = asyncio.get_event_loop()
 
     def _run() -> str:
-        return state.sqlite.add_correction(
-            chunk_id,
-            corrected_by=body.corrected_by,
-            reason=body.reason,
-            new_content=body.new_content,
+        return cast(
+            "str",
+            state.sqlite.add_correction(
+                chunk_id,
+                corrected_by=body.corrected_by,
+                reason=body.reason,
+                new_content=body.new_content,
+            ),
         )
 
     try:
@@ -260,7 +263,9 @@ async def list_corrections_route(
     loop = asyncio.get_event_loop()
 
     def _run() -> list[dict[str, Any]]:
-        return state.sqlite.list_corrections(chunk_id=chunk_id, limit=limit)
+        return cast(
+            "list[dict[str, Any]]", state.sqlite.list_corrections(chunk_id=chunk_id, limit=limit)
+        )
 
     rows = await loop.run_in_executor(None, _run)
     return {"corrections": rows, "total": len(rows)}

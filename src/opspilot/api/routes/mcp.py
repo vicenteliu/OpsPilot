@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -52,7 +52,7 @@ async def list_mcp_servers(request: Request) -> dict[str, Any]:
                 registry.close_all()
 
         for s in servers:
-            s["tools"] = tools_by_server.get(s["id"], [])
+            s["tools"] = tools_by_server.get(str(s["id"]), [])
 
         return {"servers": servers}
 
@@ -99,4 +99,4 @@ async def probe_mcp_server(server_id: str, request: Request) -> dict[str, Any]:
     result = await loop.run_in_executor(None, _run)
     if result is None:
         raise HTTPException(status_code=404, detail=f"MCP server '{server_id}' not found")
-    return result
+    return cast("dict[str, Any]", result)

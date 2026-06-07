@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from typing import Any
 
 from fastapi import APIRouter, Request
 
@@ -16,7 +17,7 @@ _START: float = time.monotonic()
 
 
 @router.get("/health")
-def health(request: Request) -> dict:
+def health(request: Request) -> dict[str, Any]:
     cfg = request.app.state.cfg
     return {
         "status": "ok",
