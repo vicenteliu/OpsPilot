@@ -858,6 +858,30 @@ def test_parse_summary_json_does_not_pad_grossly_broken_output() -> None:
     assert err is not None and "JSON parse error" in err
 
 
+def test_parse_summary_json_repairs_invalid_escape() -> None:
+    """gemma4:12b-mlx emits regex/shell inside strings with invalid JSON escapes
+    (e.g. `\\|`). _parse_summary_json repairs lone backslashes and retries.
+    Observed: `grep -E "auth\\|fail"` → 'Invalid \\escape'."""
+    from opspilot.orchestrator.ticket_summary import _parse_summary_json
+
+    bad = r'{"summary":"run grep -E \"auth\|fail\" log","tasks":[]}'
+    parsed, err = _parse_summary_json(bad)
+    assert err is None
+    assert parsed["summary"] == r'run grep -E "auth\|fail" log'
+
+
+def test_parse_summary_json_keeps_valid_escapes() -> None:
+    """The escape repair must not corrupt legitimate JSON escapes."""
+    from opspilot.orchestrator.ticket_summary import _parse_summary_json
+
+    good = '{"a":"line1\\nline2","b":"C:\\\\tmp","u":"\\u00e9"}'
+    parsed, err = _parse_summary_json(good)
+    assert err is None
+    assert parsed["a"] == "line1\nline2"
+    assert parsed["b"] == "C:\\tmp"
+    assert parsed["u"] == "é"
+
+
 def test_strip_redaction_placeholders_removes_nested() -> None:
     """The prefetch query must not carry [REDACTED:...] placeholder noise
     into FTS5 — those tokens crater implicit-AND recall (PR-8.5 hotfix)."""

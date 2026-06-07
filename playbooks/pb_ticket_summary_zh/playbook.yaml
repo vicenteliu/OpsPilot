@@ -79,18 +79,6 @@ extra_models:
       temperature: 0.2
       top_p: 0.9
       max_tokens: 3000
-  - provider_id: "ollama-local"
-    kind: "ollama"
-    name: "gemma4:12b-mlx"
-    version: "2026-06"
-    params:
-      temperature: 0.2
-      top_p: 0.9
-      # gemma4:12b-mlx is a reasoning model — its thinking shares the token
-      # budget with the answer (Ollama returns reasoning in a separate field but
-      # counts it toward max_tokens). 4096 was consumed by reasoning alone
-      # (finish_reason=length, empty content), so give the JSON answer headroom.
-      max_tokens: 8192
 
 # Loop bounds.
 limits:
