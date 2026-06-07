@@ -62,6 +62,7 @@ make rust-build
 ```bash
 ollama pull nomic-embed-text-v2-moe   # embedding model (required)
 ollama pull gemma4:e4b                 # local chat model (optional fallback)
+ollama pull gemma4:12b-mlx             # larger local model, MLX-accelerated on Apple Silicon (optional)
 ```
 
 ### 3. Configure
