@@ -6,7 +6,13 @@ from pathlib import Path
 
 import yaml
 
-from opspilot.config import DEFAULT_LOG_LEVEL, DEFAULT_OLLAMA_URL, ensure_home, load_config
+from opspilot.config import (
+    DEFAULT_LOG_LEVEL,
+    DEFAULT_OLLAMA_TIMEOUT_S,
+    DEFAULT_OLLAMA_URL,
+    ensure_home,
+    load_config,
+)
 
 
 def test_load_config_defaults(monkeypatch, tmp_path: Path):
@@ -15,9 +21,11 @@ def test_load_config_defaults(monkeypatch, tmp_path: Path):
     monkeypatch.delenv("OPSPILOT_OLLAMA_BASE_URL", raising=False)
     monkeypatch.delenv("OPSPILOT_LOG_LEVEL", raising=False)
     monkeypatch.delenv("OPSPILOT_PLAYBOOKS_DIR", raising=False)
+    monkeypatch.delenv("OPSPILOT_OLLAMA_TIMEOUT_S", raising=False)
     cfg = load_config()
     assert cfg.home == tmp_path
     assert cfg.ollama_base_url == DEFAULT_OLLAMA_URL
+    assert cfg.ollama_timeout_s == DEFAULT_OLLAMA_TIMEOUT_S
     assert cfg.log_level == DEFAULT_LOG_LEVEL
     assert cfg.anthropic_api_key is None
 
@@ -26,10 +34,12 @@ def test_load_config_env_overrides(monkeypatch, tmp_path: Path):
     monkeypatch.setenv("OPSPILOT_HOME", str(tmp_path))
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-key")
     monkeypatch.setenv("OPSPILOT_OLLAMA_BASE_URL", "http://remote:11434")
+    monkeypatch.setenv("OPSPILOT_OLLAMA_TIMEOUT_S", "600")
     monkeypatch.setenv("OPSPILOT_LOG_LEVEL", "DEBUG")
     cfg = load_config()
     assert cfg.anthropic_api_key == "sk-test-key"
     assert cfg.ollama_base_url == "http://remote:11434"
+    assert cfg.ollama_timeout_s == 600.0
     assert cfg.log_level == "DEBUG"
 
 

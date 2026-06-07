@@ -422,6 +422,7 @@ All settings live in `~/.opspilot/config.yaml` (optional) or environment variabl
 | `OPENROUTER_API_KEY` | — | OpenRouter API key |
 | `GEMINI_API_KEY` | — | Google Gemini API key |
 | `OPSPILOT_OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama base URL |
+| `OPSPILOT_OLLAMA_TIMEOUT_S` | `300` | Ollama request timeout (s). Raise for large local models (e.g. `gemma4:12b`) that are slow to cold-load. |
 | `OPSPILOT_HOME` | `~/.opspilot` | State directory (KB, sessions, audit) |
 
 ---
