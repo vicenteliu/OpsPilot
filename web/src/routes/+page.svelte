@@ -1,16 +1,18 @@
 <script lang="ts">
   import '../app.css';
   import {
-    getConfig, getModels, runTicketStream, listSessions, getSession, getLineage,
-    getKBStats, listKBDocs, searchKB, wikiIngest, wikiQueryToPage, wikiLint, wikiPromote, listMCPServers,
+    getConfig, getModels, runTicketStream, listSessions, getSession,
+    getKBStats, listKBDocs, searchKB, wikiIngest, wikiQueryToPage, wikiLint, wikiPromote,
     listConflicts, resolveConflict, correctChunk, listCorrections, generateVendorDocStream,
     listWikiPages, listVendorDocs, getWikiPage, getVendorDoc, chatStream,
-    type RunResponse, type TicketSummary, type Task, type SessionSummary, type ModelOption, type SkillLineage,
-    type KBDoc, type KBHit, type KBConflict, type KBStats, type KBCorrection, type WikiLintIssue, type MCPServer,
+    type RunResponse, type TicketSummary, type Task, type SessionSummary, type ModelOption,
+    type KBDoc, type KBHit, type KBConflict, type KBStats, type KBCorrection, type WikiLintIssue,
     type VendorDoc, type VendorDocSection, type WikiPageSummary, type VendorDocSummary, type WikiPageDetail,
     type ChatMessage,
   } from '$lib/api';
   import GuideTab from '$lib/components/GuideTab.svelte';
+  import MCPTab from '$lib/components/MCPTab.svelte';
+  import IterationTab from '$lib/components/IterationTab.svelte';
 
   // --- Theme ---
   let theme = $state<'light' | 'dark'>(
@@ -66,12 +68,6 @@
   let sessionCache = $state<Record<string, RunResponse>>({});
   let sessionLoadingId = $state<string | null>(null);
 
-  // --- Iteration ---
-  let lineages = $state<SkillLineage[]>([]);
-  let lineageLoading = $state<boolean>(false);
-  let lineageError = $state<string | null>(null);
-  let expandedSkill = $state<Record<string, boolean>>({});
-
   // --- KB ---
   let kbStats = $state<KBStats | null>(null);
   let kbDocs = $state<KBDoc[]>([]);
@@ -124,11 +120,6 @@
   let vendorDocError = $state<string | null>(null);
   let vendorDocUsage = $state<RunResponse['usage'] | null>(null);
 
-  // --- MCP ---
-  let mcpServers = $state<MCPServer[]>([]);
-  let mcpLoading = $state<boolean>(false);
-  let mcpError = $state<string | null>(null);
-
   // --- Chat ---
   let chatMessages = $state<ChatMessage[]>([]);
   let chatInput = $state<string>('');
@@ -164,7 +155,6 @@
         modelsLoaded = true;
       }
       if (modules.history) await refreshHistory();
-      if (modules.iteration !== false) await refreshLineage();
       await loadKBDocs();
     })();
   });
@@ -276,19 +266,6 @@
       sessionLoadingId = null;
     }
     expanded = { ...expanded, [sessionId]: true };
-  }
-
-  // --- Iteration Handlers ---
-  async function refreshLineage() {
-    lineageLoading = true;
-    lineageError = null;
-    try { lineages = await getLineage(); }
-    catch (e) { lineageError = e instanceof Error ? e.message : String(e); lineages = []; }
-    finally { lineageLoading = false; }
-  }
-
-  function toggleSkill(name: string) {
-    expandedSkill = { ...expandedSkill, [name]: !expandedSkill[name] };
   }
 
   // --- KB Handlers ---
@@ -488,14 +465,6 @@
     try { await resolveConflict(conflictId, resolution); await loadConflicts(); }
     catch (e) { conflictsError = e instanceof Error ? e.message : String(e); }
     finally { resolving = { ...resolving, [conflictId]: false }; }
-  }
-
-  // --- MCP Handlers ---
-  async function loadMCPServers() {
-    mcpLoading = true; mcpError = null;
-    try { mcpServers = await listMCPServers(); }
-    catch (e) { mcpError = e instanceof Error ? e.message : String(e); mcpServers = []; }
-    finally { mcpLoading = false; }
   }
 
   // --- Chat Handlers ---
@@ -1325,88 +1294,12 @@
 
     <!-- ══════════════════════════════ MCP TAB ══════════════════════════════ -->
     {#if activeTab === 'mcp'}
-      <section class="mcp-section">
-        <div class="section-header">
-          <h2>MCP Servers</h2>
-          <button class="btn-refresh" onclick={loadMCPServers} disabled={mcpLoading}>↻</button>
-        </div>
-        {#if mcpError}
-          <p class="section-error">{mcpError}</p>
-        {:else if mcpLoading}
-          <p class="section-empty">Loading…</p>
-        {:else if mcpServers.length === 0}
-          <p class="section-empty">Click ↻ to load MCP servers from mcp-config.yaml.</p>
-        {:else}
-          <table class="data-table">
-            <thead><tr><th>ID</th><th>Transport</th><th>Enabled</th><th>Trust</th><th>Tools</th></tr></thead>
-            <tbody>
-              {#each mcpServers as s}
-                <tr>
-                  <td class="mono">{s.id}</td>
-                  <td>{s.transport}</td>
-                  <td>{s.enabled ? '✓' : '—'}</td>
-                  <td>{s.trust}</td>
-                  <td class="num">{s.tools.length}</td>
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-        {/if}
-      </section>
+      <MCPTab />
     {/if}
 
     <!-- ══════════════════════════ ITERATION TAB ══════════════════════════ -->
     {#if activeTab === 'iteration' && modules.iteration !== false}
-      <section class="iteration-section">
-        <div class="iteration-header">
-          <h2>Iteration History</h2>
-          <button class="btn-refresh" onclick={refreshLineage} disabled={lineageLoading}>
-            {lineageLoading ? '...' : '↻'}
-          </button>
-        </div>
-        {#if lineageError}
-          <p class="iteration-error">{lineageError}</p>
-        {:else if lineages.length === 0 && !lineageLoading}
-          <p class="iteration-empty">No skill lineage found. Run <code>opspilot iteration promote</code> to create one.</p>
-        {:else}
-          {#each lineages as skill}
-            <div class="skill-block">
-              <button class="skill-toggle" onclick={() => toggleSkill(skill.skill_name)}>
-                <span class="skill-name">{skill.skill_name}</span>
-                <span class="skill-count">{skill.versions.length} version{skill.versions.length !== 1 ? 's' : ''}</span>
-                <span class="toggle-arrow">{expandedSkill[skill.skill_name] ? '▲' : '▼'}</span>
-              </button>
-              {#if expandedSkill[skill.skill_name]}
-                <div class="lineage-tree">
-                  {#each [...skill.versions].reverse() as v, i}
-                    <div class="lineage-row {v.rolled_back ? 'rolled-back' : ''}">
-                      <div class="lineage-version">
-                        <span class="version-badge {v.rolled_back ? 'rolled-back-badge' : ''}">v{v.version}</span>
-                        {#if v.rolled_back}<span class="rollback-flag">rolled back</span>{/if}
-                      </div>
-                      <div class="lineage-meta">
-                        <span class="lineage-date">{v.promoted_at.slice(0, 10)}</span>
-                        {#if v.iteration}
-                          <span class="itr-id" title={v.iteration}>{v.iteration.slice(0, 16)}…</span>
-                        {:else}
-                          <span class="itr-id dim">manual</span>
-                        {/if}
-                        {#if v.promoted_variant_id}
-                          <span class="variant-id" title={v.promoted_variant_id}>↑ {v.promoted_variant_id}</span>
-                        {/if}
-                      </div>
-                      <div class="lineage-summary">{v.summary}</div>
-                      {#if i < skill.versions.length - 1}
-                        <div class="lineage-connector">│</div>
-                      {/if}
-                    </div>
-                  {/each}
-                </div>
-              {/if}
-            </div>
-          {/each}
-        {/if}
-      </section>
+      <IterationTab />
     {/if}
 
     {#if activeTab === 'guide'}
@@ -1758,18 +1651,6 @@
 
   .history-header h2 { font-size: 1.1rem; color: var(--text); margin: 0; }
 
-  .btn-refresh {
-    background: none;
-    border: 1px solid var(--border-strong);
-    border-radius: 4px;
-    padding: 0.15rem 0.5rem;
-    font-size: 1rem;
-    color: var(--text-muted);
-    line-height: 1;
-    cursor: pointer;
-  }
-
-  .btn-refresh:hover { background: var(--bg-muted); }
 
   .history-empty { color: var(--text-faint); font-size: 0.9rem; }
 
@@ -1952,18 +1833,9 @@
   }
 
   /* ── KB, Wiki, Sections ── */
-  .kb-section, .wiki-section, .mcp-section, .vendordoc-section, .iteration-section {
+  .kb-section, .wiki-section, .vendordoc-section {
     padding-top: 0.5rem;
   }
-
-  .section-header {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    margin-bottom: 1rem;
-  }
-
-  .section-header h2 { font-size: 1.1rem; color: var(--text); margin: 0; flex: 1; }
 
   .section-tabs { display: flex; gap: 0.25rem; }
 
@@ -1979,16 +1851,6 @@
 
   .tab-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
 
-  .section-empty { color: var(--text-faint); font-size: 0.9rem; }
-  .section-error { color: var(--error-text); font-size: 0.9rem; }
-  .section-ok { color: var(--success-text); font-size: 0.9rem; }
-
-  .data-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
-  .data-table th { text-align: left; padding: 0.35rem 0.65rem; color: var(--text-muted); font-weight: 600; border-bottom: 1px solid var(--border); }
-  .data-table td { padding: 0.4rem 0.65rem; border-bottom: 1px solid var(--border-faint); vertical-align: top; }
-
-  .mono { font-family: 'Courier New', monospace; font-size: 0.82rem; }
-  .num { text-align: right; font-family: 'Courier New', monospace; }
   .dim { color: var(--text-faint); }
 
   .snippet { color: var(--text-sub); font-size: 0.82rem; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2127,32 +1989,5 @@
   .vd-cit-list { margin: 0.4rem 0 0; padding-left: 1rem; display: flex; flex-direction: column; gap: 0.2rem; list-style: disc; }
   .vd-ref { font-size: 0.78rem; }
 
-  /* ── Iteration ── */
-  .iteration-header { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; }
-  .iteration-header h2 { font-size: 1.1rem; color: var(--text); margin: 0; }
-  .iteration-empty, .iteration-error { color: var(--text-faint); font-size: 0.9rem; }
-  .iteration-error { color: var(--error-text); }
-
-  .skill-block { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 0.75rem; overflow: hidden; }
-  .skill-toggle { width: 100%; display: flex; align-items: center; gap: 0.75rem; padding: 0.65rem 1rem; background: var(--bg-subtle); border: none; cursor: pointer; text-align: left; font-size: 0.95rem; }
-  .skill-toggle:hover { background: var(--bg-muted); }
-  .skill-name { font-family: 'Courier New', monospace; font-weight: 600; color: var(--primary); flex: 1; }
-  .skill-count { font-size: 0.8rem; color: var(--text-muted); }
-  .toggle-arrow { color: var(--text-faint); font-size: 0.8rem; }
-
-  .lineage-tree { padding: 0.75rem 1rem; background: var(--bg-surface); }
-  .lineage-row { padding: 0.5rem 0; border-left: 2px solid var(--border-strong); padding-left: 1rem; margin-left: 0.5rem; }
-  .lineage-row.rolled-back { opacity: 0.55; }
-  .lineage-version { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.2rem; }
-  .version-badge { font-family: 'Courier New', monospace; font-size: 0.82rem; font-weight: 700; background: var(--info-bg); color: var(--info-text); padding: 0.1rem 0.5rem; border-radius: 4px; }
-  .version-badge.rolled-back-badge { background: var(--error-bg); color: var(--error-text); }
-  .rollback-flag { font-size: 0.72rem; color: var(--error-text); background: var(--error-bg); padding: 0.1rem 0.4rem; border-radius: 3px; }
-  .lineage-meta { display: flex; align-items: center; gap: 0.6rem; font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.2rem; }
-  .lineage-date { font-family: 'Courier New', monospace; }
-  .itr-id { font-family: 'Courier New', monospace; background: var(--bg-muted); padding: 0.05rem 0.35rem; border-radius: 3px; }
-  .itr-id.dim { color: var(--text-faint); }
-  .variant-id { font-family: 'Courier New', monospace; color: var(--success-text); font-size: 0.75rem; }
-  .lineage-summary { font-size: 0.88rem; color: var(--text); line-height: 1.4; }
-  .lineage-connector { color: var(--border-strong); padding-left: 1rem; margin-left: 0.5rem; font-size: 0.9rem; }
 
 </style>
