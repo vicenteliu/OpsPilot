@@ -114,7 +114,7 @@ def run_harness(
     by_type: dict[str, float] = {er.id: er.score for er in eval_results}
     weighted = _weighted_score(eval_results, weights)
     scores: dict[str, Any] = {"weighted": weighted, "by_type": by_type}
-    # Per IMPLEMENTATION_STAGE_1.md §9.1 the pass gate is weighted_score
+    # Per docs/zh/design/IMPLEMENTATION_STAGE_1.md §9.1 the pass gate is weighted_score
     # alone; individual evaluator passed flags are surfaced for triage but
     # don't dominate the final verdict (e.g. precision@k can be < 0.5 in
     # tiny KBs with only 1 relevant chunk).

@@ -266,10 +266,10 @@ class TestInferSchemaName:
         "rel_path",
         [
             # Templates dirs are skipped (humans only)
-            "skills/templates/SKILL.template.md",
-            "memory/templates/kb-config.template.yaml",
+            "docs/specs/skills/templates/SKILL.template.md",
+            "docs/specs/memory/templates/kb-config.template.yaml",
             # Schemas themselves are skipped
-            "session/schemas/session.schema.json",
+            "docs/specs/session/schemas/session.schema.json",
             # Sandbox leftovers prefixed `_`
             "examples/foo/_summary_pending.json",
         ],

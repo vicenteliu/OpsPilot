@@ -193,7 +193,7 @@ The six layers form a closed AI task loop:
 - **sandbox/** — isolated execution layer for AI-proposed actions ("show me before committing"); L2: Docker hardened (seccomp + cap-drop + RO rootfs); L3: + gVisor `runsc` user-space kernel; default deny-all
 - **harness/** — unit tests and regression gates for prompts and playbooks; required before model upgrades
 
-> The spec-only directories (`providers/`, `skills/`, `wiki/`, `session/`, `sandbox/`, `harness/` at repo root) define these contracts and templates. The working implementation lives under `src/opspilot/`.
+> The spec-only directories under [`docs/specs/`](docs/specs/) define these contracts and templates. The working implementation lives under `src/opspilot/`.
 
 ### Provider routing
 
@@ -304,7 +304,7 @@ opspilot sandbox run --level l3 examples/sandbox_shell_l2/action.yaml
 L3 is **fail-closed**: if `runsc` is not registered in `/etc/docker/daemon.json`,
 the run is refused with an explicit error rather than silently downgrading to L2.
 Host setup (install `runsc`, register the runtime) is documented in
-[`sandbox/backends/README.md` §3](sandbox/backends/README.md).
+[`docs/specs/sandbox/backends/README.md` §3](docs/specs/sandbox/backends/README.md).
 
 ---
 
@@ -462,18 +462,14 @@ make bench                          # Rust vs Python speedup benchmarks (must be
 ├── deploy/             # systemd unit + nginx config
 ├── docker-compose.prod.yml
 ├── .env.example        # Environment variable reference
-│
-│  # ── Spec-only directories (contracts and templates, no running implementation) ──
-├── providers/          # LLM provider spec + catalog
-├── skills/             # Skill registry, authoring, distillation, iteration spec
-├── wiki/               # LLM-maintained compounding wiki spec
-├── memory/             # Memory + RAG pipeline spec (separate from src/opspilot/memory/)
-├── session/            # Session & trace spec
-├── sandbox/            # Sandboxed action execution spec
-└── harness/            # Eval & regression harness spec
+└── docs/
+    ├── specs/          # Spec-only contracts + templates (providers, skills, wiki,
+    │                   #   memory, session, sandbox, harness, orchestrator)
+    ├── adr/            # Architecture decision records
+    └── zh/             # Chinese documentation (translations + historical design docs)
 ```
 
-> The top-level `providers/`, `skills/`, `wiki/`, `session/`, `sandbox/`, and `harness/` directories are **specification and template** artifacts. The working implementation lives under `src/opspilot/`.
+> The spec directories under `docs/specs/` are **specification and template** artifacts — the schema registry and redaction rules are loaded from there at runtime. The working implementation lives under `src/opspilot/`.
 
 ---
 

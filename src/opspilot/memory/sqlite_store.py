@@ -1,6 +1,6 @@
 """SQLite-backed metadata store for the memory subsystem.
 
-Owns three tables (full schema in ``memory/storage/sqlite-schema.sql``):
+Owns three tables (full schema in ``docs/specs/memory/storage/sqlite-schema.sql``):
 
 * ``kb_documents``  — one row per ingested source file
 * ``kb_chunks``     — chunk-level metadata + ``vector_id`` link to LanceDB

@@ -1,4 +1,4 @@
-"""Typed dataclasses mirroring ``session/schemas/{session,trace-event}.schema.json``.
+"""Typed dataclasses mirroring ``docs/specs/session/schemas/{session,trace-event}.schema.json``.
 
 Why dataclasses over pydantic models here:
 
@@ -15,7 +15,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Final, Literal
 
 # ── Lifecycle state machine ──────────────────────────────────────────
-# Mirrors ``session/SPEC.md §1``. Used by SessionManager to gate
+# Mirrors ``docs/specs/session/SPEC.md §1``. Used by SessionManager to gate
 # state transitions.
 SessionStatus = Literal[
     "draft",

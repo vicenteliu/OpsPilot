@@ -79,7 +79,7 @@
 3. 测试：`docker run --runtime=runsc -it debian:stable-slim uname -a`
 
 > **已实现（L3）**：OpsPilot 的 gVisor 后端见 `src/opspilot/sandbox/docker_l3.py`
-> （选型决策见 [ADR-0009](../../docs/adr/0009-sandbox-l3-gvisor-over-firecracker.md)）。
+> （选型决策见 [ADR-0009](../../../adr/0009-sandbox-l3-gvisor-over-firecracker.md)）。
 > 用法：`opspilot sandbox run --level l3 <action.yaml>`。`runsc` 未注册时
 > **fail-closed**（不降级到 L2）。
 

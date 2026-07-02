@@ -54,7 +54,7 @@ from .sqlite_store import SqliteStore
 EmbedFn = Callable[[str], list[float]]
 
 
-# Placeholder types from session/templates/redaction-rules.template.yaml.
+# Placeholder types from docs/specs/session/templates/redaction-rules.template.yaml.
 # Even after the rule rewrote them to a placeholder, we refuse to ingest
 # any text where these matched at all — the original is unrecoverable
 # from the placeholder, but we don't want such content cached anywhere

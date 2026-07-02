@@ -6,15 +6,15 @@
 
 ## Context
 
-STAGES.md §7.5 lists "sandbox L3 (gVisor / Firecracker / Kata 之一; 视需求)" as an
+docs/zh/design/STAGES.md §7.5 lists "sandbox L3 (gVisor / Firecracker / Kata 之一; 视需求)" as an
 optional Stage 5 hardening item. L2 (`sandbox/docker_l2.py`) is a Docker
 *hardened* container: read-only rootfs, `--cap-drop=ALL`, `no-new-privileges`,
 a custom seccomp profile, and resource/pid limits. Its residual risk is the one
-named in `sandbox/backends/README.md`: the container still shares the host Linux
+named in `docs/specs/sandbox/backends/README.md`: the container still shares the host Linux
 kernel, so a kernel-level 0-day can escape. L3 exists to raise that boundary for
 "处理外部/可疑输入" workloads.
 
-`sandbox/backends/README.md` already compares the three L3 candidates. The
+`docs/specs/sandbox/backends/README.md` already compares the three L3 candidates. The
 decision here is which one OpsPilot actually implements, and it is shaped by two
 hard constraints already in the codebase:
 
@@ -23,7 +23,7 @@ hard constraints already in the codebase:
    reusing 100% of the L2 argv and hardening. Firecracker/Kata are a *different
    execution path* (containerd/CRI shim, microVM images, KVM), i.e. a rewrite of
    the executor, not an added flag.
-2. **macOS is the primary dev OS** (STAGES.md §4; cross-stage invariant #6:
+2. **macOS is the primary dev OS** (docs/zh/design/STAGES.md §4; cross-stage invariant #6:
    "macOS dev / Linux prod, CI must verify"). Firecracker/Kata require
    `/dev/kvm`, which is unavailable on macOS and on most nested-virt cloud
    runners. gVisor runs inside Docker Desktop's Linux VM, so the L3 argv and the
@@ -67,7 +67,7 @@ and warrants its own ADR.
 
 - L3 requires the host operator to install `runsc` and register it in
   `/etc/docker/daemon.json`. Until then, `--level l3` fails closed with a
-  pointer to `sandbox/backends/README.md §3`.
+  pointer to `docs/specs/sandbox/backends/README.md §3`.
 - gVisor intercepts syscalls in user space: expect a CPU/IO cost (~10–30%,
   workload-dependent) and a small set of unsupported syscalls (e.g. some
   `io_uring` paths). The recommended rollout is to run the existing fixtures

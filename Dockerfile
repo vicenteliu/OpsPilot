@@ -22,7 +22,7 @@ WORKDIR /build
 # Install dependencies first so `pip install -e .` later is fast.
 COPY pyproject.toml ./
 COPY src ./src
-COPY memory/storage/sqlite-schema.sql ./memory/storage/sqlite-schema.sql
+COPY docs/specs/memory/storage/sqlite-schema.sql ./docs/specs/memory/storage/sqlite-schema.sql
 
 RUN pip install --upgrade pip \
     && pip wheel --wheel-dir /wheels -e .
@@ -47,15 +47,8 @@ RUN pip install --no-index --find-links=/wheels --user opspilot \
     && rm -rf /wheels
 
 # Copy spec dirs the runtime needs (sqlite schema + json schemas
-# discovered by opspilot.schemas).
-COPY --chown=opspilot:opspilot memory ./memory
-COPY --chown=opspilot:opspilot session ./session
-COPY --chown=opspilot:opspilot harness ./harness
-COPY --chown=opspilot:opspilot orchestrator ./orchestrator
-COPY --chown=opspilot:opspilot providers ./providers
-COPY --chown=opspilot:opspilot skills ./skills
-COPY --chown=opspilot:opspilot wiki ./wiki
-COPY --chown=opspilot:opspilot sandbox ./sandbox
+# discovered by opspilot.schemas). Specs live under docs/specs/.
+COPY --chown=opspilot:opspilot docs/specs ./docs/specs
 COPY --chown=opspilot:opspilot playbooks ./playbooks
 COPY --chown=opspilot:opspilot examples ./examples
 

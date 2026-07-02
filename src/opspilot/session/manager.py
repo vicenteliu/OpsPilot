@@ -8,7 +8,7 @@ Layout under ``<home>/sessions/<sess_id>/``::
     artifacts/      ── content-addressed store (ArtifactStore)
     inputs/         ── reserved for caller-supplied input artifacts (PR-7)
 
-State machine (session/SPEC.md §1) is enforced by :meth:`transition`;
+State machine (docs/specs/session/SPEC.md §1) is enforced by :meth:`transition`;
 illegal transitions raise :class:`IllegalTransition`. Every state change
 is journaled to ``audit.log`` (via :class:`AuditLog`).
 

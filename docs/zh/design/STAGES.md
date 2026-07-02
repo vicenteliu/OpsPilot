@@ -608,12 +608,12 @@ git push origin main
 
 | 文档 | 谁读 | 何时读 |
 |---|---|---|
-| [README.md](README.md) | 所有人 | 第一次接触项目 |
+| [README.md](../../../README.md) | 所有人 | 第一次接触项目 |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | 评审 / 新成员 / 自己复盘 | 想看"系统长什么样" |
 | [STAGES.md](STAGES.md)（本文）| 实施前 / 加新 stage 时 | 想看"分几步走 + 用什么栈" |
 | [IMPLEMENTATION_STAGE_1.md](IMPLEMENTATION_STAGE_1.md) | 实施 Stage 1 时 | 想看"这周写什么代码" |
 | 各目录 SPEC.md | 改 schema / 加字段时 | 想查"具体字段含义" |
-| [CLAUDE.md](CLAUDE.md) | 任何代码改动前 | 行为约定（4 条原则）|
+| [CLAUDE.md](../../../CLAUDE.md) | 任何代码改动前 | 行为约定（4 条原则）|
 
 ---
 

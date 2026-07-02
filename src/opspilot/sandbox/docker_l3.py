@@ -45,7 +45,7 @@ def run_l3(request: ActionRequest, image: str = _DEFAULT_IMAGE) -> ApplyResult:
                 "[sandbox] L3 requested but the gVisor runtime 'runsc' is not "
                 "registered with Docker — refusing to fall back to L2 "
                 "(fail-closed). Install runsc and register it in "
-                "/etc/docker/daemon.json. See sandbox/backends/README.md §3."
+                "/etc/docker/daemon.json. See docs/specs/sandbox/backends/README.md §3."
             ),
             duration_ms=0,
         )

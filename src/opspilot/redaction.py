@@ -1,6 +1,6 @@
 """PII redaction.
 
-Driven by ``session/templates/redaction-rules.template.yaml`` from the spec.
+Driven by ``docs/specs/session/templates/redaction-rules.template.yaml`` from the spec.
 Each rule = ``id + description + pattern + placeholder_type + exceptions``.
 
 Algorithm:
@@ -32,7 +32,7 @@ from .errors import RedactionError
 # Spec rules live in the OpsPilot spec tree (not under src/opspilot/).
 _REPO_ROOT: Final[Path] = Path(__file__).resolve().parents[2]
 DEFAULT_RULES_PATH: Final[Path] = (
-    _REPO_ROOT / "session" / "templates" / "redaction-rules.template.yaml"
+    _REPO_ROOT / "docs" / "specs" / "session" / "templates" / "redaction-rules.template.yaml"
 )
 
 

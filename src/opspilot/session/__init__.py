@@ -7,7 +7,7 @@ PR-6 introduces:
   may appear in ``trace.jsonl`` (matches the oneOf branches of
   trace-event.schema.json).
 * :class:`SessionManager` — create / load / list sessions; enforces the
-  state machine in session/SPEC.md §1.
+  state machine in docs/specs/session/SPEC.md §1.
 * :class:`TraceWriter` — append-only JSONL with auto seq + ts and per-row
   schema validation.
 * :class:`ArtifactStore` — content-addressed ``art_<sha256[:16]>`` files

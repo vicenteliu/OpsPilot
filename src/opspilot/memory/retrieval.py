@@ -1,6 +1,6 @@
 """Hybrid retrieval over SQLite (FTS5 / BM25) + LanceDB (cosine ANN).
 
-Fusion uses **weighted Reciprocal Rank Fusion** per ``memory/SPEC.md §156``::
+Fusion uses **weighted Reciprocal Rank Fusion** per ``docs/specs/memory/SPEC.md §156``::
 
     rrf_score(chunk) =   vector_weight  * 1 / (k + rank_vector(chunk))
                        + keyword_weight * 1 / (k + rank_fts(chunk))
@@ -60,7 +60,7 @@ _AUTHORITY_RANK: Final[dict[str, int]] = {
     "unverified": 0,
 }
 
-# Default mixing weights from memory/SPEC.md §156. Vector slightly heavier
+# Default mixing weights from docs/specs/memory/SPEC.md §156. Vector slightly heavier
 # because dense retrieval generalises across paraphrase + cross-language;
 # keyword catches exact-token hits that embeddings miss.
 DEFAULT_VECTOR_WEIGHT: Final[float] = 0.6

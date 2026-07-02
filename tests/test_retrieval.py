@@ -1,7 +1,7 @@
 """End-to-end retrieval test against the spec example KB.
 
 This test enforces the **PR-4 exit criterion** from
-``IMPLEMENTATION_STAGE_1.md §738``::
+``docs/zh/design/IMPLEMENTATION_STAGE_1.md §738``::
 
     把样例 chunks.jsonl 灌入两个 store；
     kb_search("VPN 认证失败") top-1 返回 chk_0cf89826

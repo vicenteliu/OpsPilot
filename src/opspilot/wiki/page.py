@@ -30,7 +30,7 @@ import yaml
 class WikiPage:
     """One wiki page (frontmatter + body).
 
-    Mirrors wiki/schemas/wiki-page.schema.json.
+    Mirrors docs/specs/wiki/schemas/wiki-page.schema.json.
     """
 
     page_id: str

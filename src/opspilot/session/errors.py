@@ -12,5 +12,5 @@ class SessionError(OpsPilotError):
 class IllegalTransition(SessionError):  # noqa: N818  -- domain reads cleaner without -Error suffix
     """Raised when ``SessionManager.transition`` is called with a target
     state that's not reachable from the current state per
-    ``session/SPEC.md §1``.
+    ``docs/specs/session/SPEC.md §1``.
     """

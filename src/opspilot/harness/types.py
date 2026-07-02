@@ -1,6 +1,6 @@
 """Data contracts for the evaluation harness.
 
-Three primary objects from spec ``harness/schemas/``:
+Three primary objects from spec ``docs/specs/harness/schemas/``:
 
 * :class:`Fixture` — one test case (input + tags + scenario).
 * :class:`Golden`  — expected output + must_contain / must_not_contain
@@ -44,7 +44,7 @@ WEIGHTED_SCORE_PASS_THRESHOLD: Final[float] = 0.85
 
 @dataclass(frozen=True)
 class Fixture:
-    """One test case (mirrors ``harness/schemas/fixture.schema.json``)."""
+    """One test case (mirrors ``docs/specs/harness/schemas/fixture.schema.json``)."""
 
     id: str
     scenario_id: str
@@ -172,7 +172,7 @@ class EvaluatorResult:
         }
 
 
-# ── EvalResult (per harness/schemas/eval-result.schema.json) ────────
+# ── EvalResult (per docs/specs/harness/schemas/eval-result.schema.json) ────────
 
 
 @dataclass(frozen=True)

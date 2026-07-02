@@ -28,16 +28,16 @@ from .errors import SchemaError
 # Repo root: src/opspilot/schemas.py → src/opspilot → src → repo
 REPO_ROOT: Path = Path(__file__).resolve().parents[2]
 
-# Spec dirs that may contain schemas/.
+# Spec dirs (under docs/specs/) that may contain schemas/.
 SCHEMA_SEARCH_DIRS: tuple[str, ...] = (
-    "providers",
-    "memory",
-    "session",
-    "sandbox",
-    "harness",
-    "skills",
-    "wiki",
-    "orchestrator",  # PR-7: incident_summary_v1 + future playbook output schemas
+    "docs/specs/providers",
+    "docs/specs/memory",
+    "docs/specs/session",
+    "docs/specs/sandbox",
+    "docs/specs/harness",
+    "docs/specs/skills",
+    "docs/specs/wiki",
+    "docs/specs/orchestrator",  # PR-7: incident_summary_v1 + future playbook output schemas
 )
 
 
