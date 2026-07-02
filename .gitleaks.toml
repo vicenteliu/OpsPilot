@@ -1,0 +1,13 @@
+# Gitleaks config — extends the default ruleset.
+# Full-history scan is part of the pre-public checklist; keep it at zero findings.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Deliberately secret-shaped fixtures exercising the redaction / ingest / MCP-config guards"
+paths = [
+  '''tests/test_redaction\.py''',
+  '''tests/test_ingestion\.py''',
+  '''tests/test_mcp\.py''',
+]
