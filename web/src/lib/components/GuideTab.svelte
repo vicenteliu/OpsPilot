@@ -498,10 +498,10 @@
 
   .lang-btn-active {
     background: var(--primary);
-    color: #fff;
+    color: var(--primary-contrast);
   }
 
-  .lang-btn-active:hover { background: var(--primary); color: #fff; }
+  .lang-btn-active:hover { background: var(--primary); color: var(--primary-contrast); }
 
   .guide-block {
     background: var(--bg-surface);
@@ -743,8 +743,8 @@
     flex-shrink: 0;
   }
 
-  .wf-step-highlight .wf-num { background: var(--primary); color: #fff; }
-  .wf-step-selected .wf-num  { background: var(--primary); color: #fff; }
+  .wf-step-highlight .wf-num { background: var(--primary); color: var(--primary-contrast); }
+  .wf-step-selected .wf-num  { background: var(--primary); color: var(--primary-contrast); }
 
   .wf-name { font-size: 0.8rem; font-weight: 700; color: var(--text); font-family: 'Courier New', monospace; }
   .wf-desc { font-size: 0.69rem; color: var(--text-muted); }
