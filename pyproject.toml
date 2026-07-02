@@ -8,13 +8,13 @@ version = "0.2.0"
 description = "AI-augmented IT ops workbench: spec-driven, multi-stack, multi-UI"
 readme = "README.md"
 requires-python = ">=3.12"
-license = { text = "MIT" }
+license = { text = "Apache-2.0" }
 authors = [{ name = "Vicente Liu", email = "vicenteliuca@gmail.com" }]
 keywords = ["llm", "rag", "agent", "ops", "ai"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: System Administrators",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.12",
     "Topic :: System :: Systems Administration",
