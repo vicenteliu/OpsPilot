@@ -1,0 +1,75 @@
+<!doctype html>
+<!-- Execution-flow diagram (content mirrors the web UI Guide tab).
+     Render: chrome --headless --screenshot=docs/assets/workflow.png \
+       --window-size=1560,430 file://$PWD/scripts/readme_assets/workflow.html -->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  :root {
+    --bg: #0b0c0f; --surface: #121318; --muted-bg: #1d2026; --border: #23262e;
+    --border-strong: #333845; --text: #e6e8ec; --muted: #858c98; --faint: #5c6470;
+    --cyan: #22d3ee; --cyan-bg: #0b2a33; --cyan-bd: #155e75;
+    --red: #f2848b;  --red-bg: #2a1214;  --red-bd: #7f1d1d;
+    --blue: #8ab8fd; --blue-bg: #0f2440; --blue-bd: #1d4ed8;
+    --green: #6ee7a8;--green-bg: #0a2517;--green-bd: #166534;
+    --amber: #fcd34d;--amber-bg: #2a2008;--amber-bd: #78350f;
+    --mono: ui-monospace, 'SF Mono', Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 1560px; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); padding: 56px 64px; }
+  .head { display: flex; align-items: baseline; gap: 18px; margin-bottom: 40px; }
+  .dot { width: 13px; height: 13px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 14px var(--cyan); align-self: center; }
+  h1 { font-size: 34px; font-weight: 750; }
+  .head .k { font-family: var(--mono); font-size: 17px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.14em; }
+
+  .pipe { display: flex; align-items: stretch; gap: 14px; }
+  .step { flex: 1; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 12px; padding: 18px 20px; display: flex; gap: 14px; }
+  .step.hot { border-color: var(--cyan-bd); background: var(--cyan-bg); }
+  .n { width: 34px; height: 34px; border-radius: 50%; background: var(--border-strong); color: var(--text);
+       display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 16px; font-weight: 700; flex-shrink: 0; }
+  .hot .n { background: var(--cyan); color: #06181d; }
+  .step b { display: block; font-family: var(--mono); font-size: 18px; margin-bottom: 4px; }
+  .hot b { color: var(--cyan); }
+  .step span { font-size: 14px; color: var(--muted); line-height: 1.45; }
+  .sep { align-self: center; color: var(--faint); font-size: 22px; }
+
+  .inner { margin-top: 30px; display: flex; align-items: center; gap: 12px; background: var(--surface);
+           border: 1px solid var(--border); border-radius: 12px; padding: 16px 22px; }
+  .inner .lbl { font-family: var(--mono); font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-right: 8px; }
+  .badge { font-family: var(--mono); font-size: 16px; font-weight: 600; padding: 6px 16px; border-radius: 8px; border: 1px solid; }
+  .b-red   { color: var(--red);   background: var(--red-bg);   border-color: var(--red-bd); }
+  .b-blue  { color: var(--blue);  background: var(--blue-bg);  border-color: var(--blue-bd); }
+  .b-green { color: var(--green); background: var(--green-bg); border-color: var(--green-bd); }
+  .b-cyan  { color: var(--cyan);  background: var(--cyan-bg);  border-color: var(--cyan-bd); }
+  .b-amber { color: var(--amber); background: var(--amber-bg); border-color: var(--amber-bd); }
+  .isep { color: var(--faint); font-size: 18px; }
+</style>
+</head>
+<body>
+  <div class="head"><span class="dot"></span><h1>OpsPilot</h1><span class="k">execution flow</span></div>
+
+  <div class="pipe">
+    <div class="step"><span class="n">1</span><div><b>Input</b><span>work item JSON or natural language · Pydantic-validated</span></div></div>
+    <div class="sep">&rarr;</div>
+    <div class="step"><span class="n">2</span><div><b>API</b><span>FastAPI · SSE streams every trace event live</span></div></div>
+    <div class="sep">&rarr;</div>
+    <div class="step hot"><span class="n">3</span><div><b>Orchestrator</b><span>ReAct loop · KB + MCP tools · retries with fallback model</span></div></div>
+    <div class="sep">&rarr;</div>
+    <div class="step"><span class="n">4</span><div><b>Session</b><span>append-only trace · content-addressed artifact · audit</span></div></div>
+    <div class="sep">&rarr;</div>
+    <div class="step"><span class="n">5</span><div><b>Output</b><span>schema-validated JSON · citations to real KB chunks</span></div></div>
+  </div>
+
+  <div class="inner">
+    <span class="lbl">Orchestrator internals</span>
+    <span class="badge b-red">Redact</span><span class="isep">&rarr;</span>
+    <span class="badge b-blue">KB Search</span><span class="isep">&rarr;</span>
+    <span class="badge b-green">MCP Tools</span><span class="isep">&rarr;</span>
+    <span class="badge b-cyan">LLM</span><span class="isep">&rarr;</span>
+    <span class="badge b-amber">Evaluator</span>
+  </div>
+</body>
+</html>

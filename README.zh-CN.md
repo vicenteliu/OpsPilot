@@ -12,6 +12,20 @@ OpsPilot 通过 playbook 驱动的 AI 管线，把原始 IT 工作项（Work ite
 都留下可审计的痕迹：内容到达模型之前先做 PII 脱敏，输出经过严格 JSON Schema
 校验，每个会话归档一份内容寻址的 artifact 和一条只追加的 trace。
 
+## 项目初衷
+
+AI 正在重塑整个 IT Support 行业。OpsPilot 是对一个具体问题的可运行回答：
+**基于当下 LLM 的真实能力，一套实用的 IT Support 工作辅助层应该长什么样？**
+
+- 今天的模型已经足以起草事件摘要、把工作拆解为可派发的任务、找到对的
+  runbook——前提是每个结论都有知识库依据、每次运行都可审计。这份依据和
+  可审计性正是 OpsPilot 构建的东西。
+- 模型能力在持续复利式增长，OpsPilot 的设计是顺着这条曲线走而不是追赶它：
+  playbook 锁定模型版本、回归 harness 把关每次升级、规格驱动的契约让换用
+  更强的模型只是一次配置变更而非重写。
+- 人始终掌握决定权：OpsPilot 只建议严重度、支持线和处置动作；你的工单系统
+  和工程师做最终决定。
+
 ## 亮点
 
 - **多模型支持** —— Anthropic Claude、OpenAI、OpenRouter、Gemini 或本地
@@ -27,11 +41,21 @@ OpsPilot 通过 playbook 驱动的 AI 管线，把原始 IT 工作项（Work ite
   页面，沉淀在长期知识库之上
 - **MCP 客户端** —— 任意 Model Context Protocol 服务器（stdio/HTTP）的工具
   注入 ReAct 循环，按服务器配置允许/拒绝列表
-- **四种界面** —— CLI、8 模块终端 UI（Textual）、多标签 Web UI（Svelte 5，
-  含知识库增强聊天）、FastAPI 后端
+- **四种界面** —— CLI、REPL 终端 UI（Textual，斜杠命令）、多标签 Web UI
+  （Svelte 5，含知识库增强聊天）、FastAPI 后端
 - **可观测性** —— Prometheus `/metrics`、OTel 兼容 JSON 日志、`/health`
 - **Rust 热路径** —— 分块器（9.6×）和分词器（45×）经 PyO3/maturin 编译，
   纯 Python 透明降级
+
+## 一览
+
+Web UI —— 暗色优先、侧边栏导航，每个回答都能溯源到知识库：
+
+![OpsPilot web UI](docs/assets/webui.png)
+
+终端 UI —— 同一后端之上的斜杠命令 REPL：
+
+![OpsPilot TUI tour](docs/assets/tui.gif)
 
 ## 快速开始
 
@@ -88,21 +112,9 @@ opspilot serve --reload --with-ui         # API + Web UI → http://localhost:51
 
 ## 架构
 
-```
-Browser (Svelte 5)          opspilot tui / CLI
-        └──────────────┬──────────────┘
-                       ▼
-              FastAPI (opspilot.api)
-                       ▼
-                 Orchestrator
-   ┌───────────┬───────┴───────┬─────────────┐
-   ▼           ▼               ▼             ▼
-Redactor   KB Search       Provider     SessionManager
-(PII 脱敏) (FTS5+向量      (Claude ·    (trace + artifact
-            混合, RRF)      OpenAI ·     归档)
-                            Gemini ·
-                            Ollama)
-```
+![OpsPilot 系统架构](docs/assets/architecture.png)
+
+![OpsPilot 运行流程](docs/assets/workflow.png)
 
 每次运行：脱敏 → 检索 → 生成 → JSON Schema 校验 → 归档。完整请求流、六层
 系统设计、模型路由与检索模式见

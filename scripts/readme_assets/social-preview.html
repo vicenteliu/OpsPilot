@@ -1,0 +1,77 @@
+<!doctype html>
+<!-- Social preview card. Render at exactly 1280x640:
+     chrome --headless --screenshot=docs/assets/social-preview.png \
+       --window-size=1280,640 file://$PWD/scripts/readme_assets/social-preview.html -->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  :root {
+    --bg: #0b0c0f; --surface: #121318; --border: #23262e;
+    --text: #e6e8ec; --muted: #858c98; --faint: #5c6470;
+    --cyan: #22d3ee; --cyan-dim: #155e75;
+    --mono: ui-monospace, 'SF Mono', Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 1280px; height: 640px; overflow: hidden; }
+  body {
+    background: var(--bg); color: var(--text); font-family: var(--sans);
+    position: relative; display: flex; flex-direction: column;
+    justify-content: center; padding: 0 96px;
+  }
+  .grid {
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 48px 48px; opacity: 0.22;
+    mask-image: radial-gradient(ellipse 90% 80% at 30% 40%, black 30%, transparent 75%);
+    -webkit-mask-image: radial-gradient(ellipse 90% 80% at 30% 40%, black 30%, transparent 75%);
+  }
+  .glow {
+    position: absolute; right: -180px; top: -180px; width: 560px; height: 560px;
+    background: radial-gradient(circle, rgba(34,211,238,0.13), transparent 65%);
+  }
+  .brand { display: flex; align-items: center; gap: 22px; position: relative; }
+  .dot {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--cyan); box-shadow: 0 0 34px var(--cyan);
+  }
+  h1 { font-size: 92px; font-weight: 800; letter-spacing: -0.02em; }
+  .tagline {
+    margin-top: 26px; font-size: 34px; color: var(--text);
+    font-weight: 500; position: relative;
+  }
+  .sub {
+    margin-top: 14px; font-size: 24px; color: var(--muted); position: relative;
+  }
+  .pills { display: flex; gap: 12px; margin-top: 44px; position: relative; }
+  .pill {
+    font-family: var(--mono); font-size: 17px; color: var(--cyan);
+    background: rgba(34,211,238,0.08); border: 1px solid var(--cyan-dim);
+    border-radius: 8px; padding: 9px 18px;
+  }
+  .repo {
+    position: absolute; bottom: 40px; left: 96px;
+    font-family: var(--mono); font-size: 19px; color: var(--faint);
+  }
+  .prompt { color: var(--cyan); }
+</style>
+</head>
+<body>
+  <div class="grid"></div>
+  <div class="glow"></div>
+  <div class="brand"><span class="dot"></span><h1>OpsPilot</h1></div>
+  <div class="tagline">AI-augmented IT ops workbench</div>
+  <div class="sub">Incidents in&thinsp;&rarr;&thinsp;KB-cited, schema-validated, auditable summaries out</div>
+  <div class="pills">
+    <span class="pill">multi-provider</span>
+    <span class="pill">local-first</span>
+    <span class="pill">PII redaction</span>
+    <span class="pill">sandboxed actions</span>
+    <span class="pill">auditable sessions</span>
+  </div>
+  <div class="repo"><span class="prompt">$</span> github.com/vicenteliu/OpsPilot</div>
+</body>
+</html>

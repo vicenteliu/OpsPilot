@@ -5,20 +5,20 @@ All commands assume an activated venv with `opspilot` installed
 
 ## Terminal UI
 
-Launch with `opspilot tui`. Press keys `1`–`8` to jump between modules.
+Launch with `opspilot tui` — a REPL shell over the same backend. All
+interaction happens through slash commands in the input line:
 
-| Key | Module | Description |
-|-----|--------|-------------|
-| `1` | Dashboard | Session/KB/wiki counts |
-| `2` | Sessions | All runs; `W` → generate wiki page from selected session |
-| `3` | KB Browser | Ingested documents and chunk counts |
-| `4` | Wiki Tree | All wiki pages; `P` → promote selected draft/reviewed page to live |
-| `5` | Harness | Eval run history |
-| `6` | Lint Issues | Wiki lint results (orphans, broken links, redaction warnings) |
-| `7` | Providers | Ollama / Anthropic / OpenAI connectivity status |
-| `8` | Config | Active configuration values |
-| `R` | — | Open Run modal (any screen) |
-| `Q` | — | Quit |
+| Command | Description |
+|---------|-------------|
+| `/help` | List commands |
+| `/run` | Run a work item through the orchestrator |
+| `/kb search` · `/kb list` · `/kb stats` | Search / list / count the knowledge base |
+| `/sessions` · `/session <id>` | List recent sessions / inspect one |
+| `/wiki list` · `/wiki show` · `/wiki lint` | Browse and lint the wiki |
+| `/harness` | Run a harness fixture |
+| `/providers` · `/config` | Provider status / active configuration |
+| `/lineage` | Skill version lineage |
+| `/clear` · `/quit` | Clear output pane / exit (also Ctrl+C) |
 
 ```bash
 opspilot tui run --input work_item.json --playbook playbooks/pb_ticket_summary_en
