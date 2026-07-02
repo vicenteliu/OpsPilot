@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
@@ -1817,6 +1818,65 @@ def tui_run(
     from .tui import run_tui
 
     run_tui(run_input=str(input), run_playbook=str(playbook))
+
+
+# ──────────────────────────────────────────────────────────────────────────
+#  channel adapters (ADR-0012)
+# ──────────────────────────────────────────────────────────────────────────
+
+channel_app = typer.Typer(
+    name="channel",
+    help="Channel adapters — external messaging surfaces (assist mode).",
+    no_args_is_help=True,
+)
+app.add_typer(channel_app)
+
+
+@channel_app.command("telegram")
+def channel_telegram(
+    chat_id: list[int] = typer.Option(  # noqa: B008
+        ...,
+        "--chat-id",
+        help="Allowlisted Telegram chat id (repeatable). Messages from any other chat are dropped.",
+    ),
+    api_url: str = typer.Option(
+        "http://127.0.0.1:8001", "--api-url", help="Base URL of the running OpsPilot API."
+    ),
+    poll_timeout: int = typer.Option(
+        50, "--poll-timeout", help="getUpdates long-poll timeout in seconds."
+    ),
+) -> None:
+    """Run the Telegram assist channel (long polling; see docs/adr/0012).
+
+    Requires TELEGRAM_BOT_TOKEN in the environment and a running
+    `opspilot serve`. The OpsPilot API token (if configured) is picked up
+    from OPSPILOT_API_TOKEN / config.yaml automatically.
+    """
+    from .channels import TelegramChannel, TelegramConfig
+
+    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    if not bot_token:
+        _err.print(
+            "[red]TELEGRAM_BOT_TOKEN is not set. Create a bot with @BotFather "
+            "and export the token (never pass it as a CLI argument).[/red]"
+        )
+        raise typer.Exit(code=1)
+
+    cfg = TelegramConfig(
+        bot_token=bot_token,
+        allowed_chat_ids=frozenset(chat_id),
+        api_url=api_url,
+        api_token=load_config().api_token,
+        poll_timeout_s=poll_timeout,
+    )
+    _console.print(
+        f"Telegram channel starting — {len(cfg.allowed_chat_ids)} allowlisted chat(s), "
+        f"api={api_url} (Ctrl+C to stop)"
+    )
+    try:
+        TelegramChannel(cfg).run_forever()
+    except KeyboardInterrupt:
+        _console.print("\n[dim]channel stopped[/dim]")
 
 
 # ──────────────────────────────────────────────────────────────────────────

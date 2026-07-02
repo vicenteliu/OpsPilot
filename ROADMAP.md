@@ -22,14 +22,16 @@ as [ADR-0011](docs/adr/0011-remote-access-bearer-token-proxy-tls.md):
 - ✅ PII boundary re-evaluated for remote callers (redact-before-store holds;
   token gates reads, TLS protects transit)
 
-## Later — Channels
+## In progress — Channels
 
 A **Channel** is an external messaging surface connected to OpsPilot.
 
-- Channel abstraction (one adapter contract, per-platform implementations)
-- First platforms: Telegram (simplest bot API), then WeCom (closest fit for IT ops teams)
-- Assist mode first: the Channel fronts the existing KB-augmented chat
-- Work-item intake through a Channel (message → Work item → pipeline) is a later phase
+- ✅ Telegram assist mode — long-polling adapter fronting the KB-augmented
+  chat ([ADR-0012](docs/adr/0012-telegram-channel-long-polling.md),
+  [docs/channels.md](docs/channels.md))
+- Next platform: WeCom (closest fit for IT ops teams)
+- Work-item intake through a Channel (message → Work item → pipeline) is a
+  later phase
 
 ## Later — mobile companion
 
