@@ -142,8 +142,9 @@ flow, the six-layer system design, provider routing, and retrieval modes.
 
 ## Safety
 
-- OpsPilot is **single-user, local-only** today — do not expose the API to
-  the internet ([ADR-0002](docs/adr/0002-stage2-single-user-no-auth.md),
+- OpsPilot is **single-user**; local use needs no auth, and remote binding
+  is fail-closed — it requires a bearer token, plus TLS in front
+  ([ADR-0011](docs/adr/0011-remote-access-bearer-token-proxy-tls.md),
   [SECURITY.md](SECURITY.md))
 - The redaction layer strips PII from structured work items, but always
   sanitize manually before pasting content into any model or tool

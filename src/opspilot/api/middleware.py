@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import secrets
 import time
 import uuid
 from datetime import UTC, datetime
@@ -16,7 +17,7 @@ from typing import Any
 
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
 
 from ..observability import HTTP_REQUEST_DURATION, HTTP_REQUESTS, request_id_var
 
@@ -65,6 +66,43 @@ def configure_json_logging(level: int = logging.INFO) -> None:
     handler = logging.StreamHandler()
     handler.setFormatter(JsonFormatter())
     root.addHandler(handler)
+
+
+# ── Bearer-token auth middleware (ADR-0011) ────────────────────────────────
+
+# Probe endpoints stay reachable without a token (load balancers, uptime
+# checks). /metrics is deliberately NOT exempt — it leaks usage patterns.
+_AUTH_EXEMPT_PATHS = frozenset({"/health"})
+
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    """Require ``Authorization: Bearer <token>`` on every non-exempt request.
+
+    Enabled by the app only when an API token is configured (see
+    ``opspilot.api.app``); comparison is constant-time. This is the
+    application-level gate of the remote-access foundation — transport
+    security (TLS) is terminated by a reverse proxy or uvicorn's
+    ``--ssl-*`` flags, not here.
+    """
+
+    def __init__(self, app: Any, token: str) -> None:
+        super().__init__(app)
+        self._token = token
+
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        if request.url.path in _AUTH_EXEMPT_PATHS:
+            return await call_next(request)
+
+        header = request.headers.get("authorization", "")
+        scheme, _, credentials = header.partition(" ")
+        provided = credentials.strip() if scheme.lower() == "bearer" else ""
+        if not provided or not secrets.compare_digest(provided, self._token):
+            return JSONResponse(
+                {"detail": "Missing or invalid API token"},
+                status_code=401,
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return await call_next(request)
 
 
 # ── Request logging + metrics middleware ───────────────────────────────────

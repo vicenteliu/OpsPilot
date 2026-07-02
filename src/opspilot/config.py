@@ -27,6 +27,7 @@ class Config:
     ollama_timeout_s: float = DEFAULT_OLLAMA_TIMEOUT_S
     log_level: str = DEFAULT_LOG_LEVEL
     anthropic_api_key: str | None = None
+    api_token: str | None = None  # bearer token gating the API (ADR-0011)
     embed_model: str = "nomic-embed-text-v2-moe"
     playbooks_dir: Path | None = None  # defaults to ./playbooks at runtime
     ui_modules: dict[str, bool] = field(default_factory=lambda: {"run": True, "history": True})
@@ -71,6 +72,8 @@ def load_config() -> Config:
 
     anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY") or yaml_data.get("anthropic_api_key")
 
+    api_token = os.environ.get("OPSPILOT_API_TOKEN") or yaml_data.get("api_token")
+
     embed_model = yaml_data.get("embed_model") or "nomic-embed-text-v2-moe"
 
     playbooks_dir_raw = os.environ.get("OPSPILOT_PLAYBOOKS_DIR") or yaml_data.get("playbooks_dir")
@@ -91,6 +94,7 @@ def load_config() -> Config:
         ollama_timeout_s=ollama_timeout_s,
         log_level=str(log_level),
         anthropic_api_key=str(anthropic_api_key) if anthropic_api_key else None,
+        api_token=str(api_token) if api_token else None,
         embed_model=str(embed_model),
         playbooks_dir=playbooks_dir,
         ui_modules=ui_modules,

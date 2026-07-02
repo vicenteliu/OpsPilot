@@ -1,11 +1,9 @@
 # Deployment and configuration
 
-> **Deployment model:** OpsPilot is currently single-user, no-auth, local-only
-> by design ([ADR-0002](adr/0002-stage2-single-user-no-auth.md)). Do **not**
-> expose the API to the internet — see [SECURITY.md](../SECURITY.md). A
-> remote-access foundation (auth + TLS) is on the
-> [roadmap](../ROADMAP.md) as the prerequisite for any remote surface
-> ([ADR-0010](adr/0010-remote-access-foundation-before-channels.md)).
+> **Deployment model:** OpsPilot is single-user. Local (loopback) use needs
+> no configuration; remote access requires a bearer token and TLS — see
+> [Remote access](#remote-access) below and
+> [ADR-0011](adr/0011-remote-access-bearer-token-proxy-tls.md).
 
 ## Local development
 
@@ -14,6 +12,45 @@ source .env
 opspilot serve --reload --with-ui                 # API + frontend together (Ctrl+C stops both)
 opspilot serve --reload                           # API only
 opspilot serve --host 0.0.0.0 --workers 2 --json-logs   # production (no frontend)
+```
+
+## Remote access
+
+Binding beyond loopback is **fail-closed**: `opspilot serve --host 0.0.0.0`
+refuses to start unless an API token is configured.
+
+```bash
+# 1. Generate and set a token (env or ~/.opspilot/config.yaml api_token)
+export OPSPILOT_API_TOKEN="$(openssl rand -hex 32)"
+
+# 2. Serve beyond loopback
+opspilot serve --host 0.0.0.0 --port 8001
+```
+
+Every endpoint except `/health` then requires `Authorization: Bearer <token>`
+(the web UI has a token field in the sidebar; it is stored in localStorage):
+
+```bash
+curl -H "Authorization: Bearer $OPSPILOT_API_TOKEN" https://ops.example.com/api/config
+```
+
+### TLS
+
+Terminate TLS at a reverse proxy — the supported path:
+
+```caddy
+# Caddyfile — automatic Let's Encrypt
+ops.example.com {
+    reverse_proxy 127.0.0.1:8001
+}
+```
+
+For nginx, add a standard TLS server block in front of `127.0.0.1:8001`
+(see [`deploy/`](../deploy/) for the base config). For direct exposure
+without a proxy, uvicorn's TLS flags are passed through:
+
+```bash
+opspilot serve --host 0.0.0.0 --ssl-certfile cert.pem --ssl-keyfile key.pem
 ```
 
 ## Docker Compose
