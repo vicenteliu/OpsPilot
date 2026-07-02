@@ -5,7 +5,7 @@ loop deterministically — the LLM "decides" tool-calls and final JSON
 according to a queue of canned :class:`ChatResponse` objects.
 
 Covers the **PR-7 exit criterion** from
-``IMPLEMENTATION_STAGE_1.md §763``: a full ``opspilot run`` against
+``docs/zh/design/IMPLEMENTATION_STAGE_1.md §763``: a full ``opspilot run`` against
 ``pb_ticket_summary_zh`` ends with a session whose artifact validates
 against ``incident_summary_v1``.
 """

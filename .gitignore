@@ -206,8 +206,9 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-# OpsPilot — Memory & KB 派生数据（不入 git；markdown 源是权威）
-# memory/storage 中的 SQL/MD 是 schema 文档，不在此忽略
+# OpsPilot — memory & KB derived data (never committed; markdown sources are
+# authoritative). SQL/MD files under docs/specs/memory/storage are schema
+# docs and are NOT ignored here.
 *.lance/
 **/lancedb/
 **/kb/*/lancedb/
@@ -259,7 +260,9 @@ harness-results-*.jsonl
 .agents/
 .claude/
 .serena/
-skills/
+# Root-anchored: machine-local installed skills live in /skills/, while the
+# tracked skill SPEC lives in docs/specs/skills/ and must NOT be ignored
+/skills/
 skills-lock.json
 
 # pytest-cache leftovers occasionally dropped in the repo root

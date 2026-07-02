@@ -118,7 +118,7 @@ env:
 | `OLLAMA_EMBED_MODEL` | `nomic-embed-text-v2-moe` | `make OLLAMA_EMBED_MODEL=nomic-embed-text ollama-pull` |
 
 Whatever you choose, pin the same `model_ref` (e.g. `ollama-local/<name>@<date>`)
-in `examples/` and `harness/templates/eval-config.yaml` so test fixtures stay
+in `examples/` and `docs/specs/harness/templates/eval-config.yaml` so test fixtures stay
 reproducible.
 
 ## File map (PR-1)
@@ -144,7 +144,7 @@ tests/
 ## What PR-1 deliberately does NOT include
 
 PR-1 is the **schema validation foundation only**. The following arrive in
-later PRs (see `IMPLEMENTATION_STAGE_1.md` §8):
+later PRs (see `docs/zh/design/IMPLEMENTATION_STAGE_1.md` §8):
 
 * PR-2: redaction + chunker
 * PR-3: Ollama provider + docker-compose

@@ -7,12 +7,12 @@ Layout::
         <art_id>.meta.yaml      ── sidecar metadata
 
 ``art_id`` = ``art_<sha256[:16]>`` of the content bytes (per
-``memory/schemas/kb-chunk.schema.json#/properties/content_artifact_id``
+``docs/specs/memory/schemas/kb-chunk.schema.json#/properties/content_artifact_id``
 pattern). Same bytes always map to the same id, so the store is
 inherently de-duplicating.
 
 Sidecar meta is yaml per the spec template style; see
-``session/SPEC.md §4``.
+``docs/specs/session/SPEC.md §4``.
 """
 
 from __future__ import annotations

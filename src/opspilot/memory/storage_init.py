@@ -1,6 +1,6 @@
 """SQLite bootstrap for the memory subsystem.
 
-Loads ``memory/storage/sqlite-schema.sql`` from the spec directory, opens a
+Loads ``docs/specs/memory/storage/sqlite-schema.sql`` from the spec directory, opens a
 connection to the target ``.db`` file, applies recommended PRAGMAs, and
 executes the schema as a single script. The schema itself is idempotent
 (``CREATE TABLE IF NOT EXISTS`` everywhere), so calling :func:`init_sqlite`
@@ -25,9 +25,11 @@ from typing import Final
 
 # Repo-root-relative path to the spec schema. The package lives at
 # ``src/opspilot/memory/`` so we walk up four parents to reach repo root,
-# then descend into ``memory/storage/``.
+# then descend into ``docs/specs/memory/storage/``.
 _THIS_FILE = Path(__file__).resolve()
-SCHEMA_SQL_PATH: Final[Path] = _THIS_FILE.parents[3] / "memory" / "storage" / "sqlite-schema.sql"
+SCHEMA_SQL_PATH: Final[Path] = (
+    _THIS_FILE.parents[3] / "docs" / "specs" / "memory" / "storage" / "sqlite-schema.sql"
+)
 
 # Recommended PRAGMAs from the schema header. Applied on every connection
 # (some are connection-scoped, e.g. mmap_size; others persist in the file).

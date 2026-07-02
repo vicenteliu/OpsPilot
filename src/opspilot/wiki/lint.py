@@ -8,7 +8,7 @@ Checks run without LLM calls:
                      required body sections (summary kind: TL;DR / Key claims /
                      Sources)
 
-Output conforms to wiki/schemas/lint-issue.schema.json.
+Output conforms to docs/specs/wiki/schemas/lint-issue.schema.json.
 The extra ``page_slug`` field on LintIssue is for TUI display only and is
 omitted from ``to_dict()``.
 """

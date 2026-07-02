@@ -6,7 +6,7 @@ Covers:
 * :class:`AuditLog` append-only behaviour.
 * :class:`TraceWriter` auto seq + ts + per-row schema validation.
 * :class:`SessionManager` full lifecycle, including the **PR-6 exit
-  criterion** from ``IMPLEMENTATION_STAGE_1.md §758``: 10 trace events
+  criterion** from ``docs/zh/design/IMPLEMENTATION_STAGE_1.md §758``: 10 trace events
   + an artifact + an audit log; ``trace.jsonl`` validates row-by-row.
 """
 
@@ -284,7 +284,7 @@ def test_meta_yaml_validates_against_schema(manager: SessionManager) -> None:
 
 
 def test_exit_criterion_full_session_lifecycle(manager: SessionManager) -> None:
-    """PR-6 exit criterion (IMPLEMENTATION_STAGE_1.md §758).
+    """PR-6 exit criterion (docs/zh/design/IMPLEMENTATION_STAGE_1.md §758).
 
     create session + write 10 trace events + write artifact + audit log;
     the produced trace.jsonl validates against trace-event.schema.json.

@@ -6,7 +6,7 @@
 
 ## Context
 
-Stage 5 (STAGES.md §7.5) lists "macOS desktop packaging (CLI binary)". The goal
+Stage 5 (docs/zh/design/STAGES.md §7.5) lists "macOS desktop packaging (CLI binary)". The goal
 is to let a user run `opspilot` on macOS without a project virtualenv or a
 hand-managed Python on PATH.
 

@@ -4,7 +4,7 @@ Layout::
 
     <session_dir>/audit.log    ── JSONL; one event per line
 
-Used for state transitions and RBAC events; per ``session/SPEC.md §6``
+Used for state transitions and RBAC events; per ``docs/specs/session/SPEC.md §6``
 its retention is **separate** from session content (longer by default,
 e.g. 365 days). PR-6 just writes the lines; retention enforcement is
 PR-9+.

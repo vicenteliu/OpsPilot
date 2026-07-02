@@ -3,7 +3,7 @@
 Owns the long-term vector body. SQLite owns the metadata; LanceDB owns the
 embeddings + the bare minimum of filter columns. The two are joined via
 ``vector_id`` which is the LanceDB primary key and the ``kb_chunks.vector_id``
-foreign reference (see ``memory/storage/lancedb-schema.md``).
+foreign reference (see ``docs/specs/memory/storage/lancedb-schema.md``).
 
 Per-KB layout::
 
@@ -33,7 +33,7 @@ import pyarrow as pa
 # 3.12 in production but the dev sandbox runs 3.10, so we keep the alias.
 UTC = timezone.utc  # noqa: UP017
 
-# Spec column name (per memory/storage/lancedb-schema.md).
+# Spec column name (per docs/specs/memory/storage/lancedb-schema.md).
 VECTOR_COLUMN: str = "embedding"
 TABLE_NAME: str = "chunks"
 
@@ -114,7 +114,7 @@ class LanceStore:
     Always pin ``embedding_model`` + ``dim`` at table creation. Mixing
     embedding spaces in the same table breaks ANN; the caller must build
     a new table when switching models (per
-    ``memory/storage/lancedb-schema.md`` design principle #4).
+    ``docs/specs/memory/storage/lancedb-schema.md`` design principle #4).
     """
 
     def __init__(
@@ -266,7 +266,7 @@ class LanceStore:
 
 
 def _build_schema(dim: int) -> pa.Schema:
-    """Per memory/storage/lancedb-schema.md primary-table spec."""
+    """Per docs/specs/memory/storage/lancedb-schema.md primary-table spec."""
     return pa.schema(
         [
             pa.field("vector_id", pa.string(), nullable=False),

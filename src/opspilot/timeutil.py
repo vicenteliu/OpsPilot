@@ -1,7 +1,7 @@
 """RFC3339 / UTC timestamp helpers.
 
 OpsPilot strongly requires RFC3339 + UTC across every audit/trace/log surface
-(see e.g. session/SPEC.md §9). Centralizing the helpers here ensures
+(see e.g. docs/specs/session/SPEC.md §9). Centralizing the helpers here ensures
 consistency and avoids ad-hoc datetime formatting elsewhere.
 """
 

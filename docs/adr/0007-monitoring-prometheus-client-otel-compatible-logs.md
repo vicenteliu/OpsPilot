@@ -6,7 +6,7 @@
 
 ## Context
 
-Stage 5 (STAGES.md §7.5) calls for "Prometheus metrics + OTel-compatible
+Stage 5 (docs/zh/design/STAGES.md §7.5) calls for "Prometheus metrics + OTel-compatible
 structured logging". The API already ships a **hand-rolled** version in
 `src/opspilot/api/middleware.py`:
 

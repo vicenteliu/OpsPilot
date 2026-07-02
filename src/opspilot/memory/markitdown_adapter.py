@@ -2,7 +2,7 @@
 into markdown using `markitdown`. Plain `.md` / `.markdown` files pass
 through verbatim.
 
-Vision OFF (user decision #1, see STAGES.md §1.2): we never call a vision
+Vision OFF (user decision #1, see docs/zh/design/STAGES.md §1.2): we never call a vision
 provider on embedded images. Markitdown will leave images as alt-text /
 placeholder references; we don't enhance them with LLM captions.
 

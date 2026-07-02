@@ -2,7 +2,7 @@
 
 Each evaluator is a small function that consumes the run output + golden
 + retrieved chunks and returns an :class:`EvaluatorResult` with score in
-[0, 1] and a boolean ``passed``. Per IMPLEMENTATION_STAGE_1.md §786-797:
+[0, 1] and a boolean ``passed``. Per docs/zh/design/IMPLEMENTATION_STAGE_1.md §786-797:
 
 * ``schema_check``           — artifact validates against the golden's schema
 * ``must_contain``           — every required substring appears in summary

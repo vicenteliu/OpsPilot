@@ -1,6 +1,6 @@
 """Pydantic types shared by every provider.
 
-Aligned with ``providers/SPEC.md`` §1.1 (ProviderCall / ProviderResponse) so
+Aligned with ``docs/specs/providers/SPEC.md`` §1.1 (ProviderCall / ProviderResponse) so
 the same types serve every concrete provider implementation.
 """
 

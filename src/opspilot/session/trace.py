@@ -2,7 +2,7 @@
 
 * Auto-stamps ``session_id`` / ``seq`` / ``ts`` on every event.
 * Validates each emitted row against ``trace-event.schema.json``
-  (D5: hard requirement per session/SPEC.md §9 — trace integrity).
+  (D5: hard requirement per docs/specs/session/SPEC.md §9 — trace integrity).
 * On open, scans the existing file for the highest ``seq`` and resumes
   from there. Safe for resume after pause/crash; not safe for concurrent
   writers (PR-6 doesn't claim concurrency support — single orchestrator
