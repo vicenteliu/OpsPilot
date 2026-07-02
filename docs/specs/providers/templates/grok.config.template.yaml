@@ -1,6 +1,6 @@
-# xAI Grok provider 配置模板 / Grok (xAI) provider config template
-# 文档：https://docs.x.ai（信息日期 2026-05-01；使用前核验）
-# Grok API 与 OpenAI 兼容形态接近，可直接复用 OpenAI SDK。
+# Grok (xAI) provider config template
+# Docs: https://docs.x.ai (as of 2026-05-01; verify before use)
+# The Grok API is close to OpenAI-compatible; the OpenAI SDK can be reused directly.
 
 id: "grok-main"
 kind: "grok"
@@ -20,14 +20,14 @@ default_headers: {}
 capabilities:
   streaming: true
   tools: true                          # function calling
-  vision: true                         # 视模型；grok-2-vision 系
+  vision: true                         # model-dependent; grok-2-vision series
   audio_in: false
   audio_out: false
-  json_mode: true                      # OpenAI 兼容路径；response_format=json_schema
-  prompt_caching: false                # 以官方为准
-  reasoning_mode: true                 # grok-3 reasoning / grok-think 类
+  json_mode: true                      # OpenAI-compatible path; response_format=json_schema
+  prompt_caching: false                # official docs are authoritative
+  reasoning_mode: true                 # grok-3 reasoning / grok-think style
   computer_use: false
-  embeddings: false                    # 暂不主推（以官方为准）
+  embeddings: false                    # not a current focus (official docs are authoritative)
   long_context_tokens: 131072
   max_output_tokens: 8192
 
@@ -40,7 +40,7 @@ limits:
 
 cost:
   pricing:
-    input_per_1k_usd: 0.005            # 近似；以 catalog 为准
+    input_per_1k_usd: 0.005            # approximate; the catalog is authoritative
     output_per_1k_usd: 0.015
     cached_input_per_1k_usd: null
     pricing_as_of: "2026-05-01"
@@ -72,22 +72,22 @@ timeouts:
 
 compliance:
   data_residency: "us"
-  telemetry_optout: true               # 控制台中显式关闭训练用途；以官方为准
+  telemetry_optout: true               # explicitly opt out of training use in the console; official policy is authoritative
   zero_data_retention: false
   pii_allowed: false
   red_lines:
-    - "不发送未脱敏 PII"
-    - "不发送内部代号"
+    - "Never send unredacted PII"
+    - "Never send internal codenames"
 
 labels:
   region: "us"
 
 extensions:
   grok:
-    # live search（实时检索）能力开关；按官方文档调整
+    # live search (real-time retrieval) capability switch; adjust per official docs
     live_search:
       enabled: false
       # mode: "on" | "auto" | "off"
       max_results: 10
-    # 是否允许"实时数据"参与回答（合规要点）
+    # Whether "real-time data" may contribute to answers (compliance point)
     allow_realtime_data: false

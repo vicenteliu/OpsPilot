@@ -1,15 +1,15 @@
-# Session — 详细规范 / Detailed Spec
+# Session — Detailed Spec
 
-## 1. 生命周期与状态机 / Lifecycle & state machine
+## 1. Lifecycle & state machine
 
 ```
             ┌──────────┐
-            │  draft   │  创建占位，尚未 redact
+            │  draft   │  created as a placeholder, not yet redacted
             └────┬─────┘
-                 │ redact() 完成
+                 │ redact() complete
                  ▼
             ┌──────────┐
-            │  active  │  正在进行中（多轮对话/工具调用）
+            │  active  │  in progress (multi-turn dialogue / tool calls)
             └────┬─────┘
        ┌─────────┼──────────┐
        │ pause   │ resume   │ terminate
@@ -20,122 +20,122 @@
                  │ user.archive()
                  ▼
             ┌──────────┐
-            │ archived │  只读、可被 harness 引用
+            │ archived │  read-only; may be referenced by harness
             └────┬─────┘
-                 │ retention 到期
+                 │ retention expires
                  ▼
             ┌──────────┐
-            │ purged   │  仅保留审计摘要（meta-only）
+            │ purged   │  only the audit summary retained (meta-only)
             └──────────┘
 ```
 
-合法转移 / Allowed transitions：
-- `draft → active`：脱敏完成且 meta 字段齐全
+Allowed transitions:
+- `draft → active`: redaction complete and all meta fields populated
 - `active ↔ paused`
-- `* → aborted`：用户主动中止；保留所有已产生数据
-- `active|paused → archived`：用户归档；产物只读
-- `archived → purged`：保留期到，自动清理 inputs/artifacts，仅留 meta + audit 摘要
+- `* → aborted`: user aborts; all data produced so far is retained
+- `active|paused → archived`: user archives; artifacts become read-only
+- `archived → purged`: retention period expires; inputs/artifacts are cleaned up automatically, leaving only meta + audit summary
 
-## 2. 字段定义（顶层 Session）/ Top-level fields
+## 2. Top-level fields
 
-> 权威定义见 `schemas/session.schema.json`。本节为人类可读说明。
+> The authoritative definition is `schemas/session.schema.json`. This section is the human-readable explanation.
 
-| 字段 | 类型 | 必填 | 说明 |
+| Field | Type | Required | Description |
 |---|---|---|---|
 | `id` | string `^sess_[0-9A-HJKMNP-TV-Z]{26}$` | ✓ | ULID |
-| `schema_version` | string semver | ✓ | meta schema 版本，例 `"1.0.0"` |
-| `owner` | string | ✓ | 主负责人（email 或 user id） |
-| `collaborators` | string[] | ✗ | 协作者；权限策略由 RBAC 决定 |
-| `playbook` | { id, version } | ✓ | 引用的 Playbook |
-| `prompts` | { id, version }[] | ✗ | 用到的 prompt 与版本 |
-| `model` | { provider_id, kind, name, version, params, ... } | ✓ | 模型与采样参数；详见 `providers/SPEC.md` §1.2，等价 `model_ref = <provider_id>/<name>@<version>`。`version` 禁用 `latest`/`auto`/`stable`。 |
-| `status` | enum `draft|active|paused|aborted|archived|purged` | ✓ | 见状态机 |
+| `schema_version` | string semver | ✓ | meta schema version, e.g. `"1.0.0"` |
+| `owner` | string | ✓ | Primary owner (email or user id) |
+| `collaborators` | string[] | ✗ | Collaborators; permissions governed by RBAC |
+| `playbook` | { id, version } | ✓ | Referenced Playbook |
+| `prompts` | { id, version }[] | ✗ | Prompts used, with versions |
+| `model` | { provider_id, kind, name, version, params, ... } | ✓ | Model and sampling params; see `providers/SPEC.md` §1.2. Equivalent to `model_ref = <provider_id>/<name>@<version>`. `latest`/`auto`/`stable` are forbidden for `version`. |
+| `status` | enum `draft|active|paused|aborted|archived|purged` | ✓ | See state machine |
 | `created_at` | RFC3339 | ✓ | UTC |
 | `updated_at` | RFC3339 | ✓ | UTC |
-| `parent_id` | session_id | ✗ | replay/分支时指向父 Session |
-| `retention_class` | enum `low|medium|high|critical` | ✓ | 见 `retention-policy.template.yaml` |
-| `sensitivity` | enum `public|internal|confidential|restricted` | ✓ | 数据分级 |
-| `tags` | string[] | ✗ | 自由标签 |
-| `labels` | object | ✗ | k/v；用于检索与统计 |
+| `parent_id` | session_id | ✗ | Points to the parent Session for replay/branching |
+| `retention_class` | enum `low|medium|high|critical` | ✓ | See `retention-policy.template.yaml` |
+| `sensitivity` | enum `public|internal|confidential|restricted` | ✓ | Data classification |
+| `tags` | string[] | ✗ | Free-form tags |
+| `labels` | object | ✗ | k/v pairs; for search and stats |
 
-## 3. Trace 事件 / Trace events
+## 3. Trace events
 
-`trace.jsonl` 每行一条事件，按 `seq` 单调递增。
+One event per line in `trace.jsonl`, with `seq` monotonically increasing.
 
-事件类型（discriminator = `type`）：
+Event types (discriminator = `type`):
 
-| type | 含义 | 关键字段 |
+| type | Meaning | Key fields |
 |---|---|---|
-| `prompt` | 发往模型的 prompt | `role`, `content`, `prompt_ref` |
-| `response` | 模型回复 | `content`, `finish_reason`, `usage` |
-| `tool_call` | 模型请求调用工具 | `tool`, `args` |
-| `tool_result` | 工具执行结果 | `tool`, `exit_code`, `stdout_ref`, `artifact_ids` |
-| `redaction` | 脱敏触发记录 | `pattern`, `count`, `placeholder` |
-| `user_action` | 用户介入（采纳/拒绝/编辑/审批） | `action`, `payload_diff` |
-| `system` | 状态切换、错误 | `event`, `details` |
+| `prompt` | Prompt sent to the model | `role`, `content`, `prompt_ref` |
+| `response` | Model response | `content`, `finish_reason`, `usage` |
+| `tool_call` | Model requests a tool invocation | `tool`, `args` |
+| `tool_result` | Tool execution result | `tool`, `exit_code`, `stdout_ref`, `artifact_ids` |
+| `redaction` | Record of a redaction trigger | `pattern`, `count`, `placeholder` |
+| `user_action` | User intervention (accept/reject/edit/approve) | `action`, `payload_diff` |
+| `system` | State changes, errors | `event`, `details` |
 
-权威 schema：`schemas/trace-event.schema.json`。
+Authoritative schema: `schemas/trace-event.schema.json`.
 
-## 4. Artifacts 产物
+## 4. Artifacts
 
-- 路径：`artifacts/<artifact_id>.<ext>`
-- ID：`art_<sha256前16位>`（内容寻址，去重 + 防篡改）
-- 必须配 sidecar：`artifacts/<artifact_id>.meta.yaml`（见模板）
-- artifact 不直接写入大文件正文到 trace；trace 只引用 `artifact_id`
+- Path: `artifacts/<artifact_id>.<ext>`
+- ID: `art_<sha256[:16]>` (content-addressed; dedup + tamper resistance)
+- Must have a sidecar: `artifacts/<artifact_id>.meta.yaml` (see template)
+- Artifacts never write large file bodies directly into the trace; the trace only references `artifact_id`
 
-## 5. 脱敏接入点 / Redaction integration
+## 5. Redaction integration
 
-- **入口**：所有写入 `inputs/` 与 `trace.jsonl` 的内容必须经过 redactor
-- **占位符格式**：`[REDACTED:<type>:<8位hash>]`，例 `[REDACTED:email:a1b2c3d4]`
-- **可逆映射**：原文 ↔ 占位符 的映射只存于 `audit.log`（受限读取），不入 trace
-- 规则模板：`templates/redaction-rules.template.yaml`
-- 与 `governance/redaction.md` 保持一致；以 governance 为准
+- **Entry point**: everything written to `inputs/` and `trace.jsonl` must pass through the redactor
+- **Placeholder format**: `[REDACTED:<type>:<8 hex chars>]`, e.g. `[REDACTED:email:a1b2c3d4]`
+- **Reversible mapping**: the original ↔ placeholder mapping is stored only in `audit.log` (restricted read access), never in the trace
+- Rules template: `templates/redaction-rules.template.yaml`
+- Keep consistent with `governance/redaction.md`; governance is authoritative
 
-## 6. 保留策略 / Retention
+## 6. Retention
 
-- `retention_class` 决定到期天数；详见 `templates/retention-policy.template.yaml`
-- 到期动作：清空 `inputs/` + `artifacts/`，保留 `meta.yaml` 和 `audit.log` 摘要
-- `audit.log` 保留期单独定义（默认更长，例如 365 天）
-- 用户可主动 `archive` 或 `delete`；`delete` 不可逆，必须二次确认
+- `retention_class` determines the expiry in days; see `templates/retention-policy.template.yaml`
+- On expiry: clear `inputs/` + `artifacts/`, keep `meta.yaml` and the `audit.log` summary
+- The `audit.log` retention period is defined separately (longer by default, e.g. 365 days)
+- Users may `archive` or `delete` manually; `delete` is irreversible and requires a second confirmation
 
-## 7. 复现与 Diff / Replay & diff
+## 7. Replay & diff
 
-- 用同一 `inputs/` + 不同 `model` 或 `prompts` 重跑 → 新建 Session 并设置 `parent_id`
-- Diff 维度：响应文本、tool_call 序列、artifact 内容、token/成本/延迟、harness 评分
-- replay 必须 deterministic 友好：记录温度、seed、top_p 等采样参数
+- Re-run with the same `inputs/` + a different `model` or `prompts` → create a new Session with `parent_id` set
+- Diff dimensions: response text, tool_call sequence, artifact content, tokens/cost/latency, harness scores
+- Replay must be determinism-friendly: record sampling params such as temperature, seed, and top_p
 
-## 8. RBAC 与审计 / RBAC & audit
+## 8. RBAC & audit
 
-最小角色（建议）：
-- `owner`：完全控制
-- `collaborator`：读写 trace + artifacts，不可改 meta/retention
-- `viewer`：只读
-- `auditor`：只读 audit.log + meta（含被 redact 的原文映射）
+Minimal roles (recommended):
+- `owner`: full control
+- `collaborator`: read/write trace + artifacts; cannot modify meta/retention
+- `viewer`: read-only
+- `auditor`: read-only audit.log + meta (including the mapping to redacted originals)
 
-`audit.log` 必须仅追加（append-only），格式：
+`audit.log` must be append-only, format:
 ```
 <rfc3339>\t<actor>\t<action>\t<target>\t<details_json>
 ```
 
-## 9. 强约束 / Hard requirements
+## 9. Hard requirements
 
-- 所有时间戳一律 **UTC + RFC3339**
-- 文件编码一律 **UTF-8**（不带 BOM）
-- `trace.jsonl` 必须保证逐行有效 JSON，单行 ≤ 1 MiB；超出走 artifact 引用
-- `purged` 状态后，除 `meta.yaml` 与 `audit.log` 外，目录其余内容必须清空
-- 任何时候，Session 不得包含未脱敏的 PII / 密钥（**这是合规底线**）
+- All timestamps must be **UTC + RFC3339**
+- File encoding must be **UTF-8** (no BOM)
+- Every line of `trace.jsonl` must be valid JSON, ≤ 1 MiB per line; anything larger goes through an artifact reference
+- After entering `purged`, everything in the directory except `meta.yaml` and `audit.log` must be cleared
+- At no time may a Session contain unredacted PII / secrets (**this is the compliance baseline**)
 
-## 10. 扩展点 / Extension points
+## 10. Extension points
 
-- `meta.yaml.extensions.<vendor>` —— 厂商/工具自定义元数据，不得与已定义字段冲突
-- `trace-event.extensions.<vendor>` —— 自定义事件子类型，必须使用命名空间前缀
-- 自定义 evaluator（harness）可读 trace 但不得回写 Session
+- `meta.yaml.extensions.<vendor>` — vendor/tool custom metadata; must not conflict with defined fields
+- `trace-event.extensions.<vendor>` — custom event subtypes; must use a namespace prefix
+- Custom evaluators (harness) may read the trace but must not write back to the Session
 
-## 11. Memory 集成 / Memory integration
+## 11. Memory integration
 
-Session 与 `memory/` 目录的契约：
-- **短期 memory** 复用 `trace.jsonl`，上下文窗口管理与摘要策略见 `memory/templates/short-term-config.template.yaml`
-- **检索注入**：trace 中以 `tool_call: kb.search` / `tool_call: memory.search` 触发；返回结果通过 `tool_result` 写回，并在后续 prompt 中以 footnote 形式引用
-- **归档收割**：Session 状态从 `archived` 转入 finalize 时，按 `harvest_to_mid_term` 规则把候选事实写入中期 memory（默认走 candidate_review，需用户确认）
-- **检索请求/响应** schema：见 `memory/schemas/retrieval-query.schema.json`
-- **强约束**：进入 memory 的内容必须已脱敏（与 §5 的 redaction 接入点一致）
+Contract between Session and the `memory/` directory:
+- **Short-term memory** reuses `trace.jsonl`; context-window management and summarization policy are in `memory/templates/short-term-config.template.yaml`
+- **Retrieval injection**: triggered in the trace via `tool_call: kb.search` / `tool_call: memory.search`; results are written back via `tool_result` and referenced as footnotes in subsequent prompts
+- **Archive harvesting**: when a Session moves from `archived` into finalize, candidate facts are written to mid-term memory per the `harvest_to_mid_term` rules (candidate_review by default, requiring user confirmation)
+- **Retrieval request/response** schema: see `memory/schemas/retrieval-query.schema.json`
+- **Hard requirement**: content entering memory must already be redacted (consistent with the redaction integration point in §5)

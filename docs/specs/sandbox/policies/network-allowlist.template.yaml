@@ -1,21 +1,21 @@
-# 网络出网白名单模板 / Network egress allowlist template
-# 默认 deny-all；按需放行最小子集。
+# Network egress allowlist template
+# Deny-all by default; allow the minimal subset on demand.
 
 version: "1.0.0"
 
-# mode: deny-all（默认）| allowlist | open
-# 强烈不推荐 open（除非用于一次性 troubleshooting，且事后立即收回）
+# mode: deny-all (default) | allowlist | open
+# open is strongly discouraged (only for one-off troubleshooting, and revoke it immediately afterwards)
 mode: "deny-all"
 
-# DNS 解析器（仅 allowlist/open 模式下生效）
+# DNS resolvers (effective only in allowlist/open modes)
 dns:
   resolvers:
     - "1.1.1.1"
     - "8.8.8.8"
-  block_dot_local: true            # 默认屏蔽 .local / .lan / .internal 等内网后缀
-  block_metadata_endpoints: true   # 屏蔽 169.254.169.254 等云元数据端点（防 SSRF）
+  block_dot_local: true            # block internal suffixes such as .local / .lan / .internal by default
+  block_metadata_endpoints: true   # block cloud metadata endpoints such as 169.254.169.254 (SSRF prevention)
 
-# 出网允许的目标（mode=allowlist 时生效）
+# Allowed egress targets (effective when mode=allowlist)
 egress:
   hosts:
     # - "pkg.debian.org"
@@ -26,18 +26,18 @@ egress:
     # - "production.cloudflare.docker.com"
 
   cidrs:
-    # - "10.0.0.0/8"               # 内网（按需放行；默认屏蔽）
+    # - "10.0.0.0/8"               # internal network (allow on demand; blocked by default)
 
   ports:
-    allow: [443, 80]               # HTTP/HTTPS；其他端口默认拒绝
-    deny: [22, 23, 25, 3306, 5432, 6379]  # 远程登录与数据库默认拒绝（按需开）
+    allow: [443, 80]               # HTTP/HTTPS; all other ports denied by default
+    deny: [22, 23, 25, 3306, 5432, 6379]  # remote login and database ports denied by default (open on demand)
 
-# 入站全部拒绝；不为 sandbox 暴露入站端口
+# All ingress denied; no inbound ports are exposed for the sandbox
 ingress:
   mode: "deny-all"
 
-# 违规处理 / On violation
+# On violation
 on_violation:
   action: "abort"                  # abort | log_only
   log_to_audit: true
-  notify_on_third_strike: true     # 同一会话第 3 次违规升级告警
+  notify_on_third_strike: true     # escalate to an alert on the 3rd violation within the same session

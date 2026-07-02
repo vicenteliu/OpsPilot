@@ -1,28 +1,28 @@
-# Feedback Collector — 反馈源配置 / Feedback collector config
-# 把多源信号收集成 skills/feedback/<skill_ref>/signals.jsonl，供 iteration trigger 决策
+# Feedback Collector — feedback source config
+# Collects multi-source signals into skills/feedback/<skill_ref>/signals.jsonl for iteration trigger decisions
 
 version: "1.0.0"
 
-# 1. 总开关 / Master switch
+# 1. Master switch
 enabled: true
 
-# 2. 存储 / Storage
+# 2. Storage
 storage:
   signals_path_pattern: "skills/feedback/{skill_ref_safe}/signals.jsonl"
-  signals_index_path: "skills/feedback/_index.sqlite"   # 可选；用于按 skill_ref + 时间窗口快查
+  signals_index_path: "skills/feedback/_index.sqlite"   # optional; for fast lookup by skill_ref + time window
   retention:
-    days: 365                                     # signals 保留 1 年（用于审计）
-    aggregation_cache_days: 60                    # 聚合权重缓存只算最近 60 天
+    days: 365                                     # keep signals for 1 year (for audit)
+    aggregation_cache_days: 60                    # the aggregated-weight cache only covers the last 60 days
 
-# 3. 信号源（multiple）/ Signal sources
+# 3. Signal sources (multiple)
 sources:
 
-  # 3.1 Session traces — 从 session.trace.jsonl 抽 user_action 与 trace_failure
+  # 3.1 Session traces — extract user_action and trace_failure from session.trace.jsonl
   - id: "src_session_trace"
     type: "session_trace"
     enabled: true
     scan:
-      session_status_in: ["archived"]              # 只扫已归档 session（避免实时干扰）
+      session_status_in: ["archived"]              # only scan archived Sessions (avoids interfering with live ones)
       since_relative: "30d"
     extracts:
       - signal_type: "user_action.accept"
@@ -34,12 +34,12 @@ sources:
       - signal_type: "user_action.edit"
         when: "trace.event.type == 'user_action' && trace.event.action == 'edit'"
         weight: -1.0
-        capture_diff: true                         # 把 payload_diff 走 artifact 引用
+        capture_diff: true                         # store the payload_diff via an Artifact reference
       - signal_type: "trace_failure"
         when: "trace.event.type == 'tool_result' && trace.event.status in ('failed','timeout','aborted')"
         weight: -2.0
 
-  # 3.2 Harness results — 跑回归后产生的 score delta
+  # 3.2 Harness results — score deltas produced after regression runs
   - id: "src_harness"
     type: "harness_results"
     enabled: true
@@ -48,11 +48,11 @@ sources:
       result_path_pattern: "harness-data/runs/{run_id}/results.jsonl"
     extracts:
       - signal_type: "harness_score"
-        # 比 baseline weighted 掉 0.02 以上视作负信号
+        # a drop of more than 0.02 vs the baseline weighted score counts as a negative signal
         when: "delta.weighted < -0.02"
-        weight_formula: "delta.weighted * 5"       # 强信号；放大 5 倍
+        weight_formula: "delta.weighted * 5"       # strong signal; amplified 5x
 
-  # 3.3 Distillation pipeline — 蒸馏阶段发现的新 pattern
+  # 3.3 Distillation pipeline — new patterns discovered during distillation
   - id: "src_distillation"
     type: "distillation_run"
     enabled: true
@@ -64,30 +64,30 @@ sources:
         weight: 1.0
         capture_pattern_summary: true
 
-  # 3.4 Model upgrade — 从 providers/catalogs.md 或 registry diff 检测
+  # 3.4 Model upgrade — detected from providers/catalogs.md or registry diffs
   - id: "src_model_upgrade"
     type: "model_drift"
     enabled: true
-    method: "trigger_eval_diff"                    # 模型升级后跑 trigger eval 对比
+    method: "trigger_eval_diff"                    # after a model upgrade, run the trigger eval and compare
     extracts:
       - signal_type: "model_drift"
         when: "drift_metric.before - drift_metric.after > 0.05"
         weight_formula: "(before - after) * 30"
 
-# 4. 脱敏（强约束）/ Redaction
+# 4. Redaction (hard constraint)
 redaction:
   enforce: true
   rules_ref: "session/templates/redaction-rules.template.yaml"
   hard_fail_on_pii: true
-  # 信号本身不允许携带原始 prompt / response 文本
+  # a signal itself must not carry raw prompt / response text
   forbidden_fields_in_signal:
     - "raw_prompt"
     - "raw_response"
     - "raw_content"
-  # user_action.edit 的 diff 必须先脱敏再走 artifact
+  # user_action.edit diffs must be redacted before going through an Artifact
   diff_redaction_required: true
 
-# 5. 聚合规则 / Aggregation
+# 5. Aggregation
 aggregation:
   decay:
     enabled: true
@@ -97,32 +97,32 @@ aggregation:
   weight_clamp:
     min_per_signal: -5.0
     max_per_signal: +5.0
-  # signal_type 个性化权重（覆盖默认）
+  # per-signal_type weight overrides (replace the defaults)
   type_overrides:
-    "harness_score": 5.0                           # 与 source 的 weight_formula 协同
+    "harness_score": 5.0                           # works together with the source's weight_formula
     "model_drift": 3.0
     "trace_failure": 2.0
 
-# 6. 触发钩子 / Trigger hooks
+# 6. Trigger hooks
 trigger_hooks:
-  # 当聚合 |weight| ≥ feedback_min_weight_to_trigger 时
+  # when the aggregated |weight| ≥ feedback_min_weight_to_trigger
   on_threshold_reached:
     enabled: true
-    create_iteration_recipe: true                  # 自动产出 iteration-recipe（draft）
+    create_iteration_recipe: true                  # automatically emit an iteration-recipe (draft)
     notify:
-      channels: []                                 # 例 ["#opspilot-skills"]
+      channels: []                                 # e.g. ["#opspilot-skills"]
 
-  on_regression_detected:                          # 来自 src_harness 的强信号即时触发
+  on_regression_detected:                          # strong signals from src_harness trigger immediately
     enabled: true
     create_iteration_recipe: true
 
-# 7. 安全 / Security
+# 7. Security
 safety:
   audit_every_signal_capture: true
-  max_signals_per_skill_per_day: 1000              # 防 DoS（恶意构造大量 user_action 信号）
+  max_signals_per_skill_per_day: 1000              # DoS protection (maliciously fabricated bulk user_action signals)
   rate_limit_per_session: 50
   drop_duplicates_within_minutes: 5
 
-# 8. 失败处理 / Failure handling
+# 8. Failure handling
 on_source_unavailable: "skip_with_warning"          # skip_with_warning | block_pipeline
-on_redaction_failure: "drop_signal"                 # 拒绝可能带 PII 的信号
+on_redaction_failure: "drop_signal"                 # reject signals that may carry PII

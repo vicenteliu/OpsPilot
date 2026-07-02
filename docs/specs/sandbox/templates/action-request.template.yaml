@@ -1,45 +1,45 @@
-# Action 请求信封模板 / Action request envelope template
-# 由 LLM 产出 → 校验 → dry-run → [审批] → apply
+# Action request envelope template
+# Produced by the LLM → validated → dry-run → [approval] → apply
 
-# 标识 / Identity
+# Identity
 id: "act_01J0Z9ZQXK7M6P3F0XK5K7C5K0"   # ULID
 session_id: "sess_01J0Z9ZQXK7M6P3F0XK5K7C5K0"
 proposed_by: "model:anthropic:claude-sonnet-4-6:2026-04"
 created_at: "2026-05-01T10:05:00Z"
 
-# 类型 / Type: shell | script | http | sql_readonly | workflow_dryrun
+# Type: shell | script | http | sql_readonly | workflow_dryrun
 type: "shell"
 
-# 元数据
-class: "shell.tooling"                  # 见 policies/resource-quota.template.yaml
-target_environment: "dev"               # dev | staging | prod；prod 触发审批门
+# Metadata
+class: "shell.tooling"                  # see policies/resource-quota.template.yaml
+target_environment: "dev"               # dev | staging | prod; prod triggers the approval gate
 description: |
-  在 sandbox 中跑 `journalctl --since "1 hour ago" --no-pager`，提取 nginx 报错。
-  用于回答 ticket #1234。
+  Run `journalctl --since "1 hour ago" --no-pager` in the sandbox and extract nginx errors.
+  Used to answer ticket #1234.
 
-# 载荷（按 type 不同）/ Payload
+# Payload (varies by type)
 payload:
   command: "journalctl --since '1 hour ago' --no-pager | grep -i 'nginx' | tail -200"
   shell: "/bin/sh"
   workdir: "/work"
-  env: {}                               # 不允许放入密钥
+  env: {}                               # secrets must not be placed here
 
-# 模型自述将产生的副作用 / Expected effects
+# Side effects the model claims it will produce / Expected effects
 expected_effects:
   filesystem_writes:
     - "/output/nginx-errors-1h.txt"
-  network_egress: []                    # 该命令不出网
-  side_effects: []                      # 无外部副作用
+  network_egress: []                    # this command makes no network egress
+  side_effects: []                      # no external side effects
 
-# 回滚指引 / Rollback hint（不可逆动作必须填写）
+# Rollback hint (must be filled in for irreversible actions)
 rollback_hint:
   irreversible: false
   steps: []
 
-# 申请的策略放行 / Requested policy
+# Requested policy grants
 requested_policy:
   network:
-    mode: "deny-all"                    # 显式声明
+    mode: "deny-all"                    # declared explicitly
   fs:
     mounts:
       - source: "<session>/inputs"
@@ -52,13 +52,13 @@ requested_policy:
     cpu: "1"
     memory: "512Mi"
     timeout_seconds: 30
-  secrets: []                           # 名称列表；空 = 不需要
+  secrets: []                           # list of names; empty = none needed
 
-# 执行控制 / Execution control
-dry_run: true                           # 默认 true；明确 false 才落地
-approval_required: false                # 由 approval-policy 计算；高危动作必须 true
+# Execution control
+dry_run: true                           # defaults to true; only an explicit false applies changes
+approval_required: false                # computed by approval-policy; must be true for high-risk actions
 
-# 关联与可观测 / Refs & observability
+# Refs & observability
 refs:
   ticket_id: "T-1234"
   playbook: { id: "pb_log_triage_zh", version: "0.3.0" }

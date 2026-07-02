@@ -1,69 +1,69 @@
-# 中期 memory 配置模板 / Mid-term memory config template
-# 后端：SQLite（含 FTS5 全文索引） + 配套 markdown 源（人类可读、git 友好）
+# Mid-term memory config template
+# Backend: SQLite (with FTS5 full-text index) + companion markdown sources (human-readable, git-friendly)
 
 version: "1.0.0"
 
-# 1. 存储 / Storage
+# 1. Storage
 storage:
-  # SQLite 文件路径；本地用户私有走 ~/.opspilot/，团队共享走 repo 内
+  # SQLite file path; user-private data goes under ~/.opspilot/, team-shared data lives in the repo
   sqlite_path: "${OPSPILOT_HOME:-~/.opspilot}/memory/mid-term.db"
-  # markdown 源目录；id 与文件名对应（mem_<sha8>.md）
+  # markdown source directory; ids map to file names (mem_<sha8>.md)
   markdown_dir: "${OPSPILOT_HOME:-~/.opspilot}/memory/records/"
-  # 启动时校验 SQLite ←→ markdown 一致性（hash 对齐）
+  # verify SQLite ←→ markdown consistency at startup (hash alignment)
   consistency_check_on_start: true
-  # 备份策略
+  # backup policy
   backup:
     enabled: true
-    cron: "0 4 * * *"            # 每日 04:00
+    cron: "0 4 * * *"            # daily at 04:00
     retain_days: 14
     target: "${OPSPILOT_HOME:-~/.opspilot}/memory/backups/"
 
-# 2. 命名空间 / Namespaces
+# 2. Namespaces
 namespaces:
   - name: "opspilot:user"
-    description: "用户角色、偏好、知识"
+    description: "User role, preferences, knowledge"
     visibility: "private"        # private | team | public
     require_redaction: true
 
   - name: "opspilot:feedback"
-    description: "AI 协作纠正与确认（含 why）"
+    description: "AI-collaboration corrections and confirmations (incl. why)"
     visibility: "private"
     require_redaction: true
 
   - name: "opspilot:project"
-    description: "项目状态、决策、deadline"
+    description: "Project status, decisions, deadlines"
     visibility: "team"
     require_redaction: true
 
   - name: "opspilot:reference"
-    description: "外部系统指针（不是事实本身）"
+    description: "Pointers to external systems (not the facts themselves)"
     visibility: "team"
-    require_redaction: false      # 通常不含 PII
+    require_redaction: false      # usually contains no PII
 
-# 3. 写入策略 / Write policy
+# 3. Write policy
 write_policy:
-  # feedback / project 类型必须含 **Why:** 与 **How to apply:** 段
+  # feedback / project types must contain **Why:** and **How to apply:** sections
   enforce_structured_body:
     feedback: true
     project: true
-  # 单条 body 最大长度
+  # maximum length of a single body
   max_body_chars: 4000
-  # 重复检测：title + body 高度相似 → 提示更新而非新建
+  # duplicate detection: highly similar title + body → suggest updating instead of creating
   dedup:
     enabled: true
     similarity_threshold: 0.92
     similarity_method: "embedding"   # embedding | shingle
 
-# 4. 保留与过期 / Retention
+# 4. Retention
 retention:
-  # 默认无过期；显式设置 valid_until 才过期
+  # no expiry by default; records only expire when valid_until is set explicitly
   default_ttl_days: null
-  # 过期后行为：read_only | archive | delete
+  # behavior after expiry: read_only | archive | delete
   on_expire: "read_only"
-  # archive 后 N 天可恢复
+  # recoverable for N days after archiving
   archive_grace_days: 30
 
-# 5. 检索（默认参数）/ Retrieval defaults
+# 5. Retrieval defaults
 retrieval_defaults:
   mode: "hybrid"
   top_k: 5
@@ -73,24 +73,24 @@ retrieval_defaults:
     fusion: "rrf"
   rerank:
     enabled: false
-  # 默认按 confidence 加权（high=1.2, medium=1.0, low=0.7）
+  # weighted by confidence by default (high=1.2, medium=1.0, low=0.7)
   confidence_boost:
     high: 1.2
     medium: 1.0
     low: 0.7
 
-# 6. 收割与生命周期 / Harvest & lifecycle
+# 6. Harvest & lifecycle
 harvest:
-  # 由短期 short-term-config.harvest_to_mid_term 触发
+  # triggered by short-term-config.harvest_to_mid_term
   enabled: true
-  # 候选审阅队列
+  # candidate review queue
   review_queue_path: "${OPSPILOT_HOME:-~/.opspilot}/memory/review-queue.jsonl"
-  # 审阅过期：N 天未审阅 → 自动丢弃
+  # review expiry: unreviewed for N days → dropped automatically
   review_ttl_days: 7
 
-# 7. 反模式提醒 / Anti-patterns（仅文档化，不入运行时）
+# 7. Anti-patterns (documentation only, not enforced at runtime)
 anti_patterns:
-  - "不要把代码模式 / 文件路径 / 项目结构入 memory（grep 即可得）"
-  - "不要把 git history / 谁改了什么入 memory（git log/blame 是权威）"
-  - "不要把调试解决方案入 memory（修复在代码里，commit 有 context）"
-  - "不要把 ephemeral 的 in-progress 任务入 memory（用 session 或 task）"
+  - "Don't put code patterns / file paths / project structure into memory (grep gets those)"
+  - "Don't put git history / who changed what into memory (git log/blame are authoritative)"
+  - "Don't put debugging solutions into memory (the fix lives in the code; the commit has the context)"
+  - "Don't put ephemeral in-progress tasks into memory (use session or task)"

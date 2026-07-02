@@ -1,12 +1,11 @@
-# Session — 会话与轨迹规范 / Session & Trace Spec
+# Session — Session & Trace Spec
 
-> **状态 / Status**：规范阶段（spec-only）。本目录只定义数据模型、模板与策略；不含运行实现。
-> **Stage**：spec only — schemas, templates, policies. No runtime implementation here.
+> **Status**: spec only — schemas, templates, policies. No runtime implementation here.
 
 ## TL;DR
-Session（会话）= 一次 AI 任务的"上下文 + 轨迹 + 产物 + 审计"打包单元。它是 OpsPilot 合规落地（脱敏 / 审计 / 保留 / 复现）的载体，也是 Sandbox 与 Harness 的输入/输出锚点。
+A Session is the packaged unit of "context + trace + artifacts + audit" for one AI task. It is the vehicle for OpsPilot compliance (redaction / audit / retention / replay), and the input/output anchor for Sandbox and Harness.
 
-## 在 OpsPilot 闭环中的位置 / Where it sits
+## Where it sits
 
 ```
 playbooks/  ──▶  Session(create)  ──▶  prompt/LLM
@@ -21,74 +20,74 @@ playbooks/  ──▶  Session(create)  ──▶  prompt/LLM
                  harness/(eval)  ──▶  case-studies/
 ```
 
-## 范围 / Scope
+## Scope
 
-In scope：
-- 会话生命周期与状态机（lifecycle / state machine）
-- 数据模型（meta / trace / artifact / audit）
-- 脱敏接入点（redaction integration point）
-- 保留策略（retention policy）
-- 复现/对比语义（replay & diff semantics）
+In scope:
+- Session lifecycle and state machine
+- Data model (meta / trace / artifact / audit)
+- Redaction integration point
+- Retention policy
+- Replay & diff semantics
 
-Out of scope（暂不在此目录）：
-- 具体存储实现（Postgres / SQLite / 文件系统）
-- UI / Web 控制台
-- 计费与配额（quota & billing）
+Out of scope (not in this directory for now):
+- Concrete storage implementations (Postgres / SQLite / filesystem)
+- UI / web console
+- Quota & billing
 
-## 目录结构 / Directory layout
+## Directory layout
 
 ```
 session/
-├── README.md                         # 本文件
-├── SPEC.md                           # 详细规范
+├── README.md                         # This file
+├── SPEC.md                           # Detailed spec
 ├── schemas/
-│   ├── session.schema.json           # 顶层 Session 元数据
-│   └── trace-event.schema.json       # 轨迹事件
+│   ├── session.schema.json           # Top-level Session metadata
+│   └── trace-event.schema.json       # Trace events
 └── templates/
-    ├── session-meta.template.yaml    # 可复制的会话元数据示例
-    ├── redaction-rules.template.yaml # 默认脱敏规则
-    └── retention-policy.template.yaml# 默认保留策略
+    ├── session-meta.template.yaml    # Copyable session metadata example
+    ├── redaction-rules.template.yaml # Default redaction rules
+    └── retention-policy.template.yaml# Default retention policy
 ```
 
-## 文件级存储约定 / On-disk layout (推荐)
+## On-disk layout (recommended)
 
 ```
 sessions/<session_id>/
-├── meta.yaml          # 符合 schemas/session.schema.json
-├── inputs/            # 已脱敏的原始输入
-├── trace.jsonl        # 每行一个 trace event，符合 trace-event.schema.json
-├── artifacts/         # 产物（脚本、SOP、diff、报告）
-└── audit.log          # 仅追加，审计事件
+├── meta.yaml          # Conforms to schemas/session.schema.json
+├── inputs/            # Redacted raw inputs
+├── trace.jsonl        # One trace event per line, conforming to trace-event.schema.json
+├── artifacts/         # Artifacts (scripts, SOPs, diffs, reports)
+└── audit.log          # Append-only, audit events
 ```
 
-## ID 约定 / ID conventions
-- `session_id` ：`sess_<ULID>`（时间有序，分布式友好）
-- `trace_id` ：`trc_<ULID>`
-- `artifact_id` ：`art_<sha256[:16]>`（内容寻址，便于去重与防篡改）
+## ID conventions
+- `session_id`: `sess_<ULID>` (time-ordered, distribution-friendly)
+- `trace_id`: `trc_<ULID>`
+- `artifact_id`: `art_<sha256[:16]>` (content-addressed, for dedup and tamper resistance)
 
-## Quickstart（给读规范的人）
+## Quickstart (for spec readers)
 
-1. 读 `SPEC.md` —— 字段语义、状态机、强约束
-2. 用 `templates/session-meta.template.yaml` 起一个新会话元数据
-3. 在 `governance/redaction.md` 与本目录 `redaction-rules.template.yaml` 之间对齐脱敏规则
-4. 决定保留等级 → 套 `retention-policy.template.yaml`
+1. Read `SPEC.md` — field semantics, state machine, hard requirements
+2. Start new session metadata from `templates/session-meta.template.yaml`
+3. Align redaction rules between `governance/redaction.md` and this directory's `redaction-rules.template.yaml`
+4. Decide the retention class → apply `retention-policy.template.yaml`
 
-## 与其他目录的契约 / Contracts
+## Contracts
 
-| 上游 / Upstream | 给 Session 的输入 |
+| Upstream | Input to Session |
 |---|---|
-| `playbooks/` | playbook_id（必填）、版本号 |
-| `prompts/` | 引用的 prompt id 与版本 |
-| `governance/` | 脱敏规则、保留策略、RBAC |
+| `playbooks/` | playbook_id (required), version |
+| `prompts/` | Referenced prompt ids and versions |
+| `governance/` | Redaction rules, retention policy, RBAC |
 
-| 下游 / Downstream | Session 提供的产物 |
+| Downstream | What Session provides |
 |---|---|
-| `sandbox/` | proposed action（trace event 中的 `tool_call`） |
-| `harness/` | trace.jsonl 作为评估输入 |
-| `case-studies/` | 已归档 Session 的脱敏摘要 |
+| `sandbox/` | Proposed action (the `tool_call` in a trace event) |
+| `harness/` | trace.jsonl as evaluation input |
+| `case-studies/` | Redacted summaries of archived Sessions |
 
-## 开放问题 / Open questions
+## Open questions
 
-- [ ] 多人协作时，`owner` 是单值还是多值（owner + collaborators）？
-- [ ] `parent_id` 用于 replay 时，是否需要"分支语义"（fork tree）？
-- [ ] artifact 是否需要签名（cosign / minisign）以满足审计？
+- [ ] For multi-user collaboration, is `owner` single-valued or multi-valued (owner + collaborators)?
+- [ ] When `parent_id` is used for replay, do we need branch semantics (a fork tree)?
+- [ ] Should artifacts be signed (cosign / minisign) to satisfy audit requirements?

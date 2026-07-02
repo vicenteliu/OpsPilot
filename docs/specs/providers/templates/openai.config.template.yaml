@@ -1,5 +1,5 @@
-# OpenAI provider 配置模板 / OpenAI provider config template
-# 文档：https://platform.openai.com/docs（信息日期 2026-05-01；使用前核验）
+# OpenAI provider config template
+# Docs: https://platform.openai.com/docs (as of 2026-05-01; verify before use)
 
 id: "openai-main"
 kind: "openai"
@@ -14,24 +14,24 @@ auth:
   header: "Authorization"
   prefix: "Bearer "
 
-# 可选：组织/项目隔离
+# Optional: organization/project isolation
 default_headers:
-  # OpenAI-Organization: "${OPENAI_ORG_ID}"     # 可选；某些组织账户需要
-  # OpenAI-Project: "${OPENAI_PROJECT_ID}"      # 推荐：项目级隔离与计费
+  # OpenAI-Organization: "${OPENAI_ORG_ID}"     # optional; required by some organization accounts
+  # OpenAI-Project: "${OPENAI_PROJECT_ID}"      # recommended: project-level isolation and billing
   {}
 
 capabilities:
   streaming: true
   tools: true
   vision: true
-  audio_in: true                       # whisper / 多模态模型
+  audio_in: true                       # whisper / multimodal models
   audio_out: true                      # tts / realtime
-  json_mode: true                      # response_format=json_object 或 json_schema
-  prompt_caching: true                 # 系统级缓存（部分模型自动）
-  reasoning_mode: true                 # o1/o3 系；以具体模型为准
+  json_mode: true                      # response_format=json_object or json_schema
+  prompt_caching: true                 # system-level caching (automatic on some models)
+  reasoning_mode: true                 # o1/o3 series; depends on the specific model
   computer_use: false
   embeddings: true
-  long_context_tokens: 128000          # 主流模型；GPT-4.1/4.5 系可能更高
+  long_context_tokens: 128000          # mainstream models; GPT-4.1/4.5 series may go higher
   max_output_tokens: 16384
 
 limits:
@@ -42,9 +42,9 @@ limits:
   concurrent: 16
 
 cost:
-  # ⚠️ 单价随模型与档位变化；这里给"主力模型"近似上限
+  # ⚠️ Unit prices vary by model and tier; approximate ceiling for the "flagship model" given here
   pricing:
-    input_per_1k_usd: 0.005            # 例：gpt-4o 入参；以 catalogs.md 为准
+    input_per_1k_usd: 0.005            # e.g. gpt-4o input; catalogs.md is authoritative
     output_per_1k_usd: 0.015
     cached_input_per_1k_usd: 0.0025
     pricing_as_of: "2026-05-01"
@@ -76,12 +76,12 @@ timeouts:
 
 compliance:
   data_residency: "us"
-  telemetry_optout: true               # API 默认不用于训练；仍建议在控制台 double-check
-  zero_data_retention: false           # 默认 30 天保留；如需 ZDR 需联系销售
-  pii_allowed: false                   # 默认禁；依 governance 决定
+  telemetry_optout: true               # API data is not used for training by default; still double-check in the console
+  zero_data_retention: false           # 30-day retention by default; contact sales for ZDR
+  pii_allowed: false                   # denied by default; decided by governance
   red_lines:
-    - "不发送未脱敏 PII"
-    - "不发送内部代号"
+    - "Never send unredacted PII"
+    - "Never send internal codenames"
 
 labels:
   region: "us"
@@ -89,10 +89,10 @@ labels:
 
 extensions:
   openai:
-    # 仅当切到 Azure OpenAI 时打开（保留位）
+    # Enable only when switching to Azure OpenAI (placeholder)
     deployment_mode: "openai"          # openai | azure
     # azure_endpoint: "https://<resource>.openai.azure.com"
     # azure_api_version: "2024-10-21"
     # azure_deployment_name: "gpt-4o"
-    # 以下在 ChatCompletions / Responses API 中可用
+    # The following is available in the ChatCompletions / Responses API
     response_format_default: "text"    # text | json_object | json_schema

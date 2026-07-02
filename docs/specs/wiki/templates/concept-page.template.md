@@ -1,12 +1,12 @@
 ---
-# Concept page — 抽象概念或主题
-# 与 schemas/wiki-page.schema.json 等价（kind=concept）
+# Concept page — an abstract concept or topic
+# Equivalent to schemas/wiki-page.schema.json (kind=concept)
 
 page_id: "wpg_11111111"
 slug: "ipsec-vs-ssl-vpn"
 kind: "concept"
-title: "IPSec vs SSL VPN —— 选型对比 / IPSec vs SSL VPN: When to Choose Which"
-summary: "IPSec 工作在网络层（L3），SSL VPN 工作在应用层（L7/TLS）；二者在性能、穿透 NAT、客户端复杂度、运维成本上各有取舍。"
+title: "IPSec vs SSL VPN: When to Choose Which"
+summary: "IPSec operates at the network layer (L3), SSL VPN at the application layer (L7/TLS); they trade off in performance, NAT traversal, client complexity, and operational cost."
 namespace: "opspilot:public-kb"
 classification: "internal"
 language: "zh-CN"
@@ -15,7 +15,7 @@ created_at: "2026-05-01T10:00:00Z"
 updated_at: "2026-05-01T10:00:00Z"
 
 tags: ["vpn", "ipsec", "ssl", "concept"]
-aliases: ["VPN 选型", "L3 VPN vs L7 VPN"]
+aliases: ["VPN selection", "L3 VPN vs L7 VPN"]
 
 derived_from:
   sources:
@@ -53,43 +53,43 @@ extensions: {}
 
 ## Definition
 
-VPN（Virtual Private Network）的两条主流技术路线：
+The two mainstream technical approaches to VPN (Virtual Private Network):
 
-- **IPSec**：在 IP 层封装加密，常用 IKEv2 做密钥协商；天然支持任意 L3+ 协议；客户端通常需要 OS 级支持。
-- **SSL VPN**：在 TLS 之上跑专有应用协议；走 443 端口，**穿透防火墙能力强**；客户端通常是浏览器或轻量代理。
+- **IPSec**: encrypts and encapsulates at the IP layer, typically using IKEv2 for key negotiation; natively supports any L3+ protocol; clients usually require OS-level support.
+- **SSL VPN**: runs a proprietary application protocol on top of TLS; uses port 443, with **strong firewall traversal**; the client is usually a browser or a lightweight agent.
 
 ## Why it matters
 
-- **故障模式不同**：IPSec 常见故障在 IKE 协商 / NAT-T / 时间同步；SSL VPN 常见故障在证书 / 浏览器兼容 / 应用代理路由
-- **运维边界不同**：IPSec 网关 vs 应用层代理由不同团队维护；同公司若两种并存，[[vpn-incident-patterns-2026q1]] 显示 80% 工单需要先确认是哪种
-- **客户端策略不同**：IPSec 全流量；SSL VPN 通常 split-tunnel 仅保护特定应用
+- **Different failure modes**: IPSec typically fails at IKE negotiation / NAT-T / time sync; SSL VPN typically fails at certificates / browser compatibility / application proxy routing
+- **Different operational boundaries**: the IPSec gateway and the application-layer proxy are maintained by different teams; when both coexist in a company, [[vpn-incident-patterns-2026q1]] shows 80% of tickets first require determining which one is involved
+- **Different client policies**: IPSec carries all traffic; SSL VPN usually split-tunnels, protecting only specific applications
 
 ## Examples in our environment
 
-- 主入口：[[vpn-gateway-corp]] —— IPSec / IKEv2
-- 备用入口：SSL VPN（适用于 BYOD / 第三方协作）—— 待补 entity page
+- Primary entry point: [[vpn-gateway-corp]] — IPSec / IKEv2
+- Backup entry point: SSL VPN (for BYOD / third-party collaboration) — entity page pending
 
 ## Trade-offs
 
-| 维度 | IPSec | SSL VPN |
+| Dimension | IPSec | SSL VPN |
 |---|---|---|
-| 穿透 NAT/Firewall | 一般（需 NAT-T；UDP 500/4500 可能被屏蔽）| 强（443 / TCP）|
-| 性能 | 高 | 中 |
-| 客户端复杂度 | 高（OS 集成 / strongSwan / 配置文件）| 低（浏览器 / 轻量代理）|
-| 全流量 vs split-tunnel | 通常全流量 | split-tunnel 友好 |
-| 运维责任 | 网络组 | 应用 / 接入团队 |
+| NAT/firewall traversal | Fair (needs NAT-T; UDP 500/4500 may be blocked) | Strong (443 / TCP) |
+| Performance | High | Medium |
+| Client complexity | High (OS integration / strongSwan / config files) | Low (browser / lightweight agent) |
+| Full traffic vs split-tunnel | Usually full traffic | Split-tunnel friendly |
+| Operational ownership | Network team | Application / access team |
 
-更详细对比见 [[ipsec-vs-ssl-vpn-decision-matrix]]（synthesis page，待生成）。
+For a more detailed comparison see [[ipsec-vs-ssl-vpn-decision-matrix]] (synthesis page, to be generated).
 
 ## Cross-links
 
-- compares → [[vpn-gateway-corp]] (IPSec 主入口)
+- compares → [[vpn-gateway-corp]] (IPSec primary entry point)
 - see_also → [[vpn-authentication-flow]]
-- see_also → [[ssl-vpn-gateway-corp]] (待生成的 entity page)
+- see_also → [[ssl-vpn-gateway-corp]] (entity page to be generated)
 
 ## Sources
 
-1. [VPN 故障排查 SOP（中文）](examples/scn_ticket_summary_zh/kb/sop_vpn_zh.md:23) — Scope 段对协议范围的定义
+1. [VPN Troubleshooting SOP (Chinese)](examples/scn_ticket_summary_zh/kb/sop_vpn_zh.md:23) — the Scope section's definition of protocol coverage
 
 ## Changelog
 

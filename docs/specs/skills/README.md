@@ -1,54 +1,54 @@
-# Skills — 技能注册、制作与蒸馏 / Skills Registry, Authoring & Distillation
+# Skills — Registry, Authoring & Distillation
 
-> **状态 / Status**：规范阶段（spec-only）。本目录定义 skill 数据模型、生命周期、工具/MCP 绑定契约、蒸馏 pipeline 与模板；不含运行实现。
-> **Stage**：spec only — schemas, templates, contracts. No runtime here.
+> **Status**: spec-only. This directory defines the skill data model, lifecycle, tool/MCP binding contracts, the distillation pipeline, and templates; it contains no runtime implementation.
+> **Stage**: spec only — schemas, templates, contracts. No runtime here.
 
 ## TL;DR
-Skill = 一段**可重用的"做某类活"的指令包**：含触发条件（description）、操作步骤（markdown body）、依赖工具/MCP（声明式），**可被打包、版本化、共享、蒸馏**。OpsPilot 的 skills 子系统在 Anthropic skills 形态之上加了三件事：
+A Skill is a **reusable instruction package for "doing one kind of job"**: it has a trigger condition (description), operating steps (markdown body), and declarative tool/MCP dependencies, and it **can be packaged, versioned, shared, and distilled**. OpsPilot's skills subsystem adds three things on top of the Anthropic skills format:
 
-1. **Authoring（制作）**：给写新 skill 的人提供模板 + checklist + description 调优指南
-2. **Distillation（蒸馏）**：从 session traces / 文档 / 他人 skill / 跨平台 skill **自动产出 skill 草稿**——这是 OpsPilot 区别于纯 skill 仓库的核心
-3. **Tool & MCP integration**：skill 可声明所需 builtin 工具（kb.search 等）与 MCP server，registry 在加载时校验依赖
+1. **Authoring**: gives people writing new skills a template + checklist + description-tuning guide
+2. **Distillation**: **automatically produces skill drafts** from session traces / docs / other people's skills / cross-platform skills — this is what sets OpsPilot apart from a plain skill repository
+3. **Tool & MCP integration**: a skill can declare the builtin tools (kb.search etc.) and MCP servers it requires; the registry validates dependencies at load time
 
-## 与 Anthropic skills 形态的关系 / Relation to Anthropic skills
+## Relation to Anthropic skills
 
-兼容：单文件 `SKILL.md` + frontmatter + 同目录 resources/ 的形态保留——可以直接 import / export。
+Compatible: the single-file `SKILL.md` + frontmatter + sibling resources/ format is preserved — skills can be imported/exported directly.
 
-扩展：
-- frontmatter 增加 `requires.tools`、`requires.mcps`、`requires.providers`（依赖声明）
-- 增加 `safety` 段（classification、telemetry、approval_required）
-- 增加 `distillation` 段（声明蒸馏来源，便于追溯）
-- 增加 `compat`（跨工具/平台映射）
+Extensions:
+- frontmatter adds `requires.tools`, `requires.mcps`, `requires.providers` (dependency declarations)
+- adds a `safety` section (classification, telemetry, approval_required)
+- adds a `distillation` section (declares the distillation source for traceability)
+- adds `compat` (cross-tool/platform mapping)
 
-不破坏 Anthropic skills 的最小形态——多余字段对原生 runner 来说是 unknown frontmatter，可忽略。
+None of this breaks the minimal Anthropic skills format — the extra fields are unknown frontmatter to a native runner and can be ignored.
 
-## Skill 生命周期 / Lifecycle
+## Skill Lifecycle
 
 ```
                 ┌─────────┐
-                │  draft  │  作者写或蒸馏出
+                │  draft  │  authored or freshly distilled
                 └────┬────┘
                      │ author/distill
                      ▼
                 ┌─────────┐
-                │reviewed │  人工/自动 review 通过
+                │reviewed │  passed human/auto review
                 └────┬────┘
                      │ review.pass
                      ▼
                 ┌─────────┐
-                │ trusted │  纳入受信源；安装时不再走 sandbox 隔离
+                │ trusted │  added to trusted sources; no sandbox isolation on install
                 └────┬────┘
                      │
             ┌────────┴────────┐
             │                 │
             ▼                 ▼
        ┌─────────┐       ┌──────────┐
-       │installed│       │community │  受信但未安装；或来自社区
+       │installed│       │community │  trusted but not installed; or from the community
        └────┬────┘       └─────┬────┘
             │ enable            │
             ▼                   ▼
        ┌─────────┐       (sandbox-only invocation)
-       │ enabled │  能被 session 触发并调用
+       │ enabled │  can be triggered and invoked by a Session
        └────┬────┘
             │ invoke / update / deprecate
             ▼
@@ -57,104 +57,104 @@ Skill = 一段**可重用的"做某类活"的指令包**：含触发条件（des
        └──────────┘
 ```
 
-## 信任分级 / Trust tiers
+## Trust tiers
 
-| Tier | 来源 | 调用约束 |
+| Tier | Source | Invocation constraints |
 |---|---|---|
-| `self_authored` | 本地作者 | full（按 skill 自身声明的权限）|
-| `distilled` | 从内部 traces/docs 蒸馏；通过本地 review | full |
-| `imported_trusted` | 从受信源（白名单组织/作者）导入 | full |
-| `imported_community` | 社区/未审计来源 | **强制 sandbox 调用**；只读权限；禁出网默认 |
-| `imported_unknown` | 不明来源 | 默认拒绝；显式 opt-in 才进入 community 等级 |
+| `self_authored` | Local author | full (per the permissions the skill itself declares) |
+| `distilled` | Distilled from internal traces/docs; passed local review | full |
+| `imported_trusted` | Imported from trusted sources (allowlisted orgs/authors) | full |
+| `imported_community` | Community / unaudited sources | **sandbox-only invocation enforced**; read-only permissions; network egress denied by default |
+| `imported_unknown` | Unknown origin | denied by default; explicit opt-in required to enter the community tier |
 
-详见 `templates/lifecycle-policy.template.yaml`。
+See `templates/lifecycle-policy.template.yaml` for details.
 
-## 四类核心能力 / Four core capabilities
+## Four core capabilities
 
-### 1. Skill Authoring 制作
+### 1. Skill Authoring
 
-帮人写出**可触发率高、依赖清晰、安全合规**的新 skill。
+Help people write new skills that **trigger reliably, have clear dependencies, and are safe and compliant**.
 
-- `templates/SKILL.template.md`：单 skill 模板（frontmatter + body）
-- `SPEC.md` §3 *Description tuning*：description 怎么写才能让模型在合适时候召回
-- `SPEC.md` §4 *Quality checklist*：发布前必跑的 7 条自检
-- `SPEC.md` §5 *Trigger eval*：用 `harness/` 评估 description 触发准确率
+- `templates/SKILL.template.md`: single-skill template (frontmatter + body)
+- `SPEC.md` §3 *Description tuning*: how to write a description so the model recalls it at the right moment
+- `SPEC.md` §4 *Quality checklist*: the 7 self-checks that must run before release
+- `SPEC.md` §5 *Trigger eval*: use `harness/` to evaluate description trigger accuracy
 
-### 2. Skill Distillation 蒸馏（项目核心）
+### 2. Skill Distillation (core of the project)
 
-从 4 类来源**自动生成 skill 草稿**，避免人工从零写：
+**Automatically generate skill drafts** from 4 kinds of sources instead of writing them from scratch by hand:
 
-| 来源 | 模板 | 适合 |
+| Source | Template | Best for |
 |---|---|---|
-| 自家 session traces | `distillation-from-traces.template.yaml` | 把团队反复做的成功流程固化为 skill |
-| 别人的 skill 集合 | `distillation-from-skills.template.yaml` | 学习共有结构与风格，做 meta-template |
-| 文档/SOP/playbook | `distillation-from-docs.template.yaml` | 把人写的 markdown SOP 自动转 skill |
-| 跨平台 skill | `distillation-from-foreign.template.yaml`（占位） | Anthropic skill ↔ OpenAI GPTs ↔ LangChain agent 翻译 |
+| Our own Session traces | `distillation-from-traces.template.yaml` | Solidifying successful workflows the team repeats into a skill |
+| Other people's skill collections | `distillation-from-skills.template.yaml` | Learning shared structure and style; building a meta-template |
+| Docs / SOPs / playbooks | `distillation-from-docs.template.yaml` | Automatically converting human-written markdown SOPs into skills |
+| Cross-platform skills | `distillation-from-foreign.template.yaml` (placeholder) | Anthropic skill ↔ OpenAI GPTs ↔ LangChain agent translation |
 
-每条蒸馏 pipeline 都要：
-1. **redact**（脱敏）— 与 session 对齐
-2. **mine** 模式 — pattern mining / LLM-distill
-3. **draft** 草稿 — 产出 SKILL.md + tool-binding.yaml
-4. **review** 审阅 — 人工或 auto-review
-5. **register** 入库 — 写入 skill-registry
+Every distillation pipeline must:
+1. **redact** — aligned with Session redaction
+2. **mine** patterns — pattern mining / LLM-distill
+3. **draft** — produce SKILL.md + tool-binding.yaml
+4. **review** — human or auto-review
+5. **register** — write into the skill-registry
 
-蒸馏来源必须可追溯：每份草稿在 frontmatter 的 `distillation.source` 字段记录原始数据引用。
+Distillation sources must be traceable: every draft records references to the original data in the `distillation.source` frontmatter field.
 
-### 3. Iteration（迭代）⭐
+### 3. Iteration ⭐
 
-让 skill 从初版 → 持续改进 → 收敛到稳定，不是手动 bump semver。详细规范见 `ITERATION.md`，要点：
+Let a skill go from its first version → continuous improvement → convergence to stable, rather than manually bumping semver. Detailed spec in `ITERATION.md`; highlights:
 
-- **Lineage**：每个 skill 的演化是有向图（parent_variant_id / merged_from），可追溯每次变更原因
-- **Variants**：同 skill 的多个候选并行，由 harness 跑矩阵后比对 baseline
-- **Feedback signals**：把 session 中的 user_action、harness 评分、蒸馏候选模式、模型漂移、trace 失败汇集成结构化信号
-- **6 类触发条件**：`regression_detected` / `feedback_signal` / `distillation_candidate` / `model_upgrade` / `scheduled` / `manual`
-- **晋升标准**：anchor fixtures 无回归 + 加权分 +0.01 + cost 增长 ≤10% + trigger eval 仍达标 + 静态检查全过
-- **回滚窗口**：默认保留 3 个稳定版本；30 天内可一键回滚
+- **Lineage**: each skill's evolution is a directed graph (parent_variant_id / merged_from); the reason for every change is traceable
+- **Variants**: multiple candidates of the same skill run in parallel; the Harness runs the matrix and compares against the baseline
+- **Feedback signals**: user_action events from Sessions, Harness scores, distillation candidate patterns, model drift, and trace failures are aggregated into structured signals
+- **6 trigger types**: `regression_detected` / `feedback_signal` / `distillation_candidate` / `model_upgrade` / `scheduled` / `manual`
+- **Promotion criteria**: no regression on anchor Fixtures + weighted score +0.01 + cost growth ≤10% + trigger eval still passing + all static checks pass
+- **Rollback window**: keep the last 3 stable versions by default; one-click rollback within 30 days
 
-文件：
-- `ITERATION.md` 详细规范
+Files:
+- `ITERATION.md` detailed spec
 - `schemas/iteration.schema.json` / `skill-variant.schema.json` / `feedback-signal.schema.json`
 - `templates/iteration-recipe.template.yaml` / `iteration-policy.template.yaml` / `feedback-collector.template.yaml`
 
-### 4. Tool & MCP Integration 工具与 MCP 集成
+### 4. Tool & MCP Integration
 
-Skill 可调用三类操作：
+A skill can invoke three kinds of operations:
 
-| 类 | 例 | 注册方式 |
+| Kind | Examples | Registration |
 |---|---|---|
-| **Builtin tools** | `kb.search`, `memory.add`, `artifact.write` | 由 OpsPilot core 提供；无需注册 |
-| **MCP tools** | `mcp__notion__*`, `mcp__slack__*` | 在 `mcp-config.template.yaml` 注册 server |
-| **Sandbox actions** | shell / script / sql_readonly | 走 `sandbox/templates/action-request.template.yaml` |
+| **Builtin tools** | `kb.search`, `memory.add`, `artifact.write` | Provided by OpsPilot core; no registration needed |
+| **MCP tools** | `mcp__notion__*`, `mcp__slack__*` | Register the server in `mcp-config.template.yaml` |
+| **Sandbox actions** | shell / script / sql_readonly | Go through `sandbox/templates/action-request.template.yaml` |
 
-`tool-binding.template.yaml` 把 skill 的 `requires.tools[]` 与具体的 builtin / MCP / sandbox 实现绑定，并附 safety_class（read / write / execute / sensitive）与 approval_required。
+`tool-binding.template.yaml` binds a skill's `requires.tools[]` to concrete builtin / MCP / sandbox implementations, annotated with safety_class (read / write / execute / sensitive) and approval_required.
 
-## 范围 / Scope
+## Scope
 
-In scope：
-- skill 数据模型（frontmatter + body + resources）
+In scope:
+- skill data model (frontmatter + body + resources)
 - registry / lifecycle / trust tiers
-- 蒸馏 pipeline 的契约（4 类来源）
-- 工具与 MCP 绑定声明
-- 与 session/sandbox/harness/memory 的接口
+- distillation pipeline contracts (4 source kinds)
+- tool and MCP binding declarations
+- interfaces with session/sandbox/harness/memory
 
-Out of scope（暂不在此目录）：
-- 蒸馏 runner 实现（Python pipeline）
-- skill marketplace（社区分发）
-- skill 自动安装的 CLI
+Out of scope (not in this directory for now):
+- distillation runner implementation (Python pipeline)
+- skill marketplace (community distribution)
+- CLI for automatic skill installation
 
-## 目录结构 / Directory layout
+## Directory layout
 
 ```
 skills/
-├── README.md                                  # 本文件
-├── SPEC.md                                    # 详细规范
-├── catalogs.md                                # 已知 skill 来源 + 跨平台映射
+├── README.md                                  # this file
+├── SPEC.md                                    # detailed spec
+├── catalogs.md                                # known skill sources + cross-platform mapping
 ├── schemas/
 │   ├── skill.schema.json                      # SKILL.md frontmatter
-│   ├── skill-registry.schema.json             # registry 条目
-│   ├── tool-binding.schema.json               # 工具/MCP 调用契约
-│   ├── mcp-config.schema.json                 # MCP server 配置
-│   └── distillation-recipe.schema.json        # 蒸馏配方
+│   ├── skill-registry.schema.json             # registry entries
+│   ├── tool-binding.schema.json               # tool/MCP invocation contract
+│   ├── mcp-config.schema.json                 # MCP server config
+│   └── distillation-recipe.schema.json        # distillation recipes
 └── templates/
     ├── SKILL.template.md
     ├── skill-registry.template.yaml
@@ -166,32 +166,32 @@ skills/
     └── lifecycle-policy.template.yaml
 ```
 
-## 与其他目录的契约 / Contracts
+## Contracts with other directories
 
-| 上游 | 给 skills 的输入 |
+| Upstream | Input to skills |
 |---|---|
-| `session/` | 历史 trace.jsonl 作为蒸馏源（必须脱敏后） |
-| `memory/` | KB 文档作为 from_docs 蒸馏源 |
-| `harness/` | description 触发评估 + skill 回归测试 |
-| `providers/` | `requires.providers[]` 声明所需 capability（如 vision/tools） |
+| `session/` | Historical trace.jsonl as distillation sources (must be redacted first) |
+| `memory/` | KB documents as from_docs distillation sources |
+| `harness/` | Description trigger evaluation + skill regression tests |
+| `providers/` | `requires.providers[]` declares required capabilities (e.g. vision/tools) |
 
-| 下游 | skills 提供的产物 |
+| Downstream | Artifacts skills provide |
 |---|---|
-| `session/` | 被激活后注入到 prompt（系统消息或工具描述）|
-| `sandbox/` | skill 中声明的 sandbox actions 走 sandbox 执行 |
-| `case-studies/` | 蒸馏报告归档 |
+| `session/` | Injected into the prompt once activated (system message or tool description) |
+| `sandbox/` | Sandbox actions declared in a skill execute via the sandbox |
+| `case-studies/` | Distillation reports archived |
 
-## 安全红线 / Hard nos
+## Hard nos
 
-- ❌ 不允许把未脱敏 trace 直接喂给 distillation pipeline
-- ❌ 不允许 community/unknown 等级 skill 调用写类工具（kb.write、memory.add、sandbox.apply）
-- ❌ 不允许 skill 在运行时修改 mcp-config（防 prompt-injection 改路由）
-- ❌ 不允许 skill description 中含 prompt injection 语句（"ignore previous instructions" 等）—— 加载时静态扫描
-- ❌ MCP API key 一律走 env，不入仓库
+- ❌ Never feed unredacted traces directly into the distillation pipeline
+- ❌ Community/unknown-tier skills must never invoke write-class tools (kb.write, memory.add, sandbox.apply)
+- ❌ Skills must never modify mcp-config at runtime (prevents prompt-injection routing tampering)
+- ❌ Skill descriptions must never contain prompt-injection statements ("ignore previous instructions" etc.) — statically scanned at load time
+- ❌ MCP API keys always come from env; never committed to the repo
 
-## 开放问题 / Open questions
+## Open questions
 
-- [ ] Skill 版本升级时，是否要求过 harness 触发回归（旧 fixture 仍能命中新 skill）？
-- [ ] 蒸馏出的 skill 是否默认进 `distilled` tier，还是要先入 `draft` 等人工 review？
-- [ ] MCP server 的健康检查频率（与 providers 复用 `health_probe` 还是单独定义）？
-- [ ] 跨平台 skill 翻译的目标平台优先级（Anthropic skills / Claude Code skills / OpenAI GPTs / LangChain）？
+- [ ] When a skill version is upgraded, should a Harness trigger-regression pass be required (old Fixtures still hit the new skill)?
+- [ ] Should distilled skills default into the `distilled` tier, or land in `draft` first pending human review?
+- [ ] MCP server health-check frequency (reuse `health_probe` from providers, or define it separately)?
+- [ ] Priority of target platforms for cross-platform skill translation (Anthropic skills / Claude Code skills / OpenAI GPTs / LangChain)?

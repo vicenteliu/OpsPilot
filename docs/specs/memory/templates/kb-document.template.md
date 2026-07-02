@@ -1,12 +1,12 @@
 ---
-# 长期 KB 文档模板 / Long-term KB document template
-# frontmatter 字段须符合 schemas/kb-document.schema.json
-# 文档内容（frontmatter 之外的 markdown 正文）会被 chunked + embedded
+# Long-term KB document template
+# frontmatter fields must conform to schemas/kb-document.schema.json
+# the document content (markdown body outside the frontmatter) gets chunked + embedded
 
 id: "doc_e5f6g7h8"
 source_path: "playbooks/sop_vpn_zh.md"
 source_url: null
-title: "VPN 故障排查 SOP（中文）"
+title: "VPN Troubleshooting SOP (Chinese)"
 classification: "internal"
 content_hash: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
 version: "1.3.0"
@@ -29,38 +29,38 @@ license: null
 extensions: {}
 ---
 
-# VPN 故障排查 SOP
+# VPN Troubleshooting SOP
 
-> 适用范围：公司 IPSec/IKEv2 VPN；不覆盖 SSL VPN（见 doc_xxxxxxxx）
+> Scope: corporate IPSec/IKEv2 VPN; does not cover SSL VPN (see doc_xxxxxxxx)
 
-## 1. 现象分类
+## 1. Symptom classification
 
-| 现象 | 关键词 | 优先怀疑 |
+| Symptom | Keywords | Primary suspects |
 |---|---|---|
-| 认证失败 | `authentication failed`、`peer auth failed`、`IKE_SA_INIT 错误` | 认证后端 / 用户密码 / 时间不同步 |
-| 隧道建不起 | `IKE timeout`、`UDP 500/4500 dropped` | 网络层 / 防火墙 / NAT |
-| 速度极慢 | 连上但延迟 > 200ms、吞吐 < 1Mbps | MTU / 拥塞 / 服务端负载 |
+| Authentication failure | `authentication failed`, `peer auth failed`, `IKE_SA_INIT error` | auth backend / user password / clock drift |
+| Tunnel fails to establish | `IKE timeout`, `UDP 500/4500 dropped` | network layer / firewall / NAT |
+| Extremely slow | connected but latency > 200 ms, throughput < 1 Mbps | MTU / congestion / server load |
 
-## 2. 排查顺序
+## 2. Troubleshooting order
 
-### 2.1 认证错误
-1. 看客户端日志：`grep -E "auth|fail" vpn-client.log`
-2. 确认服务端：RADIUS / AD 是否健康（端口 1812/1813、LDAP 389/636）
-3. 用 `[USERNAME]` 在管理控制台试登录（不要用真实账号入工单）
-4. 时间不同步会导致证书校验失败：`ntpq -p` / `chronyc tracking`
+### 2.1 Authentication errors
+1. Check the client log: `grep -E "auth|fail" vpn-client.log`
+2. Confirm the server side: are RADIUS / AD healthy (ports 1812/1813, LDAP 389/636)
+3. Try logging in with `[USERNAME]` on the admin console (never put a real account into the ticket)
+4. Clock drift causes certificate validation failures: `ntpq -p` / `chronyc tracking`
 
-### 2.2 隧道建立失败
-1. 端到端连通：`nc -vzu <vpn_gw> 500` / `nc -vzu <vpn_gw> 4500`
-2. ESP（IP 协议号 50）是否被 NAT 设备丢弃：必须支持 NAT-T
-3. MTU：`ping -M do -s 1400 <vpn_gw>`，逐步降到 1200 看是否变通
+### 2.2 Tunnel establishment failure
+1. End-to-end connectivity: `nc -vzu <vpn_gw> 500` / `nc -vzu <vpn_gw> 4500`
+2. Is ESP (IP protocol 50) being dropped by a NAT device: NAT-T must be supported
+3. MTU: `ping -M do -s 1400 <vpn_gw>`, stepping down to 1200 to see whether it gets through
 
-## 3. 升级策略
+## 3. Escalation policy
 
-> 升级到 L2 的判断：
-> - 多人受影响 + 服务端日志无认证记录 → L2 网络组
-> - 单人长期无法连接 + 客户端可重装 → L2 终端组
+> Criteria for escalating to L2:
+> - Multiple users affected + no auth records in server logs → L2 network team
+> - A single user persistently unable to connect + client can be reinstalled → L2 endpoint team
 
-## 4. 相关链接
+## 4. Related links
 
-- doc_aaaaaaaa：SSL VPN 排查 SOP
-- doc_bbbbbbbb：网络变更窗口 SOP
+- doc_aaaaaaaa: SSL VPN troubleshooting SOP
+- doc_bbbbbbbb: network change-window SOP

@@ -1,13 +1,13 @@
-# RAG 摄入 pipeline 模板 / Ingestion pipeline template
-# 阶段：discover → classify → redact → chunk → embed → upsert
-# 每阶段必须可重入、可恢复；失败粒度 = 单文档
+# RAG ingestion pipeline template
+# Stages: discover → classify → redact → chunk → embed → upsert
+# Every stage must be re-entrant and recoverable; failure granularity = single document
 
 version: "1.0.0"
 
-# 引用：哪个 KB 的摄入
+# Reference: which KB this ingestion belongs to
 kb_ref: "kb_public_zh"
 
-# 1. discover —— 发现源 / Source discovery
+# 1. discover — Source discovery
 discover:
   source_root: "playbooks/"
   glob:
@@ -18,44 +18,44 @@ discover:
     - "**/private/**"
     - "**/.obsidian/**"
   follow_symlinks: false
-  manifest_output: "${index_root}/manifest.jsonl"   # 每行一条：source_path + last_modified + size
+  manifest_output: "${index_root}/manifest.jsonl"   # one line per entry: source_path + last_modified + size
 
-# 2. classify —— 分类与元数据抽取 / Metadata extraction
+# 2. classify — Classification & metadata extraction
 classify:
-  read_frontmatter: true               # 读取 markdown frontmatter（YAML）
-  fallback_title: "filename"           # 无 frontmatter.title 时取文件名
+  read_frontmatter: true               # read markdown frontmatter (YAML)
+  fallback_title: "filename"           # use the filename when frontmatter.title is absent
   classification_rules_ref: "kb-config.template.yaml#classification_rules"
   language_detect:
     enabled: true
-    library_hint: "langdetect or similar"   # 实现层选择；中英判定即可
+    library_hint: "langdetect or similar"   # implementation choice; distinguishing Chinese/English is enough
   tag_extraction:
     from_frontmatter: true
-    from_first_h1_keywords: false       # 实验性
+    from_first_h1_keywords: false       # experimental
 
-# 3. redact —— 脱敏（强约束）/ Redaction (hard requirement)
+# 3. redact — Redaction (hard requirement)
 redact:
   rules_ref: "../../session/templates/redaction-rules.template.yaml"
   hard_fail_on_pii_check: true
-  # 命中即写 audit；不写主索引
+  # every hit is written to audit; never to the primary index
   audit_log_path: "${index_root}/audit.log"
-  # 是否输出"脱敏后副本"（便于人工核对）
+  # whether to emit a "redacted copy" (for manual review)
   emit_redacted_copy:
     enabled: true
     target_dir: "${index_root}/redacted/"
 
-# 4. chunk —— 分块 / Chunking
+# 4. chunk — Chunking
 chunk:
   strategy: "headings_then_size"
   target_size_tokens: 512
   max_size_tokens: 1024
   overlap_tokens: 64
   preserve_heading_path: true
-  # chunk 内容 sha256 用作 chk_<sha8>
+  # sha256 of the chunk content is used as chk_<sha8>
   hash_inputs: ["content_after_redact"]
-  # chunk 内容 > 8 KiB 时走 artifact，meta 行 content=null + content_artifact_id
+  # chunk content > 8 KiB goes to an artifact; meta row gets content=null + content_artifact_id
   inline_threshold_bytes: 8192
 
-# 5. embed —— 向量化 / Embedding
+# 5. embed — Embedding
 embed:
   provider_id: "ollama-local"
   model: "nomic-embed-text"
@@ -66,29 +66,29 @@ embed:
     max_attempts: 3
     initial_backoff_ms: 500
     max_backoff_ms: 8000
-  # 失败 chunk 暂存，后续可单独 retry
+  # failed chunks are held aside and can be retried individually later
   failure_holding_dir: "${index_root}/embed-pending/"
 
-# 6. upsert —— 入库（LanceDB + SQLite 事务）/ Upsert
+# 6. upsert — Write to storage (LanceDB + SQLite transaction)
 upsert:
-  # 增量同步语义
-  delete_obsolete_chunks: true         # 旧 doc_id 下不再出现的 chunks 删除
+  # incremental-sync semantics
+  delete_obsolete_chunks: true         # delete chunks that no longer appear under the old doc_id
   update_document_meta: true
-  # 失败回滚：本批次内任意 chunk 失败 → 整批不提交
+  # failure rollback: any chunk failure within the batch → the whole batch is not committed
   transactional: true
-  # 大批量时关闭实时 index refresh，最后统一 optimize
+  # disable live index refresh for bulk loads; run a single optimize at the end
   defer_index_refresh: true
   finalize:
     refresh_vector_index: true
     rebuild_fts_if_dirty: true
 
-# 7. 全流程 / Pipeline-level
+# 7. Pipeline-level
 pipeline:
   parallelism: 4
   per_doc_timeout_seconds: 60
   budget:
-    total_usd: 1.00                    # 单次摄入预算
-    on_exceeded: "block"               # 超出阻断（避免误用云 embedding 烧钱）
+    total_usd: 1.00                    # budget per ingestion run
+    on_exceeded: "block"               # block on overrun (prevents accidentally burning money on cloud embeddings)
   observability:
     log_level: "info"
     metrics:
@@ -99,15 +99,15 @@ pipeline:
       - "errors_total"
     progress_file: "${index_root}/progress.jsonl"
 
-# 8. 触发器 / Triggers
+# 8. Triggers
 triggers:
   manual: true                          # CLI: opspilot ingest --kb kb_public_zh
-  git_post_commit: true                 # 仅在 source_root 下文件变更时触发
+  git_post_commit: true                 # only fires when files under source_root change
   cron: "0 2 * * *"
 
-# 9. Dry-run / 预演
+# 9. Dry-run
 dry_run:
-  enabled_default: true                 # 首次跑务必 dry_run
+  enabled_default: true                 # always dry_run on the first run
   outputs:
     - "manifest"
     - "would_chunk_count_per_doc"
@@ -117,9 +117,9 @@ dry_run:
     - "estimated_embedding_cost_usd > pipeline.budget.total_usd"
     - "redaction_hard_fail_count > 0"
 
-# 10. 备份 / 回滚 / Backup & rollback
+# 10. Backup & rollback
 rollback:
-  # 摄入前快照 SQLite 与 LanceDB 文件
+  # snapshot the SQLite and LanceDB files before ingestion
   snapshot_before_upsert: true
   snapshot_dir: "${index_root}/snapshots/"
   retain_snapshots: 5

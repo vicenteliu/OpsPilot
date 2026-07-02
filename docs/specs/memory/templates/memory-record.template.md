@@ -1,12 +1,12 @@
 ---
-# 中期 memory 记录模板 / Mid-term memory record template
-# 字段必须符合 schemas/memory-record.schema.json
-# 与 SQLite mid-term 表保持等价（同 id 唯一）
+# Mid-term memory record template
+# fields must conform to schemas/memory-record.schema.json
+# kept equivalent to the SQLite mid-term table (same unique id)
 
-id: "mem_a1b2c3d4"                       # mem_<sha8>；运行时计算
+id: "mem_a1b2c3d4"                       # mem_<sha8>; computed at runtime
 type: "feedback"                         # user | feedback | project | reference
-scope: "opspilot:project"                # 命名空间
-title: "RCA 不堆时间戳，列因果链"
+scope: "opspilot:project"                # namespace
+title: "RCAs list causal chains, not timestamp dumps"
 tags: ["rca", "style"]
 
 source:
@@ -29,12 +29,13 @@ labels:
 extensions: {}
 ---
 
-写 RCA 时不要罗列时间戳，列因果链（cause → effect）。
+When writing an RCA, do not enumerate timestamps; list the causal chain (cause → effect).
 
-**Why:** 用户在 sess_01J0... 中明确反馈过：堆时间戳让管理层抓不到重点；
-他们想看的是"什么导致什么"，时间戳在附录里就够。
+**Why:** The user gave explicit feedback in sess_01J0...: piling up timestamps makes
+management miss the point; what they want to see is "what caused what" — timestamps
+in an appendix are enough.
 
 **How to apply:**
-- 在 `playbooks/rca_*` 中默认输出"3 段因果链 + 附录时间线"
-- 评估器（harness）按"是否含 'cause→effect' 或'因为...所以...'结构"打分
-- 例外：合规调查类工单仍保留逐条时间戳（governance 要求）
+- In `playbooks/rca_*`, default the output to "a 3-part causal chain + an appendix timeline"
+- The evaluator (harness) scores on "whether the output contains a 'cause→effect' or because/therefore structure"
+- Exception: compliance-investigation tickets still keep itemized timestamps (a governance requirement)

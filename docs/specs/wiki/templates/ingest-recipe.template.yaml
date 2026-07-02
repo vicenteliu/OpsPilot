@@ -1,62 +1,62 @@
-# Wiki Ingest Recipe — 把一份 raw source 摄入到 wiki 的流程
-# 上层调用：先在 memory.ingestion 把 source 入 KB 拿到 doc_id，再触发本 recipe
+# Wiki Ingest Recipe — the flow for ingesting one raw source into the wiki
+# Caller contract: first ingest the source into the KB via memory.ingestion to obtain a doc_id, then trigger this recipe
 
 version: "1.0.0"
 recipe_kind: "wiki_ingest"
 
-# 1. 引用：本次 ingest 关联的 wiki 实例
+# 1. Reference: the wiki instance this ingest targets
 wiki_root: "wiki/"
 namespace: "opspilot:public-kb"
 
-# 2. 输入源 / Input
+# 2. Input
 source:
-  doc_id: "doc_88a277cf"                          # 必须已在 memory KB 中
+  doc_id: "doc_88a277cf"                          # must already exist in the memory KB
   language: "zh-CN"
   classification: "internal"
   ingested_to_kb_at: "2026-05-01T10:00:00Z"
 
-# 3. 上下文检索（先看 wiki 里已有什么）/ Context retrieval
+# 3. Context retrieval (first check what already exists in the wiki)
 context_retrieval:
-  # 用 source 的 chunks 作为 query，命中既有 wiki page
+  # use the source's chunks as queries to hit existing wiki pages
   mode: "hybrid"
   scopes:
     - "opspilot:public-kb"
   filters:
     "extensions.wiki.page_kind":
-      in: ["entity", "concept", "synthesis"]      # 只关心可能被影响的页
+      in: ["entity", "concept", "synthesis"]      # only the pages that could be affected
   top_k: 12
   rerank:
     enabled: true
     type: "cross_encoder"
     model_ref: "ollama-local/bge-reranker-v2-m3@2024-08"
 
-# 4. LLM 提议阶段 / Proposal
+# 4. Proposal
 proposal:
   llm:
     model_ref: "anthropic-claude/claude-sonnet-4-6@2026-04"
     temperature: 0.2
   budget_usd: 0.30
-  max_pages_touched: 15                           # 与 LLM Wiki 原 idea 对齐：单源 ingest 触发 ≤15 页
+  max_pages_touched: 15                           # aligned with the original LLM Wiki idea: a single-source ingest touches ≤15 pages
   must_consider:
     - "Are there contradictions with existing claims? → emit relation=contradicts links + lint signal"
     - "Are new entities/concepts introduced? → propose new pages"
     - "Are there ≥2 sources now supporting a thesis? → propose synthesis page"
     - "What page summary fits this source best? → propose 1 summary page"
   outputs_required:
-    - "page_patches.json"                         # 每页的 unified diff
-    - "new_pages/*.md"                            # 候选新 page
-    - "lint_candidates.jsonl"                     # 发现的潜在 lint issue（不立即写）
+    - "page_patches.json"                         # unified diff per page
+    - "new_pages/*.md"                            # candidate new pages
+    - "lint_candidates.jsonl"                     # potential lint issues found (not written immediately)
 
-# 5. 静态校验 / Static checks
+# 5. Static checks
 static_checks:
-  - "schema_valid"                                # 全部 frontmatter 通过 wiki-page.schema.json
-  - "pii_check"                                   # body + frontmatter 通过 redaction
-  - "no_prompt_injection"                         # static patterns 同 skills/lifecycle-policy
-  - "no_orphan_creation"                          # 新 page 必须至少有 1 inbound 候选 link
-  - "links_resolvable"                            # 所有 [[<slug>]] 在 wiki 中能找到（或本次同时创建）
-  - "redaction_rules_version_match"               # 全 ≥ 当前规则版本
+  - "schema_valid"                                # all frontmatter passes wiki-page.schema.json
+  - "pii_check"                                   # body + frontmatter pass redaction
+  - "no_prompt_injection"                         # same static patterns as skills/lifecycle-policy
+  - "no_orphan_creation"                          # a new page must have at least 1 candidate inbound link
+  - "links_resolvable"                            # every [[<slug>]] resolves in the wiki (or is created in this same run)
+  - "redaction_rules_version_match"               # all ≥ the current rules version
 
-# 6. Review 模式 / Review mode（按 classification + source trust 决定）
+# 6. Review mode (decided by classification + source trust)
 review:
   matrix:
     - when:
@@ -66,10 +66,10 @@ review:
     - when:
         classification: "internal"
         source_trust: ["self_authored", "imported_trusted", "distilled"]
-      mode: "auto_then_human"                     # 自动检查通过即写；人工事后审
+      mode: "auto_then_human"                     # write once automated checks pass; human reviews afterwards
     - when:
         classification_in: ["confidential", "restricted"]
-      mode: "human"                               # 强制人工 approve
+      mode: "human"                               # mandatory human approval
     - when:
         source_trust: ["imported_community", "imported_unknown"]
       mode: "human"
@@ -78,30 +78,30 @@ review:
   approval_timeout_hours: 48
   on_timeout: "defer"                             # defer | reject
 
-# 7. Apply 阶段 / Apply
+# 7. Apply
 apply:
-  transactional: true                             # 任何子任务失败 → 全回滚
+  transactional: true                             # any subtask failure → full rollback
   steps:
-    - "write_page_files"                          # 先写 page md 文件
-    - "compute_page_ids"                          # 计算 wpg_<sha8>
-    - "rebuild_outbound_links"                    # 解析 [[<slug>]] 填 outbound_links
+    - "write_page_files"                          # write the page md files first
+    - "compute_page_ids"                          # compute wpg_<sha8>
+    - "rebuild_outbound_links"                    # parse [[<slug>]] to fill outbound_links
     - "update_index_md"
     - "append_log_md"
-    - "register_back_to_kb"                       # 见 §8
+    - "register_back_to_kb"                       # see §8
 
-# 8. 回灌到 memory KB / Bi-directional with KB
+# 8. Bi-directional with KB
 register_back_to_kb:
-  enabled: true                                   # wiki page 自动注册为 kind=wiki_synthesis 的 KB doc
+  enabled: true                                   # wiki pages are auto-registered as KB docs with kind=wiki_synthesis
   conditions:
-    only_if_lifecycle_state: "live"               # draft / reviewed 不入 KB
-    skip_classifications: ["restricted"]          # restricted 不入向量库
+    only_if_lifecycle_state: "live"               # draft / reviewed never enter the KB
+    skip_classifications: ["restricted"]          # restricted never enters the vector store
   doc_kind: "wiki_synthesis"
   embedding_model: "ollama-local/nomic-embed-text@2024-02"
   chunk_strategy: "headings_then_size"
 
-# 9. 报告 / Reporting
+# 9. Reporting
 reporting:
-  emit_summary_to_session: true                   # session.trace 中加一条 system event "wiki_ingest_done"
+  emit_summary_to_session: true                   # add a system event "wiki_ingest_done" to session.trace
   archive_run_to: "case-studies/wiki-ingests/"
   metrics:
     - "pages_created"
@@ -110,8 +110,8 @@ reporting:
     - "cost_usd"
     - "latency_ms"
 
-# 10. 失败处理 / Failure
+# 10. Failure
 on_failure:
-  rollback_files: true                            # 已写 page 文件全部回滚
+  rollback_files: true                            # roll back all page files already written
   notify_owner: true
-  emit_feedback_signal: true                      # 失败本身也作为 wiki_lint_issue 信号
+  emit_feedback_signal: true                      # the failure itself is also emitted as a wiki_lint_issue signal

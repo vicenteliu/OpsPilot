@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://opspilot.dev/schemas/memory-record.schema.json",
   "title": "Memory Record (mid-term)",
-  "description": "中期 memory 的结构化记录；与 markdown frontmatter 等价",
+  "description": "Structured record for mid-term memory; equivalent to the markdown frontmatter",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -21,17 +21,17 @@
     "id": {
       "type": "string",
       "pattern": "^mem_[a-f0-9]{8}$",
-      "description": "mem_<sha8>；内容寻址"
+      "description": "mem_<sha8>; content-addressed"
     },
     "type": {
       "type": "string",
       "enum": ["user", "feedback", "project", "reference"],
-      "description": "见 SPEC.md §2"
+      "description": "See SPEC.md §2"
     },
     "scope": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9_-]*:[a-z][a-z0-9_-]*$",
-      "description": "命名空间，例 opspilot:user / opspilot:project"
+      "description": "Namespace, e.g. opspilot:user / opspilot:project"
     },
     "title": {
       "type": "string",
@@ -40,7 +40,7 @@
     },
     "body": {
       "type": "string",
-      "description": "markdown；feedback/project 类型必须含 **Why:** 与 **How to apply:** 段"
+      "description": "Markdown; feedback/project types must contain **Why:** and **How to apply:** sections"
     },
     "tags": {
       "type": "array",
@@ -76,17 +76,17 @@
     "valid_until": {
       "type": ["string", "null"],
       "format": "date-time",
-      "description": "显式过期时间；过期后只读"
+      "description": "Explicit expiry time; read-only once expired"
     },
     "confidence": {
       "type": "string",
       "enum": ["low", "medium", "high"],
-      "description": "影响检索权重；user 直接确认的为 high"
+      "description": "Affects retrieval weighting; entries confirmed directly by the user are high"
     },
     "redacted": {
       "type": "boolean",
       "const": true,
-      "description": "memory 必须脱敏后入库；该字段必须为 true"
+      "description": "Memory must be redacted before storage; this field must be true"
     },
     "redaction_rules_version": { "type": "string" },
     "labels": {

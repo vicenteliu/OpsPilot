@@ -1,88 +1,88 @@
-# Wiki — 详细规范 / Detailed Spec
+# Wiki — Detailed Spec
 
-## 1. 设计原则 / Principles
+## 1. Principles
 
-1. **The wiki is the persistent compounding artifact**：每次 ingest 都让 wiki 更丰富，不是从零检索
-2. **LLM owns writes, human owns curation**：LLM 写所有 page；人决定 ingest 什么、问什么、保留什么
-3. **Cross-link is the value**：page 的价值在互链；orphan page 视为 lint issue
-4. **One concept = one page**：同一概念多个 page 是反模式（lint 会建议合并）
-5. **Provenance always**：每个 page 必须能追溯到 raw source（`derived_from`）
-6. **Wiki feeds back to KB**：page 注册回 memory，新查询会命中 synthesis（而不只是 raw chunk）
+1. **The wiki is the persistent compounding artifact**: every ingest makes the wiki richer, instead of retrieving from scratch
+2. **LLM owns writes, human owns curation**: the LLM writes every page; humans decide what to ingest, what to ask, what to keep
+3. **Cross-link is the value**: a page's value lies in its interlinks; an orphan page is treated as a lint issue
+4. **One concept = one page**: multiple pages for the same concept is an anti-pattern (lint will suggest merging)
+5. **Provenance always**: every page must be traceable back to raw sources (`derived_from`)
+6. **Wiki feeds back to KB**: pages are registered back into memory, so new queries hit synthesis (not just raw chunks)
 
-## 2. ID 与命名 / IDs & naming
+## 2. IDs & naming
 
-- `page_id` = `wpg_<sha8>`（sha8 of canonical frontmatter+body）—— 内容寻址
-- `slug` = 文件名（无后缀），全局唯一；用于跨页 link `[[<slug>]]`
-- 路径约定：`wiki/pages/<kind>/<slug>.md`，如 `wiki/pages/entity/vpn-gateway.md`
-- 命名空间：通过 frontmatter `namespace` 字段（与 memory 一致），不通过路径分隔
+- `page_id` = `wpg_<sha8>` (sha8 of canonical frontmatter+body) — content-addressed
+- `slug` = the file name (without extension), globally unique; used in cross-page links `[[<slug>]]`
+- Path convention: `wiki/pages/<kind>/<slug>.md`, e.g. `wiki/pages/entity/vpn-gateway.md`
+- Namespacing: via the frontmatter `namespace` field (consistent with memory), not via path separation
 
-## 3. Page 数据模型 / Page model
+## 3. Page model
 
-### 3.1 五类 page
+### 3.1 The five page kinds
 
-| kind | 必填 frontmatter 字段 | body 必备段 |
+| kind | Required frontmatter fields | Required body sections |
 |---|---|---|
-| `entity` | aliases、related_entities、related_concepts | "What is it" / "Key facts" / "Related" |
-| `concept` | parent_concepts、related_entities | "Definition" / "Why it matters" / "Examples" |
-| `summary` | source_doc_id、source_uri、ingested_at | "TL;DR" / "Key claims" / "Implications for our wiki" |
-| `comparison` | subjects[]（≥2）、criteria[] | "Subjects" / "Comparison table" / "Verdict / when to use which" |
-| `synthesis` | sources[]（≥2 source_doc_ids）、thesis | "Thesis" / "Evidence" / "Counter-evidence" / "Gaps" |
+| `entity` | aliases, related_entities, related_concepts | "What is it" / "Key facts" / "Related" |
+| `concept` | parent_concepts, related_entities | "Definition" / "Why it matters" / "Examples" |
+| `summary` | source_doc_id, source_uri, ingested_at | "TL;DR" / "Key claims" / "Implications for our wiki" |
+| `comparison` | subjects[] (≥2), criteria[] | "Subjects" / "Comparison table" / "Verdict / when to use which" |
+| `synthesis` | sources[] (≥2 source_doc_ids), thesis | "Thesis" / "Evidence" / "Counter-evidence" / "Gaps" |
 
-### 3.2 通用 frontmatter（所有 kind 共有）
+### 3.2 Common frontmatter (shared by all kinds)
 
-权威定义：`schemas/wiki-page.schema.json`。
+Authoritative definition: `schemas/wiki-page.schema.json`.
 
-| 字段 | 必填 | 说明 |
+| Field | Required | Description |
 |---|---|---|
 | `page_id` | ✓ | wpg_<sha8> |
-| `slug` | ✓ | 全局唯一 |
-| `kind` | ✓ | enum 见 §3.1 |
-| `title` | ✓ | 人类可读标题 |
-| `summary` | ✓ | 一句话；用于 index.md 与 hover preview |
-| `namespace` | ✓ | 与 memory 一致，例 `opspilot:public-kb` |
+| `slug` | ✓ | Globally unique |
+| `kind` | ✓ | enum, see §3.1 |
+| `title` | ✓ | Human-readable title |
+| `summary` | ✓ | One sentence; used in index.md and hover previews |
+| `namespace` | ✓ | Consistent with memory, e.g. `opspilot:public-kb` |
 | `classification` | ✓ | public/internal/confidential/restricted |
 | `language` | ✓ | en/zh-CN/mixed |
-| `version` | ✓ | semver（page 自身的修订版本）|
+| `version` | ✓ | semver (the page's own revision version) |
 | `created_at` | ✓ | RFC3339 |
 | `updated_at` | ✓ | RFC3339 |
-| `tags` | ✗ | 自由标签 |
-| `aliases` | ✗ | 别名（用于跨页 link 命中）|
+| `tags` | ✗ | Free-form tags |
+| `aliases` | ✗ | Alternative names (used for cross-page link matching) |
 | `derived_from` | ✓ | { sources: [{kind,ref,sha256}], parent_pages: [page_id] } |
-| `outbound_links` | ✓ | [page_id] —— 索引时机器维护 |
-| `inbound_link_count` | ✓ | int —— 由 lint 计算回填 |
-| `redacted` | ✓ | 必须 true |
-| `redaction_rules_version` | ✓ | 与 session 同步 |
+| `outbound_links` | ✓ | [page_id] — machine-maintained at index time |
+| `inbound_link_count` | ✓ | int — computed and back-filled by lint |
+| `redacted` | ✓ | Must be true |
+| `redaction_rules_version` | ✓ | Synced with session |
 | `lifecycle_state` | ✓ | draft / reviewed / live / stale / archived |
-| `owner` | ✓ | 维护责任人 |
-| `extensions` | ✗ | 厂商/工具自定义 |
+| `owner` | ✓ | Responsible maintainer |
+| `extensions` | ✗ | Vendor/tool-specific customization |
 
-### 3.3 Body 约定
+### 3.3 Body conventions
 
-- 写法见 `CONVENTIONS.md`
-- 必含 `## Sources` 段，列出 derived_from 的人类可读引用 + 定位（`source_path:line_start-line_end`，与 memory citation 同 schema）
-- 必含 `## Cross-links` 段或在正文中用 `[[<slug>]]`
-- 严格脱敏；不允许 `[REDACTED:` 占位泄漏到正文
+- See `CONVENTIONS.md` for writing style
+- Must contain a `## Sources` section, listing human-readable citations for derived_from + locations (`source_path:line_start-line_end`, same schema as memory citations)
+- Must contain a `## Cross-links` section or use `[[<slug>]]` in the body
+- Strict redaction; no `[REDACTED:` placeholder may leak into the body
 
-## 4. Cross-links / 跨页引用
+## 4. Cross-links
 
-权威定义：`schemas/wiki-link.schema.json`。
+Authoritative definition: `schemas/wiki-link.schema.json`.
 
 ```yaml
 link_id: "wlk_<sha8>"
 from_page: "wpg_..."
 to_page: "wpg_..."
 relation: "describes" | "contradicts" | "extends" | "supersedes" | "depends_on" | "compares" | "instance_of" | "see_also"
-context_quote: "..."         # 简短摘录（≤120 chars，脱敏后）
+context_quote: "..."         # short excerpt (≤120 chars, redacted)
 created_at: "..."
 created_by: "wiki-maintainer-skill@<version>"
 ```
 
-约定：
-- `[[<slug>]]` 在 body 中是规范写法；index 阶段解析为 wiki-link record
-- `relation` 显式枚举；`see_also` 是默认（最弱关系）
-- `contradicts` / `supersedes` 关系会自动产生 lint issue（候选 stale_claim）
+Conventions:
+- `[[<slug>]]` is the canonical form in the body; the index stage parses it into a wiki-link record
+- `relation` is an explicit enum; `see_also` is the default (weakest relation)
+- `contradicts` / `supersedes` relations automatically produce lint issues (stale_claim candidates)
 
-## 5. 三类 Operations / Operations
+## 5. Operations
 
 ### 5.1 Ingest
 
@@ -91,8 +91,8 @@ input: new raw source (already in memory KB as kb_document with doc_id)
         │
         ▼
 [1] discover affected pages: kb.search + wiki.search → top-N existing pages
-[2] propose page updates (LLM): patches per page，附 reason
-[3] propose new pages: 若识别出新概念/实体/synthesis 机会
+[2] propose page updates (LLM): patches per page, each with a reason
+[3] propose new pages: if new concepts/entities/synthesis opportunities are identified
 [4] redact + static check: PII / prompt-injection / orphan-creation check
 [5] human review (mode by classification + trust):
        public/internal/self_authored → auto + audit
@@ -103,60 +103,60 @@ input: new raw source (already in memory KB as kb_document with doc_id)
        trigger memory.ingestion incremental sync
 ```
 
-详细配置：`templates/ingest-recipe.template.yaml`。
+Detailed configuration: `templates/ingest-recipe.template.yaml`.
 
 ### 5.2 Query → Page
 
-不是所有 query 都要回写——回写有成本（占 KB 容量、需维护、可能引入冗余）。触发条件（任一即可）：
+Not every query should be written back — write-back has costs (it consumes KB capacity, needs maintenance, and may introduce redundancy). Trigger conditions (any one suffices):
 
-- session 结束时 user_action.accept 且 harness judge.llm 评分 ≥ 0.85
-- session 内含 ≥ 2 次 kb.search（说明是综合性问题，回答有 synthesis 价值）
-- 用户显式 pin（user_action 含 `pin_to_wiki`）
+- user_action.accept at session end and harness judge.llm score ≥ 0.85
+- the session contains ≥ 2 kb.search calls (indicating a synthesis-style question whose answer has synthesis value)
+- the user explicitly pins (user_action contains `pin_to_wiki`)
 
-回写流程：
-1. 取 session.trace 中的 final response 作为草稿
-2. 抽取引用的 KB chunks → 转成 page 的 `derived_from.sources`
-3. 选 page kind（默认 `synthesis`，特殊场景如对比类问题用 `comparison`）
-4. 走 ingest recipe 的 review→apply 链路（不再单独走 distillation）
+Write-back flow:
+1. Take the final response from session.trace as the draft
+2. Extract the cited KB chunks → convert them into the page's `derived_from.sources`
+3. Choose the page kind (default `synthesis`; special cases such as comparison questions use `comparison`)
+4. Follow the ingest recipe's review→apply chain (no separate distillation pass)
 
-详细配置：`templates/query-to-page-recipe.template.yaml`。
+Detailed configuration: `templates/query-to-page-recipe.template.yaml`.
 
 ### 5.3 Lint
 
-输入：当前 wiki 全量；可选 + 最近 N 天的 ingest log + 最近 M 个 session。
+Input: the full current wiki; optionally + the last N days of ingest log + the last M sessions.
 
-输出：lint issues 列表（schema：`schemas/lint-issue.schema.json`）。
+Output: a list of lint issues (schema: `schemas/lint-issue.schema.json`).
 
-| issue_type | 检测方法（建议）| 默认严重度 |
+| issue_type | Detection method (suggested) | Default severity |
 |---|---|---|
-| `contradiction` | 提取每页 "Key claims" → LLM 检查跨页一致性 | high |
-| `stale_claim` | 新 raw source 与既有 page 声称的关键事实冲突 | high |
-| `orphan` | inbound_link_count = 0（且不是 index/log）| medium |
-| `missing_concept_page` | 跨页提及但无独立 page 的实体/概念，count ≥ N | medium |
-| `missing_cross_ref` | 两页内容明显相关但无 link | low |
-| `data_gap` | 用户多次问但 wiki/KB 都答不上 | medium |
-| `duplicate_concept` | 多个 page 描述同一概念 | high |
+| `contradiction` | Extract each page's "Key claims" → LLM checks cross-page consistency | high |
+| `stale_claim` | A new raw source conflicts with key facts claimed by an existing page | high |
+| `orphan` | inbound_link_count = 0 (and not index/log) | medium |
+| `missing_concept_page` | An entity/concept mentioned across pages without its own page, count ≥ N | medium |
+| `missing_cross_ref` | Two pages clearly related in content but not linked | low |
+| `data_gap` | Users ask repeatedly but neither wiki nor KB can answer | medium |
+| `duplicate_concept` | Multiple pages describe the same concept | high |
 
-每个 issue 必须可生成 `feedback_signal`（type=`wiki_lint_issue`）→ 注入 skills/iteration（详见 `feedback-signal.schema.json` 已新增条目）。
+Every issue must be convertible into a `feedback_signal` (type=`wiki_lint_issue`) → injected into skills/iteration (see the entry already added to `feedback-signal.schema.json`).
 
-**Lint 不自动改页**——只产出 issues + 候选 patch。Apply 必须经人工或 wiki-maintainer skill 的 iteration 流程。
+**Lint never edits pages automatically** — it only produces issues + candidate patches. Apply must go through a human or the wiki-maintainer skill's iteration flow.
 
-详细配置：`templates/lint-recipe.template.yaml`。
+Detailed configuration: `templates/lint-recipe.template.yaml`.
 
 ## 6. index.md / log.md
 
 ### index.md
 
-按 kind + 主题分类组织。每条：
+Organized by kind + topic. Each entry:
 ```
 - [[<slug>]] — <one-line summary> · `<tag>` · classified <classification>
 ```
 
-机器可解析（regex `^- \[\[(\S+)\]\] — (.+?) · `）。LLM 在每次 ingest 完成后追加 / 重排。
+Machine-parseable (regex `^- \[\[(\S+)\]\] — (.+?) · `). The LLM appends / reorders after every ingest.
 
 ### log.md
 
-append-only。每条：
+Append-only. Each entry:
 ```
 ## [<RFC3339-date>] <op> | <subject>
 - by: wiki-maintainer-skill@<version>
@@ -166,19 +166,19 @@ append-only。每条：
 - notes: <optional>
 ```
 
-机器解析（`grep "^## \[" log.md | tail -N`）—— 与 LLM Wiki 原 idea 直接对齐。
+Machine-parsed (`grep "^## \[" log.md | tail -N`) — directly aligned with the original LLM Wiki idea.
 
-## 7. 与 memory KB 的回灌 / Bi-directional with KB
+## 7. Bi-directional with KB
 
-每个 wiki page 在 lifecycle_state 转入 `live` 时，**自动作为新 KB doc** 注册到 memory：
+When a wiki page's lifecycle_state transitions to `live`, it is **automatically registered into memory as a new KB doc**:
 
 ```yaml
-kind: "wiki_synthesis"             # kb-document 新增 kind 字段（向后兼容；缺省视为 raw_source）
+kind: "wiki_synthesis"             # new kind field on kb-document (backward compatible; defaults to raw_source)
 source_path: "wiki/pages/<kind>/<slug>.md"
-namespace: <继承 page.namespace>
-classification: <继承>
+namespace: <inherits page.namespace>
+classification: <inherited>
 content_hash: <wiki page sha256>
-embedding_model: <KB 默认>
+embedding_model: <KB default>
 chunk_strategy: "headings_then_size"
 extensions:
   wiki:
@@ -187,58 +187,58 @@ extensions:
     page_version: "<semver>"
 ```
 
-`kb.search` 默认同时检索 raw 与 wiki_synthesis；可通过 filter 限制（如调试时只看 raw）。
+`kb.search` searches both raw and wiki_synthesis by default; a filter can restrict this (e.g. raw only while debugging).
 
-## 8. 安全 / Security
+## 8. Security
 
-- redaction：与 session 同流；禁止 `[REDACTED:` 残留
-- prompt-injection：page body 加载时静态扫描（与 skills 同 patterns）
-- 禁止：page body 嵌入 `system_prompt:` / `<|im_start|>system` 等
-- approval：`confidential` / `restricted` / `community trust` 来源的 ingest 强制审批
-- audit：page 创建/更新/归档/lint apply 全部写 log；与 session/audit.log 双写
+- redaction: same pipeline as session; no `[REDACTED:` residue allowed
+- prompt-injection: static scan when the page body is loaded (same patterns as skills)
+- Forbidden: embedding `system_prompt:` / `<|im_start|>system` etc. in a page body
+- approval: ingest from `confidential` / `restricted` / `community trust` sources requires mandatory approval
+- audit: page create/update/archive/lint apply are all logged; dual-written with session/audit.log
 
-## 9. Lifecycle / 状态机
+## 9. Lifecycle / state machine
 
 ```
 draft → reviewed → live → stale → archived
                      ↑       │
-                     └───────┘ (lint 触发 stale → 修订后回 live)
+                     └───────┘ (lint marks stale → back to live after revision)
 ```
 
-- `draft`：刚生成；不进 index；不向 KB 注册
-- `reviewed`：通过自动检查；可被 owner approve 进 live
-- `live`：在 index + KB 中可见；正常被检索
-- `stale`：lint 标记为过时；仍可见但带 banner；触发 iteration 候选
-- `archived`：归档；不在 index；仅 audit 可见
+- `draft`: freshly generated; not in the index; not registered to the KB
+- `reviewed`: passed automated checks; can be approved into live by the owner
+- `live`: visible in the index + KB; retrieved normally
+- `stale`: marked outdated by lint; still visible but shown with a banner; an iteration trigger candidate
+- `archived`: archived; not in the index; visible only to audit
 
-## 10. 强约束 / Hard requirements
+## 10. Hard requirements
 
-- page_id = sha8 of frontmatter+body；变更必须 bump version + 重算 page_id（旧 id 进 lineage）
-- redacted=true 是入库前置
-- restricted classification 不得被 query_to_page 自动回写
-- lint 不自动 apply
-- 所有跨页 link 都通过 `[[<slug>]]`，不允许 raw 路径
-- page body 不允许嵌入 system prompt / role override
+- page_id = sha8 of frontmatter+body; any change must bump the version + recompute page_id (the old id goes into lineage)
+- redacted=true is a precondition for storage
+- restricted classification must never be auto-written-back by query_to_page
+- lint never auto-applies
+- all cross-page links go through `[[<slug>]]`; raw paths are not allowed
+- page bodies must not embed system prompts / role overrides
 
-## 11. 与其他目录的接口 / Interfaces
+## 11. Interfaces
 
-| 上游 | 给 wiki 的输入 |
+| Upstream | Input to the wiki |
 |---|---|
-| `memory/long-term` | raw KB doc（ingest 源）+ retrieval（被 wiki 引用）|
-| `session/` | trace.user_action.accept + judge.llm 评分（query→page 触发源）|
-| `playbooks/` | 可作为 ingest 源（视作 raw markdown）|
+| `memory/long-term` | raw KB docs (ingest sources) + retrieval (cited by the wiki) |
+| `session/` | trace.user_action.accept + judge.llm score (query→page trigger source) |
+| `playbooks/` | usable as ingest sources (treated as raw markdown) |
 | `governance/` | redaction / classification / approval policies |
 
-| 下游 | wiki 提供的产物 |
+| Downstream | What the wiki provides |
 |---|---|
-| `memory/long-term` | wiki page 注册回 KB（kind=wiki_synthesis）|
-| `skills/` | wiki_lint_issue feedback_signal 进 iteration trigger |
-| `harness/` | 可加 evaluator：`wiki.coverage`（覆盖率）/ `wiki.consistency`（一致性）|
-| `case-studies/` | live page 可归档为 case study（不替代）|
+| `memory/long-term` | wiki pages registered back into the KB (kind=wiki_synthesis) |
+| `skills/` | wiki_lint_issue feedback_signals into the iteration trigger |
+| `harness/` | optional evaluators: `wiki.coverage` (coverage) / `wiki.consistency` (consistency) |
+| `case-studies/` | live pages can be archived as case studies (not as a replacement) |
 
-## 12. 扩展点 / Extension points
+## 12. Extension points
 
-- 新增 page kind：`schemas/wiki-page.schema.json` enum 扩展 + 对应模板
-- 新增 link relation：`schemas/wiki-link.schema.json` enum 扩展
-- 新增 lint issue type：`schemas/lint-issue.schema.json` enum + lint-recipe.template
-- 与外部工具集成：Obsidian Web Clipper（ingest 入口）/ Marp（page→slide 输出）/ Dataview（用 frontmatter 跑动态查询）
+- New page kind: extend the enum in `schemas/wiki-page.schema.json` + add a matching template
+- New link relation: extend the enum in `schemas/wiki-link.schema.json`
+- New lint issue type: extend the enum in `schemas/lint-issue.schema.json` + lint-recipe.template
+- External tool integration: Obsidian Web Clipper (ingest entry point) / Marp (page→slide output) / Dataview (dynamic queries over frontmatter)

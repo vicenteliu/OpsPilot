@@ -1,100 +1,100 @@
-# Iteration Policy — 全局迭代策略 / Global iteration policy
-# 控制：触发阈值、晋升标准、variant 生命周期、回滚窗口
+# Iteration Policy — global iteration policy
+# Controls: trigger thresholds, promotion criteria, variant lifecycle, rollback window
 
 version: "1.0.0"
 
-# 1. 触发阈值 / Trigger thresholds
+# 1. Trigger thresholds
 triggers:
 
-  regression_threshold: -0.03                     # harness weighted score 掉点超过 3% → 自动 iteration
-  regression_window_runs: 3                       # 连续 3 次 run 都掉点才触发（避免单次抖动误触）
+  regression_threshold: -0.03                     # harness weighted score drops more than 3% → automatic iteration
+  regression_window_runs: 3                       # only trigger after 3 consecutive dropping runs (avoids one-off jitter)
 
-  feedback_min_weight_to_trigger: 5.0             # 累积反馈 |weight| ≥ 5 触发
+  feedback_min_weight_to_trigger: 5.0             # accumulated feedback |weight| ≥ 5 triggers
   feedback_window_days: 30
-  feedback_decay_half_life_days: 14               # 信号半衰期
+  feedback_decay_half_life_days: 14               # signal half-life
 
-  distillation_pattern_min_support: 5             # 至少 5 个 session 出现的新 pattern 才作为信号
+  distillation_pattern_min_support: 5             # a new pattern counts as a signal only if it appears in at least 5 Sessions
 
-  scheduled_review_cron: "0 0 * * 1"              # 每周一 00:00 跑 scheduled iteration（即使无其他信号）
-  scheduled_review_skip_if_iter_within_days: 7    # 若 7 天内已迭代过，跳过本次 scheduled
+  scheduled_review_cron: "0 0 * * 1"              # run a scheduled iteration every Monday 00:00 (even with no other signals)
+  scheduled_review_skip_if_iter_within_days: 7    # skip this scheduled run if an iteration happened within the last 7 days
 
   on_model_upgrade:
     enabled: true
-    affects_skills_with_compat: true              # model_compat 含被升级 model 的 skill 才触发
+    affects_skills_with_compat: true              # only skills whose model_compat includes the upgraded model trigger
 
-# 2. 提议规则 / Proposal rules
+# 2. Proposal rules
 proposal:
-  max_changes_per_iteration: 2                    # 单次迭代最多改 2 个字段（强制小步快跑）
-  forbid_simultaneous:                            # 这些组合禁止同次改
-    - ["description", "requires.tools"]           # 触发条件 + 依赖同时变 → 归因不清
+  max_changes_per_iteration: 2                    # at most 2 fields changed per iteration (enforces small, fast steps)
+  forbid_simultaneous:                            # these combinations must not change in the same iteration
+    - ["description", "requires.tools"]           # trigger condition + dependencies changing together → unclear attribution
   llm_for_drafting:
     model_ref: "anthropic-claude/claude-sonnet-4-6@2026-04"
     max_attempts: 3
     budget_usd: 0.20
 
-# 3. Variant 生命周期 / Variant lifecycle
+# 3. Variant lifecycle
 variant_lifecycle:
-  max_concurrent_active: 3                        # 同 skill 同时 active variant 上限
-  variant_max_lifetime_days: 14                   # 14 天未 promote 自动 archive
+  max_concurrent_active: 3                        # cap on simultaneously active variants per skill
+  variant_max_lifetime_days: 14                   # auto-archive if not promoted within 14 days
   auto_archive_losing: true
-  losing_archive_retention_days: 90               # archive 后保留 90 天便于复盘
+  losing_archive_retention_days: 90               # keep archives for 90 days for post-mortems
 
-# 4. 评估配置 / Evaluation
+# 4. Evaluation
 evaluation:
-  require_anchor_fixtures: true                   # 必须声明 anchor，无则拒绝运行
-  min_fixtures_count: 3                           # fixtures 数量下限
-  rerun_baseline_max_age_hours: 24                # baseline 结果 24 小时内可复用，否则重跑
+  require_anchor_fixtures: true                   # anchors must be declared; refuse to run otherwise
+  min_fixtures_count: 3                           # lower bound on the number of Fixtures
+  rerun_baseline_max_age_hours: 24                # baseline results reusable within 24 hours, otherwise rerun
 
-# 5. 晋升标准（全部满足才能 winning） / Promotion criteria
+# 5. Promotion criteria (all must hold to be winning)
 promotion:
-  min_delta_weighted: 0.01                        # variant 必须比 baseline 加权分 +0.01
-  no_regression_on_anchors: true                  # anchor fixtures 上 pass_rate 不低于 baseline
-  max_cost_increase_pct: 10                       # 成本增长 ≤ 10%
+  min_delta_weighted: 0.01                        # the variant must beat the baseline weighted score by +0.01
+  no_regression_on_anchors: true                  # pass_rate on anchor Fixtures not below baseline
+  max_cost_increase_pct: 10                       # cost growth ≤ 10%
   max_latency_p95_increase_pct: 20
   trigger_eval_must_still_pass: true              # recall ≥0.9, FP ≤0.05
   static_checks_must_pass: true                   # PII / prompt-injection / tool resolvable
 
-  # 是否需要人工审批
+  # whether human approval is required
   human_approval_required: true
   approver_roles: ["lead", "manager"]
   min_approvals: 1
 
-  # 全自动 promote 的例外（极小步改动，且 delta 显著）
+  # exception for fully automatic promotion (tiny changes with a significant delta)
   auto_promote_when:
-    enabled: false                                # 默认关闭；显式启用
-    only_for_change_kinds: ["tighten"]            # 只允许 tighten 类（收紧条件，更安全）
+    enabled: false                                # off by default; enable explicitly
+    only_for_change_kinds: ["tighten"]            # only tighten-kind changes (tightening conditions is safer)
     min_delta_weighted: 0.05
     max_changed_fields: 1
 
-# 6. 拒绝与重迭代 / Rejection
+# 6. Rejection & re-iteration
 rejection:
-  on_no_winner_iterate_again: true                # 全部 losing → 自动起一轮 iterate_again（最多 N 次）
+  on_no_winner_iterate_again: true                # all losing → automatically start an iterate_again round (at most N times)
   max_iterate_again_chain: 3
-  on_chain_exhausted: "manual_intervention"       # 达上限不再自动；标记需人工介入
+  on_chain_exhausted: "manual_intervention"       # stop automating once the cap is hit; flag for human intervention
 
-# 7. 回滚 / Rollback
+# 7. Rollback
 rollback:
   preserve_previous_n_versions: 3
   can_rollback_within_days: 30
   require_two_person_for_trusted_skills: true
-  rollback_creates_new_lineage_entry: true        # 回滚不删历史；只追加 "rolled_back_to_x.y.z" 条目
+  rollback_creates_new_lineage_entry: true        # rollback never deletes history; it only appends a "rolled_back_to_x.y.z" entry
 
-# 8. Lineage 维护 / Lineage maintenance
+# 8. Lineage maintenance
 lineage:
   store_path: "skills/lineage/<skill_name>.yaml"
-  retain_voided_promotions: true                  # 即使被回滚，promotion 历史保留
+  retain_voided_promotions: true                  # promotion history is kept even after a rollback
   audit_every_state_change: true
 
-# 9. 多 skill 联合迭代（实验性） / Joint iteration（experimental）
+# 9. Joint iteration across multiple skills (experimental)
 joint_iteration:
   enabled: false
   groups:
-    # 例：zh + en 双胞胎 skill 必须同步迭代
+    # e.g. zh + en twin skills must iterate in sync
     # - skills: ["ticket_summary_zh", "ticket_summary_en"]
     #   sync_fields: ["description", "outputs.schema_ref"]
 
-# 10. 安全约束 / Safety
+# 10. Safety constraints
 safety:
   forbid_iteration_on_lifecycle_states: ["draft", "deprecated", "archived"]
   forbid_iteration_on_trust_tiers: ["imported_unknown"]
-  signed_iteration_records: false                 # 是否要求 iteration 记录加密签名（合规高时启用）
+  signed_iteration_records: false                 # whether iteration records must be cryptographically signed (enable under high compliance)

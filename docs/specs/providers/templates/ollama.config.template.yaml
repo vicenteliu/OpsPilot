@@ -1,19 +1,19 @@
-# Ollama provider 配置模板 / Ollama provider config template
-# 自托管本地推理；数据不出网；适合"敏感/离线"场景默认。
-# 服务端：https://ollama.com  /  https://github.com/ollama/ollama
-# 注：以下数值为模板默认；最终须按 catalogs.md 与你的实际部署核验。
+# Ollama provider config template
+# Self-hosted local inference; data never leaves the network; the default for "sensitive/offline" scenarios.
+# Server: https://ollama.com  /  https://github.com/ollama/ollama
+# Note: the values below are template defaults; verify against catalogs.md and your actual deployment.
 
 id: "ollama-local"
 kind: "ollama"
-display_name: "Ollama (本地 / Local)"
+display_name: "Ollama (Local)"
 enabled: true
 
-# 内网/本机地址；不允许指向公网
-# OpenAI 兼容路径：/v1/chat/completions（推荐，便于复用 SDK）
-# 原生路径：     /api/chat
+# Intranet/localhost address; must not point at the public internet
+# OpenAI-compatible path: /v1/chat/completions (recommended, easier SDK reuse)
+# Native path:            /api/chat
 base_url: "http://localhost:11434/v1"
 
-# 默认无鉴权；若 ollama serve 套了反向代理 + token，则切到 api_key_header
+# No auth by default; if ollama serve sits behind a reverse proxy + token, switch to api_key_header
 auth:
   type: "none"
   # type: "api_key_header"
@@ -23,18 +23,18 @@ auth:
 
 default_headers: {}
 
-# 能力以你实际跑的模型为准；下面是 qwen2.5:14b-instruct 一类 14B 模型的常见组合
+# Capabilities depend on the model you actually run; below is a common combination for 14B models like qwen2.5:14b-instruct
 capabilities:
   streaming: true
-  tools: true                          # 取决具体模型；llama3.1+ / qwen2.5+ 支持
-  vision: false                        # 视模型而定（llava、qwen2-vl 等支持）
+  tools: true                          # model-dependent; supported by llama3.1+ / qwen2.5+
+  vision: false                        # model-dependent (llava, qwen2-vl, etc. support it)
   audio_in: false
   audio_out: false
-  json_mode: true                      # OpenAI 兼容路径下可用 response_format
+  json_mode: true                      # response_format available on the OpenAI-compatible path
   prompt_caching: false
   reasoning_mode: false
-  embeddings: true                     # ollama 自带 embedding 模型（如 nomic-embed-text）
-  long_context_tokens: 32768           # 视模型与 num_ctx 设置
+  embeddings: true                     # ollama ships embedding models (e.g. nomic-embed-text)
+  long_context_tokens: 32768           # depends on the model and the num_ctx setting
   max_output_tokens: 4096
 
 limits:
@@ -46,7 +46,7 @@ limits:
 
 cost:
   pricing:
-    input_per_1k_usd: 0.0              # 本地推理零外购成本
+    input_per_1k_usd: 0.0              # local inference has zero external purchase cost
     output_per_1k_usd: 0.0
     cached_input_per_1k_usd: null
     pricing_as_of: "2026-05-01"
@@ -66,26 +66,26 @@ retry:
 
 timeouts:
   connect_ms: 2000
-  read_ms: 120000                      # 本地大模型可能较慢
+  read_ms: 120000                      # large local models can be slow
   total_ms: 180000
 
 compliance:
-  data_residency: "unspecified"        # 本地：你的机器；按你的物理位置
-  telemetry_optout: true               # ollama 默认无远端遥测
-  zero_data_retention: true            # 本地不保留外部
-  pii_allowed: true                    # 通常允许；最终以 governance 为准
+  data_residency: "unspecified"        # local: your machine; depends on your physical location
+  telemetry_optout: true               # ollama has no remote telemetry by default
+  zero_data_retention: true            # nothing retained externally when local
+  pii_allowed: true                    # usually allowed; governance has the final say
   red_lines:
-    - "不在 Ollama 实例上跑你不信任的第三方模型"
-    - "确保宿主机磁盘加密 + sudo 访问受控"
+    - "Never run untrusted third-party models on your Ollama instance"
+    - "Ensure host disk encryption + controlled sudo access"
 
 labels:
   deployment: "local"
   gpu: "none"                          # none | rtx4090 | a100 | ...
 
-# 厂商特性扩展
+# Vendor-specific feature extensions
 extensions:
   ollama:
-    keep_alive: "5m"                   # 模型常驻显存时间
-    num_ctx: 32768                     # 上下文窗口（与 capabilities.long_context_tokens 一致）
-    num_predict: 4096                  # 最大生成
-    template: null                     # 可选：自定义 prompt template
+    keep_alive: "5m"                   # how long the model stays resident in VRAM
+    num_ctx: 32768                     # context window (must match capabilities.long_context_tokens)
+    num_predict: 4096                  # max generation
+    template: null                     # optional: custom prompt template

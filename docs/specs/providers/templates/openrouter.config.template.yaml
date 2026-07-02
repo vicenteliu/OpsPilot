@@ -1,14 +1,14 @@
-# OpenRouter provider 配置模板 / OpenRouter provider config template
-# 聚合网关：一把 key 接入数十家模型；适合做降级链与成本对比。
-# 文档：https://openrouter.ai/docs（信息日期 2026-05-01；使用前核验）
-# 注：通过 OpenRouter 调用时，model 字段需写厂商前缀，例 "anthropic/claude-sonnet-4-6"。
+# OpenRouter provider config template
+# Aggregator gateway: one key for dozens of vendors' models; good for fallback chains and cost comparison.
+# Docs: https://openrouter.ai/docs (as of 2026-05-01; verify before use)
+# Note: when calling through OpenRouter, the model field needs a vendor prefix, e.g. "anthropic/claude-sonnet-4-6".
 
 id: "openrouter-main"
 kind: "openrouter"
-display_name: "OpenRouter (聚合网关)"
+display_name: "OpenRouter (Aggregator Gateway)"
 enabled: true
 
-# OpenAI 兼容
+# OpenAI-compatible
 base_url: "https://openrouter.ai/api/v1"
 
 auth:
@@ -17,22 +17,22 @@ auth:
   header: "Authorization"
   prefix: "Bearer "
 
-# OpenRouter 推荐携带 referrer 与 title，便于在你 dashboard 中归因
+# OpenRouter recommends sending referrer and title for attribution in your dashboard
 default_headers:
   HTTP-Referer: "https://github.com/your-org/OpsPilot"
   X-Title: "OpsPilot"
 
-# 能力以"路由后命中的具体模型"为准；这里给 conservative 上限
+# Capabilities depend on the specific model hit after routing; conservative caps are given here
 capabilities:
   streaming: true
-  tools: true                          # 视底层模型；OR 透传 tool_use
+  tools: true                          # depends on the underlying model; OR passes tool_use through
   vision: true
   audio_in: false
   audio_out: false
   json_mode: true
-  prompt_caching: false                # 部分底层模型支持；OR 透传不一致
-  reasoning_mode: true                 # 命中 o1/o3/Gemini-thinking 时为 true
-  embeddings: false                    # OpenRouter 不主推 embedding
+  prompt_caching: false                # some underlying models support it; OR pass-through is inconsistent
+  reasoning_mode: true                 # true when o1/o3/Gemini-thinking is hit
+  embeddings: false                    # OpenRouter does not focus on embeddings
   long_context_tokens: 200000
   max_output_tokens: 8192
 
@@ -44,7 +44,7 @@ limits:
   concurrent: 8
 
 cost:
-  # 注意：OR 单价随路由模型变化；这里写"路由策略默认上限"以做总闸
+  # Note: OR unit prices vary with the routed model; the values here are the "routing policy's default ceiling" acting as an overall gate
   pricing:
     input_per_1k_usd: 0.005
     output_per_1k_usd: 0.015
@@ -78,24 +78,24 @@ timeouts:
 
 compliance:
   data_residency: "unspecified"
-  telemetry_optout: true               # 在账户设置中关闭训练用途/日志保留
-  zero_data_retention: false           # 取决于底层模型与 OR 设置
-  pii_allowed: false                   # 默认禁；按 governance 决定
+  telemetry_optout: true               # opt out of training use / log retention in account settings
+  zero_data_retention: false           # depends on the underlying model and OR settings
+  pii_allowed: false                   # denied by default; decided by governance
   red_lines:
-    - "不发送未脱敏 PII"
-    - "不发送内部代号"
+    - "Never send unredacted PII"
+    - "Never send internal codenames"
 
 labels:
   gateway: "openrouter"
 
 extensions:
   openrouter:
-    # 路由偏好（透传到 OR）
+    # Routing preferences (passed through to OR)
     provider_preferences:
-      order: ["Anthropic", "OpenAI"]   # 优先选这些子供应商
+      order: ["Anthropic", "OpenAI"]   # prefer these sub-providers
       allow_fallbacks: true
-      data_collection: "deny"          # OR 侧的训练数据收集开关
-    # 模型路由路径示例（实际 model 字段由 session/harness 传入）
+      data_collection: "deny"          # OR-side training data collection switch
+    # Example model routing paths (the actual model field is passed in by session/harness)
     example_models:
       - "anthropic/claude-sonnet-4-6"
       - "openai/gpt-4o"

@@ -1,11 +1,11 @@
-# Provider 注册表模板 / Provider registry template
-# 顶层入口；session/harness 通过 provider_id 引用具体 provider。
-# 实际部署时建议放在 governance/providers/ 下，避免与模板混淆。
+# Provider registry template
+# Top-level entry point; session/harness reference concrete providers via provider_id.
+# For real deployments, place this under governance/providers/ to avoid mixing it up with the templates.
 
 version: "1.0.0"
 
-# 注册的 provider 实例（每条须满足 schemas/provider-config.schema.json）
-# 通过 $include 引入分散的 yaml；下方 provider_refs 是实现层惯例（本仓库不强制）
+# Registered provider instances (each must satisfy schemas/provider-config.schema.json)
+# Scattered yaml files are pulled in via $include; provider_refs below is an implementation-layer convention (not enforced by this repository)
 provider_refs:
   - "providers/templates/ollama.config.template.yaml"
   - "providers/templates/openrouter.config.template.yaml"
@@ -14,13 +14,13 @@ provider_refs:
   - "providers/templates/gemini.config.template.yaml"
   - "providers/templates/grok.config.template.yaml"
 
-# 默认 provider（未声明 routing 时使用）
+# Default provider (used when no routing is declared)
 default_provider: "ollama-local"
 
-# 模型简称别名 / Aliases
-# playbook 引用 @chat-strong / @judge / @local-fast 而非具体模型，便于切换
+# Model shorthand aliases
+# Playbooks reference @chat-strong / @judge / @local-fast instead of concrete models, making switches easy
 aliases:
-  "@chat-strong":  "anthropic/claude-sonnet-4-6@2026-04"   # 使用前请按 catalogs.md 核验
+  "@chat-strong":  "anthropic/claude-sonnet-4-6@2026-04"   # verify against catalogs.md before use
   "@chat-fast":    "openai/gpt-4o-mini@2024-07-18"
   "@judge":        "anthropic/claude-haiku-4-5@2025-10"
   "@local-fast":   "ollama/qwen2.5:7b-instruct@2024-09"
@@ -28,17 +28,17 @@ aliases:
   "@vision":       "gemini/gemini-2.5-pro@2025-03"
   "@live-search":  "grok/grok-3@2025-02"
 
-# Routing 策略（任选其一为顶层；多策略可在 rules 中分场景叠加）
+# Routing strategy (pick exactly one as the top level; multiple strategies can be layered per scenario in rules)
 routing:
   strategy: "fixed"                    # fixed | fallback | capability | cost-aware
 
-  # —— fallback 策略：主备链 ————————————————————————
+  # —— fallback strategy: primary/backup chain ————————————————————————
   fallback_chain:
     - "anthropic-claude"
     - "openrouter-main"
     - "ollama-local"
 
-  # —— capability 策略：声明式筛选 ————————————————————
+  # —— capability strategy: declarative filtering ————————————————————
   capability_rules:
     - when: "playbook.requires.tools == true"
       candidates: ["openai-main", "anthropic-claude", "grok-main"]
@@ -47,32 +47,32 @@ routing:
     - when: "playbook.requires.local == true || session.sensitivity == 'restricted'"
       candidates: ["ollama-local"]
 
-  # —— cost-aware 策略：满足能力下挑最便宜 ————————————
+  # —— cost-aware strategy: cheapest among capability-satisfying candidates ————————————
   cost_aware:
     enabled: false
     prefer: "output_per_1k_usd"
     constraints:
       min_capabilities: ["streaming", "json_mode"]
 
-  # 通用规则（无论何种策略均生效）
+  # Universal rules (apply regardless of strategy)
   hard_constraints:
-    # 数据不出网场景强制本地
+    # Force local when data must stay on-network
     - when: "session.sensitivity in ['confidential', 'restricted']"
       must_be_local: true
-    # PII 不允许的 provider 不能接含 redaction warning 的 Session
+    # Providers that disallow PII must not receive Sessions carrying a redaction warning
     - when: "session.flags includes 'redaction_warning'"
       require_pii_allowed: true
 
-# 全局策略 / Global policies
+# Global policies
 global:
-  log_provider_config_hash_to_audit: true   # 每次调用把命中 config hash 写入 audit
-  refuse_on_version_unset: true              # @latest / 空版本一律拒绝
-  monthly_budget_total_usd: 200              # 全部 provider 合计预算（额外的最外层闸）
+  log_provider_config_hash_to_audit: true   # write the config hash hit by each call into the audit
+  refuse_on_version_unset: true              # @latest / empty version is always refused
+  monthly_budget_total_usd: 200              # combined budget across all providers (an extra outermost gate)
   on_total_budget_exceeded: "block"
 
-# 健康检查 / Health probe（仅约定；实现层周期性跑）
+# Health probe (convention only; the implementation layer runs it periodically)
 health_probe:
   interval_seconds: 300
-  prompt: "ping"                       # 极小 prompt
-  required_pass: 1                     # 失败 N 次 → enabled=false
+  prompt: "ping"                       # minimal prompt
+  required_pass: 1                     # fail N times → enabled=false
   failure_threshold: 3

@@ -6,13 +6,13 @@
 
 ## Context
 
-docs/zh/design/STAGES.md §7.5 lists "sandbox L3 (gVisor / Firecracker / Kata 之一; 视需求)" as an
+docs/zh/design/STAGES.md §7.5 lists "sandbox L3 (one of gVisor / Firecracker / Kata; as needed)" as an
 optional Stage 5 hardening item. L2 (`sandbox/docker_l2.py`) is a Docker
 *hardened* container: read-only rootfs, `--cap-drop=ALL`, `no-new-privileges`,
 a custom seccomp profile, and resource/pid limits. Its residual risk is the one
 named in `docs/specs/sandbox/backends/README.md`: the container still shares the host Linux
 kernel, so a kernel-level 0-day can escape. L3 exists to raise that boundary for
-"处理外部/可疑输入" workloads.
+"workloads handling external/suspicious input".
 
 `docs/specs/sandbox/backends/README.md` already compares the three L3 candidates. The
 decision here is which one OpsPilot actually implements, and it is shaped by two
@@ -48,7 +48,7 @@ Implement **L3 = L2 hardened surface + gVisor `runsc`** via `--runtime=runsc`.
 
 Firecracker/Kata are **deferred**, not rejected forever: if a future workload
 needs microVM-class hardware isolation or high-density multi-tenancy (the
-"强合规 / 多租户高密度" row in the backends matrix), that is a new execution path
+"strong-compliance / high-density multi-tenant" row in the backends matrix), that is a new execution path
 and warrants its own ADR.
 
 ## Rationale
@@ -59,7 +59,7 @@ and warrants its own ADR.
   ADR-0002): gVisor covers "don't fully trust the host kernel for suspicious
   input" without standing up KVM/containerd infrastructure.
 - The backends decision tree already routes the typical OpsPilot case
-  ("处理外部/可疑输入") to gVisor.
+  ("handling external/suspicious input") to gVisor.
 - Keeps the macOS-dev / Linux-prod invariant intact — L3 is exercisable in dev
   and CI; Firecracker would only ever run in prod, untested locally.
 
@@ -74,5 +74,5 @@ and warrants its own ADR.
   under `--runtime=runsc` in staging before flipping any default.
 - The default backend stays **L2**. Nothing about the L2 apply path changed; L3
   is purely additive (`docker_l3.py` + an engine `level` switch).
-- The Stage 5 exit criterion "sandbox L2 在生产环境跑过 1 个月无逃逸事件" is
+- The Stage 5 exit criterion "sandbox L2 has run in production for one month with no escape incidents" is
   unchanged and remains a runtime observation, not a code deliverable.
