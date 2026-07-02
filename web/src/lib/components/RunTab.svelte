@@ -157,7 +157,7 @@
 
 <section class="input-section">
   <div class="input-section-header">
-    <h2>Ticket Input</h2>
+    <h2>Work Item Input</h2>
     <div class="mode-toggle">
       <button
         class="mode-btn {inputMode === 'nl' ? 'active' : ''}"
@@ -182,7 +182,7 @@
     <textarea
       rows={12}
       bind:value={ticketInput}
-      placeholder="Paste ticket JSON here..."
+      placeholder="Paste work item JSON here..."
       disabled={loading}
     ></textarea>
   {/if}
