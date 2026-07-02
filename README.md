@@ -11,6 +11,23 @@ leaves an auditable trail: PII is redacted before anything reaches a model,
 output is validated against a strict JSON Schema, and each session archives a
 content-addressed artifact plus an append-only trace.
 
+## Why this project
+
+AI is reshaping the IT-support industry. OpsPilot is a working answer to a
+concrete question: **given what today's LLMs can actually do, what does a
+practical work-assistance layer for IT support look like?**
+
+- Today's models are already good enough to draft incident summaries,
+  decompose work into routable tasks, and pull up the right runbook — *if*
+  every claim is grounded in a knowledge base and every run is auditable.
+  That grounding and auditability is what OpsPilot builds.
+- Model capability keeps compounding, and OpsPilot is built to ride that
+  curve rather than chase it: playbooks pin model versions, a regression
+  harness gates every upgrade, and the spec-driven contracts make adopting a
+  stronger model a config change, not a rewrite.
+- The human stays in charge: OpsPilot suggests severities, tiers, and
+  actions; your system of record — and your engineers — make the decisions.
+
 ## Highlights
 
 - **Multi-provider** — Anthropic Claude, OpenAI, OpenRouter, Gemini, or local
@@ -30,12 +47,22 @@ content-addressed artifact plus an append-only trace.
   lifecycle-managed wiki pages on top of the long-term KB
 - **MCP client** — tools from any Model Context Protocol server (stdio/HTTP)
   injected into the ReAct loop, with per-server allow/denylists
-- **Four interfaces** — CLI, 8-module terminal UI (Textual), tabbed web UI
-  (Svelte 5) with KB-augmented chat, FastAPI backend
+- **Four interfaces** — CLI, REPL terminal UI (Textual, slash commands),
+  tabbed web UI (Svelte 5) with KB-augmented chat, FastAPI backend
 - **Observability** — Prometheus `/metrics`, OTel-compatible JSON logs,
   `/health`
 - **Rust hot paths** — chunker (9.6×) and tokenizer (45×) compiled via
   PyO3/maturin, with transparent Python fallback
+
+## A quick look
+
+The web UI — dark-first, sidebar-navigated, every answer cited back to the KB:
+
+![OpsPilot web UI](docs/assets/webui.png)
+
+The terminal UI — a REPL with slash commands over the same backend:
+
+![OpsPilot TUI tour](docs/assets/tui.gif)
 
 ## Quick start
 
@@ -92,21 +119,9 @@ opspilot serve --reload --with-ui         # API + web UI → http://localhost:51
 
 ## Architecture
 
-```
-Browser (Svelte 5)          opspilot tui / CLI
-        └──────────────┬──────────────┘
-                       ▼
-              FastAPI (opspilot.api)
-                       ▼
-                 Orchestrator
-   ┌───────────┬───────┴───────┬─────────────┐
-   ▼           ▼               ▼             ▼
-Redactor   KB Search       Provider     SessionManager
-(PII)      (FTS5+vector    (Claude ·    (trace + artifact
-            hybrid, RRF)    OpenAI ·     archive)
-                            Gemini ·
-                            Ollama)
-```
+![OpsPilot system architecture](docs/assets/architecture.png)
+
+![OpsPilot execution flow](docs/assets/workflow.png)
 
 Every run: redact → retrieve → generate → validate against JSON Schema →
 archive. See [docs/architecture.md](docs/architecture.md) for the full request
