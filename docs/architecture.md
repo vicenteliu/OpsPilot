@@ -100,22 +100,30 @@ Six layers form a closed AI task loop:
 
 ## Provider routing
 
-The active playbook declares a primary model and an optional fallback:
+The active playbook declares a primary model plus selectable alternates
+(`extra_models`); the first alternate doubles as the runtime fallback when a
+chat round errors:
 
 ```yaml
 model:
   provider_id: anthropic
   kind: anthropic
   name: claude-haiku-4-5-20251001
-  fallback:
-    provider_id: ollama-local
+
+extra_models:
+  - provider_id: anthropic
+    kind: anthropic
+    name: claude-sonnet-4-5
+  - provider_id: ollama-local
     kind: ollama
     name: gemma4:e4b
 ```
 
-The UI model selector overrides the model per-run without editing YAML. When
-the fallback (Ollama) is selected, retrieval mode switches automatically to
-`prefetch` so weak tool-calling models still cite KB chunks correctly.
+The UI model selector switches among these per-run without editing YAML.
+When a weak tool-calling model (kind `ollama`) is selected, retrieval mode
+switches automatically to `prefetch` so it still cites KB chunks correctly.
+(The legacy `model.fallback` key is still accepted and promoted into
+`extra_models` for backward compatibility.)
 
 ## Retrieval modes
 

@@ -2,6 +2,10 @@
 
 **AI-augmented IT ops workbench — spec-driven, multi-provider, local-first**
 
+[![CI](https://github.com/vicenteliu/OpsPilot/actions/workflows/ci.yml/badge.svg)](https://github.com/vicenteliu/OpsPilot/actions/workflows/ci.yml)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](pyproject.toml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 > 中文版：[README.zh-CN.md](./README.zh-CN.md)
 
 OpsPilot turns raw IT work items — incidents, service requests, tasks — into
@@ -20,7 +24,7 @@ practical work-assistance layer for IT support look like?**
 - Today's models are already good enough to draft incident summaries,
   decompose work into routable tasks, and pull up the right runbook — *if*
   every claim is grounded in a knowledge base and every run is auditable.
-  That grounding and auditability is what OpsPilot builds.
+  That grounding and auditability are exactly what OpsPilot builds.
 - Model capability keeps compounding, and OpsPilot is built to ride that
   curve rather than chase it: playbooks pin model versions, a regression
   harness gates every upgrade, and the spec-driven contracts make adopting a
@@ -31,8 +35,9 @@ practical work-assistance layer for IT support look like?**
 ## Highlights
 
 - **Multi-provider** — Anthropic Claude, OpenAI, OpenRouter, Gemini, or local
-  Ollama; switch per-run from the UI; playbooks declare a primary model plus a
-  local fallback (e.g. Claude → Gemma)
+  Ollama; playbooks declare a primary model plus selectable alternates (down
+  to a local Gemma), switchable per-run from the UI, with automatic fallback
+  when a provider errors
 - **KB retrieval with citations** — hybrid vector (LanceDB) + full-text
   (SQLite FTS5) search fused with RRF; `tool` mode (ReAct) for strong models,
   `prefetch` injection for weak local ones
@@ -47,13 +52,13 @@ practical work-assistance layer for IT support look like?**
   lifecycle-managed wiki pages on top of the long-term KB
 - **MCP client** — tools from any Model Context Protocol server (stdio/HTTP)
   injected into the ReAct loop, with per-server allow/denylists
-- **Four interfaces + channels** — CLI, REPL terminal UI (Textual, slash
+- **Interfaces & channels** — CLI, REPL terminal UI (Textual, slash
   commands), tabbed web UI (Svelte 5) with KB-augmented chat, FastAPI
-  backend; Telegram channel brings the KB chat into your messenger
+  backend; a Telegram channel brings the KB chat into your messenger
 - **Observability** — Prometheus `/metrics`, OTel-compatible JSON logs,
   `/health`
-- **Rust hot paths** — chunker (9.6×) and tokenizer (45×) compiled via
-  PyO3/maturin, with transparent Python fallback
+- **Rust hot paths** — chunker (~10×) and tokenizer (~45×) compiled via
+  PyO3/maturin, with a transparent Python fallback; CI enforces ≥5×
 
 ## A quick look
 
@@ -82,7 +87,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-Optional but recommended — Rust extensions (10–48× faster chunker/tokenizer;
+Optional but recommended — Rust extensions (~10–45× faster chunker/tokenizer;
 requires [rustup](https://rustup.rs)):
 
 ```bash
@@ -100,7 +105,9 @@ ollama pull gemma4:e4b                 # local chat model (optional fallback)
 
 ```bash
 cp .env.example .env
-# Edit .env — add ANTHROPIC_API_KEY or other cloud keys if using cloud providers
+# Edit .env — add ANTHROPIC_API_KEY or other cloud keys if using cloud providers.
+# No cloud key? Pick the local Gemma model from the UI dropdown — retrieval
+# switches to prefetch automatically so weak models still cite the KB.
 ```
 
 ### 4. Ingest a knowledge base
@@ -117,6 +124,10 @@ opspilot ingest examples/sample_data_en/kb/
 opspilot tui                              # terminal UI workbench
 opspilot serve --reload --with-ui         # API + web UI → http://localhost:5173
 ```
+
+From here: submit a work item on the **Run** tab, ask the KB a question on
+the **Chat** tab, or connect a [Telegram channel](docs/channels.md) to chat
+with your KB from your phone.
 
 ## Architecture
 
@@ -138,7 +149,7 @@ flow, the six-layer system design, provider routing, and retrieval modes.
 | [docs/channels.md](docs/channels.md) | Messaging channels — Telegram assist-mode setup |
 | [docs/specs/](docs/specs/) | Spec contracts: schemas + templates (loaded at runtime) |
 | [docs/adr/](docs/adr/) | Architecture decision records |
-| [ROADMAP.md](ROADMAP.md) | Direction: remote access foundation, Channels, mobile companion |
+| [ROADMAP.md](ROADMAP.md) | Direction: more channels (WeCom), mobile companion, work-item intake |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Dev setup, quality gates, PR conventions |
 | [SECURITY.md](SECURITY.md) | Deployment model, threat model, reporting vulnerabilities |
 
@@ -155,4 +166,4 @@ flow, the six-layer system design, provider routing, and retrieval modes.
 
 ## License
 
-MIT
+[MIT](LICENSE)
