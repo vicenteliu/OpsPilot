@@ -222,18 +222,21 @@ __marimo__/
 **/kb/*/progress.jsonl
 **/kb/*/low-score-queries.jsonl
 
-# OpsPilot — Mid-term memory 本地存储（私有；不入 git）
+# OpsPilot — mid-term memory local storage (private; never committed)
 .opspilot/
+# Literal "$HOME/" dir created when OPSPILOT_HOME=$HOME/... is read in an
+# environment where HOME is unset (containers, systemd) — see .env.example
+/$HOME/
 **/memory/mid-term.db
 **/memory/mid-term.db-*
 **/memory/backups/
 **/memory/review-queue.jsonl
 
-# OpsPilot — Sessions 本地数据（敏感；不入 git）
+# OpsPilot — session local data (sensitive; never committed)
 sessions/
 
-# OpsPilot — examples/ 下的端到端样例日志属于规范产物，需要入 git
-# （compensate Django-style *.log 的过宽匹配）
+# OpsPilot — e2e sample logs under examples/ are spec artifacts and ARE
+# committed (compensates the overly-broad Django-style *.log pattern above)
 !examples/**/audit.log
 !examples/**/*.log
 
@@ -255,8 +258,12 @@ harness-results-*.jsonl
 # Claude Code tooling (machine-local; not shared)
 .agents/
 .claude/
+.serena/
 skills/
 skills-lock.json
+
+# pytest-cache leftovers occasionally dropped in the repo root
+pytest-cache-files-*/
 
 # Svelte / Node
 web/node_modules/
