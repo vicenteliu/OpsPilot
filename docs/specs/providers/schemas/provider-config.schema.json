@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://opspilot.dev/schemas/provider-config.schema.json",
   "title": "Provider Config",
-  "description": "OpsPilot LLM provider 配置（单实例）",
+  "description": "OpsPilot LLM provider config (single instance)",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -22,7 +22,7 @@
     "id": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9_-]{1,63}$",
-      "description": "Provider 实例 id；同一厂商可注册多个实例（如 ollama-gpu1）"
+      "description": "Provider instance id; the same vendor may register multiple instances (e.g. ollama-gpu1)"
     },
     "kind": {
       "type": "string",
@@ -40,7 +40,7 @@
     "base_url": {
       "type": "string",
       "format": "uri",
-      "description": "完整 URL；ollama 必须为内网/本机地址"
+      "description": "Full URL; for ollama it must be an intranet/localhost address"
     },
     "default_headers": {
       "type": "object",
@@ -63,7 +63,7 @@
         },
         "env": {
           "type": "string",
-          "description": "API key 来源的环境变量名；与 type=none 互斥"
+          "description": "Environment variable name that supplies the API key; mutually exclusive with type=none"
         },
         "header": { "type": "string" },
         "prefix": { "type": "string", "examples": ["Bearer "] },
@@ -71,11 +71,11 @@
         "extra_env": {
           "type": "object",
           "additionalProperties": { "type": "string" },
-          "description": "其它必需 header/凭证的环境变量映射"
+          "description": "Environment variable mapping for other required headers/credentials"
         },
         "key_file_env": {
           "type": "string",
-          "description": "OAuth2 service account JSON 路径的环境变量"
+          "description": "Environment variable holding the path to the OAuth2 service account JSON"
         }
       }
     },
@@ -136,7 +136,7 @@
             "pricing_as_of": {
               "type": "string",
               "format": "date",
-              "description": "信息日期；与 catalogs.md 一致"
+              "description": "As-of date; must match catalogs.md"
             },
             "source_url": { "type": "string", "format": "uri" }
           }
@@ -149,7 +149,7 @@
         },
         "downgrade_to": {
           "type": ["string", "null"],
-          "description": "provider_id；当 on_budget_exceeded=downgrade 时必填"
+          "description": "provider_id; required when on_budget_exceeded=downgrade"
         }
       }
     },
@@ -222,7 +222,7 @@
     "extensions": {
       "type": "object",
       "additionalProperties": true,
-      "description": "厂商特性扩展（如 anthropic.cache_control、gemini.safety_settings）"
+      "description": "Vendor-specific feature extensions (e.g. anthropic.cache_control, gemini.safety_settings)"
     }
   }
 }

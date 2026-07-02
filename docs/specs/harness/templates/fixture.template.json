@@ -1,11 +1,11 @@
 {
-  "_comment": "示例 fixture：场景=ticket-summary（中文工单摘要）",
+  "_comment": "Example fixture: scenario=ticket-summary (Chinese ticket summarization)",
   "id": "fix_a1b2c3d4",
   "scenario_id": "scn_ticket_summary_zh",
   "version": "1.0.0",
   "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-  "title": "L1 工单：用户无法登录 VPN（脱敏样本）",
-  "description": "典型 L1 case：包含错误日志片段、模糊的现象描述、缺失字段；评估摘要是否抓到关键三件套（现象/影响/已尝试步骤）。",
+  "title": "L1 ticket: user cannot connect to VPN (redacted sample)",
+  "description": "Typical L1 case: contains an error log snippet, a vague symptom description, and missing fields; evaluates whether the summary captures the key trio (symptom / impact / steps already tried).",
   "tags": ["ticket", "vpn", "L1", "zh-CN"],
   "language": "zh-CN",
   "input": {
@@ -13,8 +13,8 @@
     "channel": "service-desk",
     "submitted_at": "2026-04-30T14:21:00Z",
     "submitter_role": "[REDACTED:role:11111111]",
-    "subject": "VPN 连不上",
-    "body": "今天上午 10 点开始连不上 VPN，弹窗显示 'authentication failed'。同事说他们也连不上。我用 [REDACTED:hostname:22222222] 这台机器试过，重启过，没用。我手机热点也试过，一样。",
+    "subject": "Cannot connect to VPN",
+    "body": "Since 10 AM this morning I can't connect to the VPN; a popup says 'authentication failed'. Coworkers say they can't connect either. I tried on the machine [REDACTED:hostname:22222222] and rebooted it — no luck. I also tried my phone's hotspot, same result.",
     "attachments": [
       {
         "name": "vpn-client.log",

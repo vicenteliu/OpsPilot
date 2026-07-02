@@ -1,10 +1,10 @@
 ---
 # Wiki index — content catalog
-# 由 wiki-maintainer skill 在每次 ingest 后自动重排
-# 人工只读；不要手编辑
+# Automatically reorganized by the wiki-maintainer skill after every ingest
+# Human read-only; do not hand-edit
 
 slug: "index"
-kind: "concept"           # 复用 concept kind 但 lifecycle 永远 live
+kind: "concept"           # reuses the concept kind, but lifecycle is always live
 title: "Wiki Index"
 summary: "Catalog of all wiki pages, grouped by kind."
 namespace: "opspilot:public-kb"
@@ -14,12 +14,12 @@ version: "1.0.0"
 created_at: "2026-05-01T10:00:00Z"
 updated_at: "2026-05-01T10:00:00Z"
 tags: ["index", "meta"]
-aliases: ["目录", "TOC"]
+aliases: ["Table of contents", "TOC"]
 derived_from:
   sources: []
   parent_pages: []
 outbound_links: []
-inbound_link_count: 999       # 强制 large 数避免被 lint 误标 orphan
+inbound_link_count: 999       # forced large value so lint does not mis-flag it as an orphan
 redacted: true
 redaction_rules_version: "1.0.0"
 lifecycle_state: "live"
@@ -32,32 +32,32 @@ extensions:
 
 # Wiki Index
 
-> 自动维护。以 `## ` 二级标题分类，列每个 page 一行。
-> 解析规则：`^- \[\[(\S+?)\]\] — (.+?) · `（slug · summary · classification · tag）
+> Auto-maintained. Grouped under `## ` second-level headings, one line per page.
+> Parse rule: `^- \[\[(\S+?)\]\] — (.+?) · ` (slug · summary · classification · tag)
 
 ## Entities
 
-- [[vpn-gateway-corp]] — 公司 IPSec/IKEv2 VPN 网关；RADIUS + AD LDAP 双因子 · `internal` · #vpn #infrastructure
-- [[radius-auth-backend]] — RADIUS 认证后端；UDP 1812/1813 · `internal` · #auth
-- [[ad-ldap-corp]] — AD LDAP 目录服务；TCP 389/636 · `internal` · #auth
+- [[vpn-gateway-corp]] — Corporate IPSec/IKEv2 VPN gateway; RADIUS + AD LDAP two-factor · `internal` · #vpn #infrastructure
+- [[radius-auth-backend]] — RADIUS authentication backend; UDP 1812/1813 · `internal` · #auth
+- [[ad-ldap-corp]] — AD LDAP directory service; TCP 389/636 · `internal` · #auth
 
 ## Concepts
 
-- [[ipsec-vs-ssl-vpn]] — IPSec vs SSL VPN 选型对比 · `internal` · #vpn #concept
-- [[vpn-authentication-flow]] — VPN 认证流程：客户端 → 网关 → RADIUS → AD LDAP · `internal` · #auth #flow
+- [[ipsec-vs-ssl-vpn]] — IPSec vs SSL VPN selection comparison · `internal` · #vpn #concept
+- [[vpn-authentication-flow]] — VPN authentication flow: client → gateway → RADIUS → AD LDAP · `internal` · #auth #flow
 
 ## Summaries (one per raw source)
 
-- [[sop-vpn-zh-2026-04-28]] — VPN 故障排查 SOP（中文）v1.3.0 · `internal` · #vpn #sop
-- [[summary-ticket-T-XXXX-2026-04-30]] — Session sess_01J0Z9... 工单摘要 · `internal` · #ticket
+- [[sop-vpn-zh-2026-04-28]] — VPN Troubleshooting SOP (Chinese) v1.3.0 · `internal` · #vpn #sop
+- [[summary-ticket-T-XXXX-2026-04-30]] — Ticket summary for session sess_01J0Z9... · `internal` · #ticket
 
 ## Comparisons
 
-- [[radius-vs-ldap-auth]] — RADIUS vs AD LDAP 认证后端选型 · `internal` · #auth #comparison
+- [[radius-vs-ldap-auth]] — RADIUS vs AD LDAP authentication backend selection · `internal` · #auth #comparison
 
 ## Syntheses
 
-- [[vpn-incident-patterns-2026q1]] — 2026 Q1 VPN 故障模式综合（thesis: 80% 在认证链路）· `internal` · #vpn #q1-2026
+- [[vpn-incident-patterns-2026q1]] — 2026 Q1 VPN incident pattern synthesis (thesis: 80% in the auth chain) · `internal` · #vpn #q1-2026
 
 ## Meta
 
@@ -66,7 +66,7 @@ extensions:
 
 ---
 
-**Stats（由 lint 维护）**：
+**Stats (maintained by lint)**:
 - Total pages: 9
 - By kind: entity=3, concept=2, summary=2, comparison=1, synthesis=1
 - Orphans: 0

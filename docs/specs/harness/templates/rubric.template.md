@@ -1,47 +1,47 @@
-# Rubric — `scn_<scenario_id>` 评分标准模板
+# Rubric — scoring rubric template for `scn_<scenario_id>`
 
-> 该 rubric 同时给 **LLM-judge** 与 **人工抽样** 使用。LLM-judge 必须锁定 judge 模型版本与该 rubric 的 hash。
-> 写得越具体，judge 越稳定；尽量给"通过/失败"的可观察特征。
+> This rubric is used by both the **LLM judge** and **human spot checks**. The LLM judge must pin the judge model version and the hash of this rubric.
+> The more specific the rubric, the more stable the judge; wherever possible, describe observable pass/fail characteristics.
 
-## 0. 元信息 / Metadata
+## 0. Metadata
 
-- **scenario_id**：`scn_ticket_summary_zh`
-- **rubric_version**：`1.0.0`
-- **language**：zh-CN
-- **judge_model_pinned**：`anthropic/claude-haiku-4-5@2025-10`（**不要**用 `latest`）
+- **scenario_id**: `scn_ticket_summary_zh`
+- **rubric_version**: `1.0.0`
+- **language**: zh-CN
+- **judge_model_pinned**: `anthropic/claude-haiku-4-5@2025-10` (do **not** use `latest`)
 
-## 1. 任务定义 / Task definition
+## 1. Task definition
 
-输入：脱敏后的 IT 工单（含正文与附件 log 片段）。
-期望输出：结构化摘要 JSON（schema 见 golden.template.json 的 `expected_structured`）。
+Input: a redacted IT ticket (body plus attached log snippet).
+Expected output: a structured summary JSON (see `expected_structured` in golden.template.json for the schema).
 
-## 2. 评分维度 / Dimensions
+## 2. Dimensions
 
-每个维度 0–4 分；总分加权后归一到 [0, 1]。
+Each dimension is scored 0–4; the weighted total is normalized to [0, 1].
 
-| 维度 | 权重 | 0 分 | 2 分 | 4 分 |
+| Dimension | Weight | 0 points | 2 points | 4 points |
 |---|---|---|---|---|
-| **现象抓取** | 0.25 | 漏掉错误关键字 | 抓到主关键字 | 抓到主+次关键字并对齐 log |
-| **范围识别** | 0.15 | 仅描述提交人 | 提到"多名用户" | 量化描述（"上午 10:00 起多名用户"） |
-| **已尝试步骤** | 0.15 | 漏掉 | 抓到主要 | 全部抓到并去重 |
-| **缺失字段** | 0.15 | 没识别 | 识别 1–2 项 | 识别 ≥3 项关键缺失 |
-| **下一步建议** | 0.20 | 无或泛泛 | 给 1–2 条 | 给 3 条且可执行 |
-| **严重等级** | 0.10 | 与场景明显不符 | 合理 | 合理且给出依据 |
+| **Symptom capture** | 0.25 | misses the error keywords | captures the primary keyword | captures primary + secondary keywords, aligned with the log |
+| **Scope identification** | 0.15 | describes only the submitter | mentions "multiple users" | quantified description ("multiple users since 10:00 AM") |
+| **Steps already tried** | 0.15 | missed | captures the main ones | captures all, deduplicated |
+| **Missing fields** | 0.15 | none identified | identifies 1–2 | identifies ≥3 key missing fields |
+| **Next-step suggestions** | 0.20 | none or generic | gives 1–2 | gives 3, all actionable |
+| **Severity level** | 0.10 | clearly inconsistent with the scenario | reasonable | reasonable, with justification |
 
-## 3. Pass / Fail 判定
+## 3. Pass / Fail determination
 
-- **Pass**：加权得分 ≥ 0.7 **且** 无以下 hard fail
-- **Hard fail（任一即 fail）**：
-  - 输出残留 `[REDACTED:` 占位符在 `summary` 字段
-  - 输出虚构日志内容（fixture 中不存在的 error code）
-  - 把 fixture 中的脱敏 token 当作真实信息使用
+- **Pass**: weighted score ≥ 0.7 **and** none of the hard fails below
+- **Hard fail (any one fails the case)**:
+  - Output leaves `[REDACTED:` placeholders in the `summary` field
+  - Output fabricates log content (error codes not present in the fixture)
+  - Output treats redaction tokens from the fixture as real information
 
-## 4. Judge 提示骨架 / Judge prompt skeleton
+## 4. Judge prompt skeleton
 
 ```
-你是 OpsPilot 评估器。给定输入工单（fixture）、模型输出（output）、参考输出（golden）、rubric。
-请按 rubric 的每个维度给 0–4 分，并填写 hard_fail 标志。
-仅返回 JSON：
+You are the OpsPilot evaluator. Given the input ticket (fixture), the model output (output), the reference output (golden), and the rubric,
+score each rubric dimension from 0 to 4 and fill in the hard_fail flags.
+Return JSON only:
 {
   "dimensions": {
     "symptom": 0-4,
@@ -53,18 +53,18 @@
   },
   "weighted_score": 0.0-1.0,
   "hard_fail": ["redaction_leak"|"fabricated_log"|...],
-  "rationale": "≤200 字"
+  "rationale": "<=200 characters"
 }
 ```
 
-## 5. 防偏差 Notes / Anti-bias
+## 5. Anti-bias
 
-- 不要因输出**长度**奖励或惩罚（除非 rubric 显式提及）
-- 不要因输出与 golden **措辞不同**而扣分；只看是否覆盖维度
-- 同等条件下，**简洁可执行 > 冗长详尽**
+- Do not reward or penalize output **length** (unless the rubric explicitly says so)
+- Do not deduct points because the output's **wording differs** from the golden; only check whether the dimensions are covered
+- All else being equal, **concise and actionable > long and exhaustive**
 
-## 6. 历史变更 / Change log
+## 6. Change log
 
-| 版本 | 日期 | 变更 | 影响范围 |
+| Version | Date | Change | Impact |
 |---|---|---|---|
-| 1.0.0 | 2026-05-01 | 初版 | 全量回归基线建立 |
+| 1.0.0 | 2026-05-01 | Initial version | Full regression baseline established |

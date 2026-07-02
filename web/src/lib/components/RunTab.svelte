@@ -9,15 +9,15 @@
 
   // --- Ticket Input ---
   let inputMode = $state<'nl' | 'json'>('nl');
-  let nlInput = $state<string>('无法连接 VPN，从今早 09:00 起报错 Authentication failed，已重启客户端无效。');
+  let nlInput = $state<string>('Cannot connect to the corporate VPN since 09:00 this morning — "Authentication failed". Restarting the client did not help.');
   let ticketInput = $state<string>(JSON.stringify(
     {
       "ticket_id": "TKT-DEMO-001",
       "channel": "email",
       "submitted_at": "2026-05-01T09:00:00Z",
       "submitter_role": "end_user",
-      "subject": "无法连接 VPN",
-      "body": "从今早 09:00 起无法连接公司 VPN，错误信息：Authentication failed。已尝试重启客户端，问题依旧。"
+      "subject": "Cannot connect to VPN",
+      "body": "Unable to connect to the corporate VPN since 09:00 this morning. Error: Authentication failed. Restarting the client did not resolve it."
     },
     null,
     2
@@ -54,8 +54,10 @@
 
   let lastRunInput = $state<Record<string, unknown> | null>(null);
 
+  // English playbooks are the default; service_request only has a zh variant
+  // so far (multilingual support — zh playbooks remain first-class).
   const PLAYBOOK_BY_TYPE: Record<string, string> = {
-    incident: 'pb_ticket_summary_zh',
+    incident: 'pb_ticket_summary_en',
     service_request: 'pb_request_fulfillment_zh',
   };
 

@@ -1,75 +1,75 @@
-# 短期 memory 配置模板 / Short-term memory config template
-# 短期 memory 不单独建表；本配置控制"上下文窗口管理"与"摘要触发"。
-# 实际数据走 session/trace.jsonl。
+# Short-term memory config template
+# Short-term memory gets no tables of its own; this config controls context-window
+# management and summarization triggers. The actual data lives in session/trace.jsonl.
 
 version: "1.0.0"
 
-# 1. 上下文窗口预算 / Context window budgeting
+# 1. Context window budgeting
 context_window:
-  # 与所选 model 的 long_context_tokens 对齐；保守设小
+  # aligned with the selected model's long_context_tokens; set conservatively low
   max_tokens: 100000
-  # 留给本次响应（避免被截断）
+  # reserved for the current response (to avoid truncation)
   reserve_for_response: 8000
-  # 留给 system prompt + tool schema
+  # reserved for the system prompt + tool schema
   reserve_for_system: 4000
-  # 留给 RAG 检索注入（kb.search 结果）
+  # reserved for RAG retrieval injection (kb.search results)
   reserve_for_retrieval: 12000
 
-# 2. 溢出策略 / Overflow policy
+# 2. Overflow policy
 policy:
-  # truncate           : 直接砍最旧（信息丢失大）
-  # summarize_oldest   : 把最旧 N 条合并为摘要 system 事件（默认）
-  # summarize_smart    : 让 LLM 选择保留/摘要的事件
+  # truncate           : drop the oldest outright (large information loss)
+  # summarize_oldest   : merge the oldest N entries into a summary system event (default)
+  # summarize_smart    : let the LLM choose which events to keep or summarize
   on_overflow: "summarize_oldest"
 
-  # 剩余 token 低于此值时主动触发摘要（防止突然超限）
+  # proactively trigger summarization when remaining tokens drop below this value (prevents sudden overruns)
   summarize_when_remaining_lt: 16000
 
-  # 用户 pin 的事件不参与裁剪
+  # events pinned by the user are excluded from trimming
   keep_pinned: true
 
-  # 永远保留最后 N 轮 user 消息（避免摘要把刚说的话也压缩了）
+  # always keep the last N user turns (so summarization doesn't compress what was just said)
   keep_last_n_user_turns: 4
 
-  # 工具调用与结果配对保留（不能摘要掉一半）
+  # keep tool calls paired with their results (never summarize away one half)
   keep_tool_call_pairs: true
 
-# 3. 摘要 / Summarization
+# 3. Summarization
 summary:
-  # 用 registry alias 而非具体模型；摘要走快速档
+  # use a registry alias, not a concrete model; summaries go through the fast tier
   use_provider_alias: "@chat-fast"
-  # 摘要 prompt 模板（在 prompts/ 中）
+  # summary prompt template (in prompts/)
   template_ref: "prompts/summarize_session_zh.md"
   max_summary_tokens: 1024
-  # 摘要写回 trace 的方式：作为 system 事件 + 标记 summary_marker
+  # how the summary is written back to trace: as a system event + summary_marker tag
   store_as_trace_event: "system"
   summary_marker_event: "summary_marker"
-  # 摘要必须保留的元素
+  # elements the summary must preserve
   must_preserve:
-    - "user 显式陈述的偏好（potential mid-term feedback 候选）"
-    - "已采纳的决策"
-    - "已执行的 sandbox action 列表（含 exit_code）"
-    - "kb.search 命中的 document_id 列表"
+    - "preferences the user stated explicitly (potential mid-term feedback candidates)"
+    - "adopted decisions"
+    - "the list of executed sandbox actions (incl. exit_code)"
+    - "the list of document_ids hit by kb.search"
 
-# 4. Scratchpad / 临时工作区
+# 4. Scratchpad
 scratchpad:
   enabled: true
-  # 工作区在 trace 中以何种事件类型存放
+  # which event type stores the scratchpad in the trace
   trace_event_type: "system"
   trace_event_subtype: "scratchpad"
-  # 单条 scratchpad 字数上限；超过走 artifact
+  # per-entry scratchpad character limit; anything larger goes to an artifact
   max_inline_chars: 4096
-  # session archived 时是否清空 scratchpad
+  # whether to clear the scratchpad when the session is archived
   clear_on_archive: true
 
-# 5. 短期 → 中期收割触发 / Harvest triggers
+# 5. Short-term → mid-term harvest triggers
 harvest_to_mid_term:
   enabled: true
   triggers:
     - "user_action == pin_to_memory"
-    - "user 反馈含 '记住' / 'remember' 关键词"
-    - "session.status 转为 archived（候选清单提交，等用户确认）"
+    - "user feedback contains the keyword 'remember'"
+    - "session.status transitions to archived (candidate list submitted, awaiting user confirmation)"
   candidate_review:
-    # 自动入库 vs 候选审阅
+    # auto-store vs. candidate review
     mode: "candidate_review"   # auto | candidate_review
     require_user_confirmation: true

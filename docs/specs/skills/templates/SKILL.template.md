@@ -1,6 +1,6 @@
 ---
-# SKILL.md 模板 / Skill template
-# 与 schemas/skill.schema.json 等价
+# SKILL.md template / Skill template
+# Equivalent to schemas/skill.schema.json
 
 name: "ticket_summary_zh"
 description: "Summarize a redacted Chinese IT support ticket and emit a ticket_summary_v1 JSON with citations to KB SOPs. Trigger when input includes a ticket body or vpn-client-style log snippet. Requires kb.search and an LLM with json_mode."
@@ -11,7 +11,7 @@ author: "vicente@example.com"
 source: "self_authored"             # self_authored | distilled | imported_trusted | imported_community | imported_unknown
 license: "MIT"
 
-# 兼容模型；用 registry alias 或具体 model_ref；禁用 latest/auto/stable
+# Compatible models; use a registry alias or a concrete model_ref; latest/auto/stable are forbidden
 model_compat:
   - "@chat-strong"
   - "anthropic-claude/claude-sonnet-4-6@2026-04"
@@ -21,18 +21,18 @@ requires:
   tools:
     - "kb.search"
     - "artifact.write"
-  mcps: []                          # MCP server ids；本 skill 不需要外部 MCP
+  mcps: []                          # MCP server ids; this skill needs no external MCP
   providers:
-    tools: true                     # 模型必须支持 tool calling
+    tools: true                     # the model must support tool calling
     json_mode: true
     long_context_tokens: 32000
-  skills: []                        # 依赖的其他 skill
+  skills: []                        # other skills this one depends on
 
 safety:
   classification: "internal"        # public | internal | confidential | restricted
   approval_required: false
   telemetry_optout: true
-  pii_allowed: false                # 输入禁含 PII；触发即拒绝
+  pii_allowed: false                # input must not contain PII; reject on detection
 
 inputs:
   schema_ref: "examples/scn_ticket_summary_zh/harness/fixture.json#input"
@@ -41,7 +41,7 @@ outputs:
   schema_ref: "examples/scn_ticket_summary_zh/harness/golden.json#schema_check"
   description: "ticket_summary_v1 structured JSON"
 
-# 若 source ≠ self_authored，distillation 段必填
+# If source ≠ self_authored, the distillation section is required
 # distillation:
 #   type: "from_traces"
 #   sources:
@@ -62,30 +62,30 @@ extensions: {}
 
 # Ticket Summary (zh-CN)
 
-## 触发条件 / When to use
+## When to use
 
-输入包含**已脱敏**的 IT 工单（含正文 + 可选附件 log 片段），用户希望产出结构化摘要。
+The input contains a **redacted** IT work item (body + optional attached log snippet), and the user wants a structured summary.
 
-## 步骤 / Steps
+## Steps
 
-1. **检索 KB**：用工单关键症状（如 "VPN 认证失败"）调 `kb.search`，scopes 默认走 `opspilot:public-kb`，top_k=8，hybrid 模式 + cross_encoder rerank。
-2. **生成结构化摘要**：填充 `ticket_summary_v1` schema 的所有 required keys。
-3. **citation 必填**：每个 `next_actions[].rationale` 引用 chunk 时，citations 字段必须能定位回 `source_path:line_range`。
-4. **写入 artifact**：调 `artifact.write`，filename = `art_<sha256(payload)[:16]>.json`。
+1. **Search the KB**: call `kb.search` with the ticket's key symptom (e.g. "VPN authentication failure"); scopes default to `opspilot:public-kb`, top_k=8, hybrid mode + cross_encoder rerank.
+2. **Generate the structured summary**: fill in all required keys of the `ticket_summary_v1` schema.
+3. **Citations are mandatory**: whenever a `next_actions[].rationale` cites a Chunk, its citations field must resolve back to `source_path:line_range`.
+4. **Write the Artifact**: call `artifact.write`, filename = `art_<sha256(payload)[:16]>.json`.
 
-## 强约束 / Hard rules
+## Hard rules
 
-- 输出 `summary` 字段不允许出现 `[REDACTED:` 占位符（保留在技术细节字段也不行）
-- `severity_suggested` 必须匹配 `^P[0-4]$`
-- `next_actions` 至少 3 条，每条要么 actionable，要么标注 missing-info
-- 引用的 chunk_id 必须在 `kb.search` 响应里命中过
+- The output `summary` field must not contain `[REDACTED:` placeholders (not even in technical-detail fields)
+- `severity_suggested` must match `^P[0-4]$`
+- `next_actions` must contain at least 3 entries, each either actionable or marked missing-info
+- Every cited chunk_id must have appeared in a `kb.search` response
 
-## 失败处理 / Failure modes
+## Failure modes
 
-- KB 无命中：依然产出摘要，但 `citations: []`，并在 `next_actions` 中加 "建议人工补充 SOP"
-- 工单含未脱敏 PII：拒绝处理；返回 `safety_violation` 并写入 `tool_result.status=aborted`
+- No KB hits: still produce the summary, but with `citations: []`, and add a "recommend a human supplement the SOP" entry to `next_actions`
+- The work item contains unredacted PII: refuse to process; return `safety_violation` and record `tool_result.status=aborted`
 
-## 资源 / Resources
+## Resources
 
-- `resources/rubric.md` —— 评分维度（与 harness rubric 同步）
-- `resources/example-output.json` —— 标杆输出，用于 in-context learning
+- `resources/rubric.md` — scoring dimensions (kept in sync with the Harness rubric)
+- `resources/example-output.json` — reference output, used for in-context learning

@@ -1,24 +1,24 @@
 -- OpsPilot Memory · SQLite Schema
--- 适用：mid-term memory + KB 元数据/关键字索引（FTS5）
--- 版本：1.2.0
--- 信息日期：2026-05-06
--- 强约束：所有进入此 DB 的内容必须已脱敏（redacted=1）。
+-- Scope: mid-term memory + KB metadata/keyword index (FTS5)
+-- Version: 1.2.0
+-- As of: 2026-05-06
+-- Hard requirement: all content entering this DB must already be redacted (redacted=1).
 --
--- 变更日志 / Changelog:
---   1.2.0 (IT-KB): 添加 valid_from / source_authority 至 kb_documents；
---                  添加 valid_from / superseded_by 至 kb_chunks；
---                  新增 kb_conflicts（冲突队列）和 kb_corrections（知识修正）表。
---   1.1.0 (PR-4): FTS5 tokenizer unicode61 → trigram，对 CJK 友好。
+-- Changelog:
+--   1.2.0 (IT-KB): added valid_from / source_authority to kb_documents;
+--                  added valid_from / superseded_by to kb_chunks;
+--                  added kb_conflicts (conflict queue) and kb_corrections (knowledge corrections) tables.
+--   1.1.0 (PR-4): FTS5 tokenizer unicode61 → trigram, CJK-friendly.
 --   1.0.0:        initial spec.
 --
--- 推荐 PRAGMA：
+-- Recommended PRAGMAs:
 --   PRAGMA journal_mode=WAL;
 --   PRAGMA synchronous=NORMAL;
 --   PRAGMA foreign_keys=ON;
 --   PRAGMA temp_store=MEMORY;
 --   PRAGMA mmap_size=268435456;   -- 256 MiB
 --
--- 备份：在 schema 变更或大批量摄入前 sqlite3 .backup；保留 N 份快照。
+-- Backup: run sqlite3 .backup before schema changes or bulk ingestion; retain N snapshots.
 
 ------------------------------------------------------------
 -- 1. SCHEMA META
@@ -36,7 +36,7 @@ INSERT OR REPLACE INTO schema_meta(key, value) VALUES
 ------------------------------------------------------------
 -- 2. MID-TERM MEMORY
 ------------------------------------------------------------
--- 与 schemas/memory-record.schema.json 等价
+-- Equivalent to schemas/memory-record.schema.json
 CREATE TABLE IF NOT EXISTS memory_records (
   id                       TEXT PRIMARY KEY
                                 CHECK (id GLOB 'mem_[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'),
@@ -66,8 +66,8 @@ CREATE INDEX IF NOT EXISTS idx_mem_updated     ON memory_records(updated_at DESC
 CREATE INDEX IF NOT EXISTS idx_mem_valid_until ON memory_records(valid_until);
 CREATE INDEX IF NOT EXISTS idx_mem_session     ON memory_records(source_session_id);
 
--- FTS5 全文索引（contentless 外部内容；BM25 默认）
--- tokenize='trigram': 对中英文混合内容均能命中 substring 查询
+-- FTS5 full-text index (external-content table; BM25 by default)
+-- tokenize='trigram': matches substring queries on mixed Chinese/English content
 CREATE VIRTUAL TABLE IF NOT EXISTS memory_records_fts USING fts5 (
   title,
   body,
@@ -77,7 +77,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS memory_records_fts USING fts5 (
   tokenize='trigram'
 );
 
--- FTS 与主表的同步触发器
+-- Triggers keeping FTS in sync with the main table
 CREATE TRIGGER IF NOT EXISTS memory_records_ai AFTER INSERT ON memory_records BEGIN
   INSERT INTO memory_records_fts(rowid, title, body, tags)
   VALUES (new.rowid, new.title, new.body, new.tags_json);
@@ -98,7 +98,7 @@ END;
 ------------------------------------------------------------
 -- 3. KB DOCUMENTS
 ------------------------------------------------------------
--- 与 schemas/kb-document.schema.json 等价
+-- Equivalent to schemas/kb-document.schema.json
 CREATE TABLE IF NOT EXISTS kb_documents (
   id                       TEXT PRIMARY KEY
                                 CHECK (id GLOB 'doc_[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'),
@@ -134,15 +134,15 @@ CREATE INDEX        IF NOT EXISTS idx_doc_emb_model   ON kb_documents(embedding_
 CREATE INDEX        IF NOT EXISTS idx_doc_valid_from  ON kb_documents(valid_from DESC);
 
 ------------------------------------------------------------
--- 4. KB CHUNKS（元数据；向量本体在 LanceDB）
+-- 4. KB CHUNKS (metadata; the vectors themselves live in LanceDB)
 ------------------------------------------------------------
--- 与 schemas/kb-chunk.schema.json 等价
+-- Equivalent to schemas/kb-chunk.schema.json
 CREATE TABLE IF NOT EXISTS kb_chunks (
   id                  TEXT PRIMARY KEY
                           CHECK (id GLOB 'chk_[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'),
   document_id         TEXT NOT NULL REFERENCES kb_documents(id) ON DELETE CASCADE,
   seq                 INTEGER NOT NULL,
-  content             TEXT,                         -- ≤8KiB；超过走 artifact
+  content             TEXT,                         -- ≤8KiB; larger content goes to an artifact
   content_artifact_id TEXT,
   content_hash        TEXT NOT NULL CHECK (content_hash GLOB 'sha256:*'),
   char_start          INTEGER NOT NULL,
@@ -153,7 +153,7 @@ CREATE TABLE IF NOT EXISTS kb_chunks (
   anchor              TEXT,
   token_count         INTEGER,
   embedding_model     TEXT NOT NULL,
-  vector_id           TEXT NOT NULL UNIQUE,         -- LanceDB 行主键
+  vector_id           TEXT NOT NULL UNIQUE,         -- LanceDB row primary key
   namespace           TEXT NOT NULL,
   classification      TEXT NOT NULL CHECK (classification IN ('public','internal','confidential','restricted')),
   language            TEXT,
@@ -175,8 +175,8 @@ CREATE INDEX        IF NOT EXISTS idx_chk_emb_model    ON kb_chunks(embedding_mo
 CREATE INDEX        IF NOT EXISTS idx_chk_valid_from   ON kb_chunks(valid_from DESC);
 CREATE INDEX        IF NOT EXISTS idx_chk_superseded   ON kb_chunks(superseded_by);
 
--- KB Chunk 的 FTS5 索引（用于 hybrid 检索的 keyword 路径）
--- tokenize='trigram': 对中英文混合内容均能命中 substring 查询
+-- FTS5 index for KB chunks (keyword path of hybrid retrieval)
+-- tokenize='trigram': matches substring queries on mixed Chinese/English content
 CREATE VIRTUAL TABLE IF NOT EXISTS kb_chunks_fts USING fts5 (
   content,
   heading_path,
@@ -204,7 +204,7 @@ CREATE TRIGGER IF NOT EXISTS kb_chunks_au AFTER UPDATE ON kb_chunks BEGIN
 END;
 
 ------------------------------------------------------------
--- 5. KB CONFLICTS（知识冲突队列）
+-- 5. KB CONFLICTS (knowledge-conflict queue)
 ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS kb_conflicts (
   id              TEXT PRIMARY KEY
@@ -233,7 +233,7 @@ CREATE INDEX IF NOT EXISTS idx_conf_doc_b      ON kb_conflicts(doc_b_id);
 CREATE INDEX IF NOT EXISTS idx_conf_detected   ON kb_conflicts(detected_at DESC);
 
 ------------------------------------------------------------
--- 6. KB CORRECTIONS（知识修正记录）
+-- 6. KB CORRECTIONS (knowledge-correction records)
 ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS kb_corrections (
   id           TEXT PRIMARY KEY
@@ -249,7 +249,7 @@ CREATE TABLE IF NOT EXISTS kb_corrections (
 CREATE INDEX IF NOT EXISTS idx_corr_chunk ON kb_corrections(chunk_id);
 
 ------------------------------------------------------------
--- 7. INGEST RUNS（审计与可恢复）
+-- 7. INGEST RUNS (audit & recoverability)
 ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS ingest_runs (
   id                   TEXT PRIMARY KEY,             -- ULID
@@ -272,7 +272,7 @@ CREATE TABLE IF NOT EXISTS ingest_runs (
 CREATE INDEX IF NOT EXISTS idx_run_kb_started ON ingest_runs(kb_id, started_at DESC);
 
 ------------------------------------------------------------
--- 8. AUDIT LOG（与 session.audit.log 同语义）
+-- 8. AUDIT LOG (same semantics as session.audit.log)
 ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS audit_log (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -287,7 +287,7 @@ CREATE INDEX IF NOT EXISTS idx_audit_ts     ON audit_log(ts DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_target ON audit_log(target);
 
 ------------------------------------------------------------
--- 9. 视图：检索辅助 / Helper view for hybrid retrieval
+-- 9. Helper view for hybrid retrieval
 ------------------------------------------------------------
 CREATE VIEW IF NOT EXISTS v_chunks_with_doc AS
 SELECT

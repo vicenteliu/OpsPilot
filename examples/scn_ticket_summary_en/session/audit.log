@@ -1,7 +1,7 @@
 2026-05-01T10:08:35.000Z	system	create	sess_01K1A0AQXM7N7Q4G1YK6K8D6M0	{"playbook":"pb_ticket_summary_en@1.2.0","retention_class":"medium","sensitivity":"internal"}
 2026-05-01T10:08:35.011Z	system	redact	sess_01K1A0AQXM7N7Q4G1YK6K8D6M0/inputs/ticket.json	{"rules_version":"1.0.0","hits":{"hostname":1,"role":1},"hard_fail":false}
 2026-05-01T10:08:35.012Z	system	state_change	sess_01K1A0AQXM7N7Q4G1YK6K8D6M0	{"from":"draft","to":"active"}
-2026-05-01T10:08:36.420Z	model:anthropic:claude-sonnet-4-6:2026-04	tool_call	kb.search	{"action_id":"act_01K1A0AQXM7N7Q4G1YK6K8D6MA","scopes":["opspilot:public-kb-en"]}
+2026-05-01T10:08:36.420Z	model:anthropic:claude-sonnet-4-6:2026-04	tool_call	kb.search	{"action_id":"act_01K1A0AQXM7N7Q4G1YK6K8D6MA","scopes":["opspilot:public-kb"]}
 2026-05-01T10:08:36.818Z	tool:kb.search	tool_result	kb.search	{"action_id":"act_01K1A0AQXM7N7Q4G1YK6K8D6MA","status":"ok","candidates":3,"latency_ms":398,"cost_usd":0.0008}
 2026-05-01T10:08:42.001Z	model:anthropic:claude-sonnet-4-6:2026-04	tool_call	artifact.write	{"action_id":"act_01K1A0AQXM7N7Q4G1YK6K8D6MB"}
 2026-05-01T10:08:42.512Z	tool:artifact.write	tool_result	artifact.write	{"action_id":"act_01K1A0AQXM7N7Q4G1YK6K8D6MB","status":"ok","artifact_id":"art_35bdeeb64e8242c9","bytes":2138}

@@ -535,10 +535,11 @@ def _render_prefetch_addendum(payload: dict[str, Any]) -> str:
     hits = payload.get("hits") or []
     if not hits:
         return (
-            "## 已预检索 KB / Prefetched KB chunks\n\n"
-            "（本次 kb_search 未返回结果；请基于工单事实回答，并在 citations 字段写空数组）"
+            "## Prefetched KB chunks\n\n"
+            "(kb_search returned no results for this run; answer from the "
+            "work-item facts and set citations to an empty array)"
         )
-    parts: list[str] = ["## 已预检索 KB / Prefetched KB chunks", ""]
+    parts: list[str] = ["## Prefetched KB chunks", ""]
     for i, h in enumerate(hits, start=1):
         cid = h.get("chunk_id", "?")
         cit = h.get("citation") or {}
@@ -556,9 +557,10 @@ def _render_prefetch_addendum(payload: dict[str, Any]) -> str:
         parts.append(str(h.get("content") or "").strip())
         parts.append("")
     parts.append(
-        "请直接基于以上 chunks 引用，**不要调用任何工具**。"
-        "在 `citations[]` 中的 `chunk_id` **必须逐字符精确复制**上面 "
-        "Chunk N 标题里反引号包裹的字符串，不要省略或修改任何字符。"
+        "Cite directly from the chunks above — **do not call any tools**. "
+        "Each `chunk_id` in `citations[]` **must be copied character-for-"
+        "character** from the backtick-wrapped string in the Chunk N heading "
+        "above; do not omit or alter any character."
     )
     return "\n".join(parts)
 
@@ -677,20 +679,20 @@ def _format_ticket(ticket: dict[str, Any]) -> str:
     """
     parts: list[str] = []
     parts.append(
-        f"工单 {ticket.get('ticket_id', '?')}"
+        f"Work item {ticket.get('ticket_id', '?')}"
         f" ({ticket.get('channel', '?')},"
         f" {ticket.get('submitted_at', '?')})"
     )
     if ticket.get("submitter_role"):
-        parts.append(f"提交者角色：{ticket['submitter_role']}")
+        parts.append(f"Submitter role: {ticket['submitter_role']}")
     if ticket.get("subject"):
-        parts.append(f"主题：{ticket['subject']}")
+        parts.append(f"Subject: {ticket['subject']}")
     if ticket.get("body"):
-        parts.append(f"正文：{ticket['body']}")
+        parts.append(f"Body: {ticket['body']}")
     for att in ticket.get("attachments") or []:
         name = att.get("name") or "(unnamed)"
         snippet = att.get("snippet") or ""
-        parts.append(f"附件 {name}：\n{snippet}")
+        parts.append(f"Attachment {name}:\n{snippet}")
     return "\n".join(parts)
 
 

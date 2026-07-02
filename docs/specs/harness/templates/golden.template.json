@@ -1,35 +1,35 @@
 {
-  "_comment": "示例 golden：与 fix_a1b2c3d4 配对，scenario=ticket-summary",
+  "_comment": "Example golden: paired with fix_a1b2c3d4, scenario=ticket-summary",
   "id": "gold_a1b2c3d4",
   "fixture_id": "fix_a1b2c3d4",
   "scenario_id": "scn_ticket_summary_zh",
   "version": "1.0.0",
 
-  "_note": "golden 提供两类信号：(1) 结构化期望字段，给 rule.json_schema 与 rule.regex 用；(2) 自然语言摘要，给 semantic.embedding 与 judge.llm 用。",
+  "_note": "The golden provides two kinds of signals: (1) structured expected fields, used by rule.json_schema and rule.regex; (2) a natural-language summary, used by semantic.embedding and judge.llm.",
 
   "expected_structured": {
-    "summary": "多名用户上午 10 点起 VPN 认证失败（'authentication failed'），怀疑服务端鉴权问题；现象与终端无关。",
+    "summary": "Multiple users have had VPN authentication failures ('authentication failed') since 10 AM; a server-side authentication issue is suspected; the symptom is independent of the endpoint device.",
     "symptoms": ["authentication failed", "ike sa establishment failed"],
     "scope": "multiple_users",
-    "tried_steps": ["重启客户端", "更换网络（4G 热点）"],
-    "missing_fields": ["VPN 客户端版本", "用户名/账号"],
+    "tried_steps": ["restarted the client", "switched networks (4G hotspot)"],
+    "missing_fields": ["VPN client version", "username/account"],
     "next_actions": [
-      "确认 VPN 网关/认证服务（RADIUS/AD）健康",
-      "向用户索取客户端版本与账号信息",
-      "检查 10:00 前后是否有变更窗口"
+      "Verify the health of the VPN gateway / authentication services (RADIUS/AD)",
+      "Ask the user for the client version and account information",
+      "Check whether a change window occurred around 10:00"
     ],
     "severity_suggested": "P2"
   },
 
-  "expected_summary_nl": "上午 10:00 起多名用户 VPN 认证失败；终端/网络已交叉验证可排除；建议优先排查 VPN 网关与认证后端。",
+  "expected_summary_nl": "Multiple users have had VPN authentication failures since 10:00 AM; endpoint and network have been cross-checked and ruled out; recommend prioritizing the VPN gateway and the authentication backend.",
 
   "rubric_ref": "rubrics/scn_ticket_summary_zh.md",
 
-  "must_contain": ["authentication failed", "多名用户", "VPN 网关"],
-  "must_not_contain": ["[REDACTED:", "T-XXXX 真实 ID"],
+  "must_contain": ["authentication failed", "multiple users", "VPN gateway"],
+  "must_not_contain": ["[REDACTED:", "real T-XXXX ID"],
 
   "schema_check": {
     "$ref": "#/definitions/ticket_summary_v1",
-    "_inline_defs_note": "实际工程中可外置；本字段示意结构校验入口"
+    "_inline_defs_note": "In real projects this can be externalized; this field illustrates the schema-validation entry point"
   }
 }

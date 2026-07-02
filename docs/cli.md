@@ -21,7 +21,7 @@ Launch with `opspilot tui`. Press keys `1`–`8` to jump between modules.
 | `Q` | — | Quit |
 
 ```bash
-opspilot tui run --input work_item.json --playbook playbooks/pb_ticket_summary_zh
+opspilot tui run --input work_item.json --playbook playbooks/pb_ticket_summary_en
 ```
 
 ## Harness

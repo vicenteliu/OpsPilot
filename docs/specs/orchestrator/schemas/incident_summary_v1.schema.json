@@ -91,7 +91,7 @@
     },
     "escalation_hint": {
       "type": ["string", "null"],
-      "description": "Optional incident-level routing note (e.g. 'L2 网络组'). Per-task routing lives in tasks[].tier."
+      "description": "Optional incident-level routing note (e.g. 'L2 network team'). Per-task routing lives in tasks[].tier."
     },
     "citations": {
       "type": "array",

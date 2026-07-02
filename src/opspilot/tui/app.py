@@ -38,7 +38,7 @@ from textual.binding import Binding
 from textual.containers import Horizontal
 from textual.widgets import Footer, Header, Input, Label, RichLog
 
-_DEFAULT_PLAYBOOK = "playbooks/pb_ticket_summary_zh"
+_DEFAULT_PLAYBOOK = "playbooks/pb_ticket_summary_en"
 _EMBED_MODEL = "nomic-embed-text-v2-moe"
 _EMBED_MODEL_REF = "ollama-local/nomic-embed-text-v2-moe@2026-04"
 

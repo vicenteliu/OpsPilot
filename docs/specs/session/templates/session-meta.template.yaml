@@ -1,14 +1,14 @@
-# Session meta 模板 / Template (符合 schemas/session.schema.json)
-# 复制到 sessions/<session_id>/meta.yaml 后按需填写
+# Session meta template (conforms to schemas/session.schema.json)
+# Copy to sessions/<session_id>/meta.yaml and fill in as needed
 
-id: "sess_01J0Z9ZQXK7M6P3F0XK5K7C5K0"   # ULID；运行时生成
+id: "sess_01J0Z9ZQXK7M6P3F0XK5K7C5K0"   # ULID; generated at runtime
 schema_version: "1.0.0"
 
-# 负责人与协作者 / Owner & collaborators
+# Owner & collaborators
 owner: "vicente@example.com"
 collaborators: []                         # ["alice@example.com", "bob@example.com"]
 
-# 引用的 Playbook 与 Prompt
+# Referenced Playbook and Prompts
 playbook:
   id: "pb_ticket_summary_zh"
   version: "1.2.0"
@@ -16,43 +16,43 @@ prompts:
   - id: "prompt_summary_zh"
     version: "0.4.1"
 
-# 模型与采样参数 / Model & sampling
-# 等价 model_ref = "<provider_id>/<name>@<version>"，例 "anthropic-claude/claude-sonnet-4-6@2026-04"
-# 详见 providers/SPEC.md
+# Model & sampling
+# Equivalent model_ref = "<provider_id>/<name>@<version>", e.g. "anthropic-claude/claude-sonnet-4-6@2026-04"
+# See providers/SPEC.md
 model:
-  provider_id: "anthropic-claude"         # 在 providers/templates/provider-registry 中注册
+  provider_id: "anthropic-claude"         # Registered in providers/templates/provider-registry
   kind: "anthropic"                       # ollama | openrouter | openai | anthropic | gemini | grok | openai_compatible
-  name: "claude-sonnet-4-6"               # 走 openrouter 时含厂商前缀，例 "anthropic/claude-sonnet-4-6"
-  version: "2026-04"                      # 厂商显式版本；禁用 latest / auto / stable
-  alias_used: null                        # 如通过 @chat-strong 解析则记录原别名
+  name: "claude-sonnet-4-6"               # Includes the vendor prefix when routed via openrouter, e.g. "anthropic/claude-sonnet-4-6"
+  version: "2026-04"                      # Explicit vendor version; latest / auto / stable forbidden
+  alias_used: null                        # If resolved via @chat-strong etc., record the original alias
   params:
     temperature: 0.2
     top_p: 0.9
     max_tokens: 2000
-    seed: 42                              # 若模型支持
-  # 实际命中的 provider 配置 sha256，运行时回填，用于审计与 drift 检测
+    seed: 42                              # If supported by the model
+  # sha256 of the provider config actually used; back-filled at runtime for audit and drift detection
   provider_config_hash: null
 
-# 状态机（合法值见 schema）
+# State machine (see schema for allowed values)
 status: "draft"                           # draft → active → ... → archived → purged
 
-# 时间戳必须 RFC3339 + UTC
+# Timestamps must be RFC3339 + UTC
 created_at: "2026-05-01T10:00:00Z"
 updated_at: "2026-05-01T10:00:00Z"
 
-# 复现/分支：指向父 Session（可空）
+# Replay/branching: points to the parent Session (nullable)
 parent_id: null
 
-# 数据治理 / Governance
+# Governance
 retention_class: "medium"                 # low | medium | high | critical
 sensitivity: "internal"                   # public | internal | confidential | restricted
 
-# 自由标签与 k/v 标签
+# Free-form tags and k/v labels
 tags: ["ticket", "zh-CN", "L1-support"]
 labels:
   team: "service-desk"
   cost_center: "IT-OPS"
   pilot: "phase-1"
 
-# 厂商扩展（可选；命名空间必须用厂商前缀）
+# Vendor extensions (optional; namespaces must use a vendor prefix)
 extensions: {}

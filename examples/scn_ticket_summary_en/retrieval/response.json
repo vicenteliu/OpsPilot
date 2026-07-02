@@ -17,7 +17,7 @@
         "heading_path": ["VPN Troubleshooting SOP", "2. Investigation order", "2.1 Authentication errors"],
         "anchor": "#21-authentication-errors"
       },
-      "namespace": "opspilot:public-kb-en",
+      "namespace": "opspilot:public-kb",
       "classification": "internal"
     },
     {
@@ -34,7 +34,7 @@
         "heading_path": ["VPN Troubleshooting SOP", "1. Symptom classification"],
         "anchor": "#1-symptom-classification"
       },
-      "namespace": "opspilot:public-kb-en",
+      "namespace": "opspilot:public-kb",
       "classification": "internal"
     },
     {
@@ -51,7 +51,7 @@
         "heading_path": ["VPN Troubleshooting SOP", "2. Investigation order", "2.2 Tunnel establishment failure / 3. Escalation policy / 4. Related links"],
         "anchor": "#22-tunnel-establishment-failure"
       },
-      "namespace": "opspilot:public-kb-en",
+      "namespace": "opspilot:public-kb",
       "classification": "internal"
     }
   ],

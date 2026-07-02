@@ -1,86 +1,86 @@
-# LanceDB Schema — 长期 KB 向量存储 / Long-term Vector Store
+# LanceDB Schema — Long-term KB Vector Store
 
-> **状态 / Status**：spec only。本文档描述 LanceDB 表结构与索引约定；具体建表 / 升级脚本在实现阶段产出。
-> **版本 / Version**：1.0.0  ·  **信息日期**：2026-05-01
+> **Status**: spec only. This document describes the LanceDB table structure and index conventions; concrete table-creation / upgrade scripts are produced during implementation.
+> **Version**: 1.0.0  ·  **As of**: 2026-05-01
 
 ## TL;DR
-LanceDB 只存"向量 + 检索必需的薄元数据"；**权威元数据在 SQLite**（`kb_chunks` 表）。两侧通过 `vector_id` ↔ `kb_chunks.vector_id` 一一对应。
+LanceDB stores only "vectors + the thin metadata required for retrieval"; **the authoritative metadata lives in SQLite** (the `kb_chunks` table). The two sides map one-to-one via `vector_id` ↔ `kb_chunks.vector_id`.
 
-## 设计原则 / Principles
+## Principles
 
-1. **薄列原则 / Thin columns**：LanceDB 只存检索路径必需字段；详情走 SQLite join
-2. **每 KB 一个数据集 / One dataset per KB**：路径 `${index_root}/lancedb/<kb_id>.lance/`，便于备份与回滚
-3. **每 namespace 一个表（可选）/ Optional table-per-namespace**：超大 KB 可拆表，避免索引膨胀
-4. **embedding 模型锁定 / Pin embedding model**：表创建时记录 `embedding_model` 与 `dim`；切换 = 新建表（不允许同表混向量空间）
-5. **append-only ingestion + tombstone delete**：增量写入；删除走 `delete_obsolete_chunks` 清理过期 vector_id
+1. **Thin columns**: LanceDB stores only the fields required on the retrieval path; details come from a SQLite join
+2. **One dataset per KB**: path `${index_root}/lancedb/<kb_id>.lance/`, convenient for backup and rollback
+3. **Optional table-per-namespace**: very large KBs can be split into separate tables to avoid index bloat
+4. **Pin embedding model**: `embedding_model` and `dim` are recorded at table creation; switching = creating a new table (mixing vector spaces in one table is not allowed)
+5. **Append-only ingestion + tombstone delete**: incremental writes; deletion goes through `delete_obsolete_chunks` to clean up stale vector_ids
 
-## 主表：`chunks` / Primary table
+## Primary table: `chunks`
 
-| 列 / Column | 类型（PyArrow / Lance） | 说明 |
+| Column | Type (PyArrow / Lance) | Notes |
 |---|---|---|
-| `vector_id` | `string`，**主键** | 与 SQLite `kb_chunks.vector_id` 唯一对应；建议 `chk_<sha8>` 复用为 vector_id |
-| `embedding` | `fixed_size_list<float32>[<dim>]` | 向量本体；`dim` 在表创建时锁定 |
+| `vector_id` | `string`, **primary key** | maps uniquely to SQLite `kb_chunks.vector_id`; reusing `chk_<sha8>` as vector_id is recommended |
+| `embedding` | `fixed_size_list<float32>[<dim>]` | the vector itself; `dim` is pinned at table creation |
 | `document_id` | `string` | `doc_<sha8>` |
 | `chunk_id` | `string` | `chk_<sha8>` |
-| `namespace` | `string` | 例 `opspilot:public-kb` |
+| `namespace` | `string` | e.g. `opspilot:public-kb` |
 | `classification` | `string` | `public/internal/confidential/restricted` |
 | `language` | `string` | `zh-CN/en/...` |
-| `tags` | `list<string>` | 用于过滤 |
+| `tags` | `list<string>` | used for filtering |
 | `embedding_model` | `string` | `<provider_id>/<name>@<version>` |
-| `created_at` | `timestamp[ms, tz=UTC]` | 入库时间（用于 TTL / 重建判断） |
+| `created_at` | `timestamp[ms, tz=UTC]` | ingestion time (used for TTL / rebuild decisions) |
 
-> **不放在 LanceDB**：原文 content、heading_path、line offsets、source_path —— 这些走 SQLite。
-> 这样能让 LanceDB 文件保持小，scan + ANN 更快；备份也更轻。
+> **Not stored in LanceDB**: raw content, heading_path, line offsets, source_path — these live in SQLite.
+> This keeps LanceDB files small and scan + ANN faster; backups are lighter too.
 
-## 索引 / Indices
+## Indices
 
-### ANN 向量索引
+### ANN vector index
 
 ```yaml
 ann:
-  type: "ivf_pq"            # ivf_pq（默认） | hnsw（按 LanceDB 版本支持情况）
+  type: "ivf_pq"            # ivf_pq (default) | hnsw (depending on LanceDB version support)
   metric: "cosine"          # cosine | l2 | dot
-  num_partitions: 64        # 数据量经验值：N<10万→32, 10万~50万→64, 50万~200万→128
-  num_sub_vectors: 96       # PQ 子向量数；常见 16/32/64/96
-  refresh_after_upsert: false   # 大批量摄入完再 refresh
+  num_partitions: 64        # rule of thumb by data size: N<100K→32, 100K-500K→64, 500K-2M→128
+  num_sub_vectors: 96       # number of PQ sub-vectors; commonly 16/32/64/96
+  refresh_after_upsert: false   # refresh only after bulk ingestion completes
 ```
 
-**经验**：
-- IVF_PQ 适合 100K~10M 量级；构建快、内存友好；查询召回与 nlist/nprobe 相关
-- HNSW 适合 < 1M 高 QPS 场景；构建慢但查询快
-- 数据 < 50K 时 ANN 收益不明显；可改用 brute-force（LanceDB 默认 fallback）
+**Rules of thumb**:
+- IVF_PQ suits the 100K-10M range; fast to build, memory-friendly; query recall depends on nlist/nprobe
+- HNSW suits < 1M high-QPS scenarios; slow to build but fast to query
+- Below 50K rows ANN yields little benefit; brute-force can be used instead (LanceDB's default fallback)
 
-### 标量过滤索引 / Scalar filter indices
+### Scalar filter indices
 
-LanceDB 在标量列上支持过滤。建议为下列列建 scalar index：
+LanceDB supports filtering on scalar columns. Building scalar indices on the following columns is recommended:
 
 - `namespace`
 - `classification`
 - `language`
 - `embedding_model`
 
-（若 LanceDB 当前版本不支持显式 scalar index，则依赖 dataset 元数据 + 列式 scan；查询时把过滤前置）
+(If the current LanceDB version does not support explicit scalar indices, rely on dataset metadata + columnar scans, and push filters ahead of the query.)
 
-## 数据目录布局 / On-disk layout
+## On-disk layout
 
 ```
 ${index_root}/
 ├── lancedb/
 │   └── <kb_id>.lance/                # LanceDB dataset
-│       ├── _versions/                # Lance manifest（版本控制）
-│       ├── data/*.lance              # 列式数据文件
-│       └── _indices/<index_name>/    # ANN 索引文件
+│       ├── _versions/                # Lance manifest (version control)
+│       ├── data/*.lance              # columnar data files
+│       └── _indices/<index_name>/    # ANN index files
 ├── snapshots/
-│   └── <ts>-<kb_id>/                 # 备份快照（可回滚）
-└── manifest.jsonl                    # 摄入 manifest（与 SQLite ingest_runs 对齐）
+│   └── <ts>-<kb_id>/                 # backup snapshots (rollback-capable)
+└── manifest.jsonl                    # ingestion manifest (aligned with SQLite ingest_runs)
 ```
 
-`.gitignore` 必含：`*.lance/`、`lancedb/`、`snapshots/`。
+`.gitignore` must include: `*.lance/`, `lancedb/`, `snapshots/`.
 
-## 增量同步语义 / Incremental sync
+## Incremental sync
 
 ```
-ingest 触发 ──▶ 比较 source_path + content_hash
+ingest trigger ──▶ compare source_path + content_hash
                       │
         ┌─────────────┼──────────────┐
         ▼             ▼              ▼
@@ -92,9 +92,9 @@ ingest 触发 ──▶ 比较 source_path + content_hash
                 + upsert
 ```
 
-LanceDB 对 `delete by predicate` 有原生支持；批量删除走单事务。
+LanceDB natively supports `delete by predicate`; bulk deletes go through a single transaction.
 
-## 查询路径 / Query path
+## Query path
 
 ```
 Request (mode=hybrid)
@@ -107,53 +107,53 @@ Request (mode=hybrid)
   fusion (RRF / weighted)
         │
         ▼
-  enrich via SQLite.v_chunks_with_doc  (拿 source_path / line_range / heading_path)
+  enrich via SQLite.v_chunks_with_doc  (fetch source_path / line_range / heading_path)
         │
         ▼
   optional rerank (cross_encoder / llm)
         │
         ▼
-  Response (含 citation)
+  Response (with citations)
 ```
 
-## 表的版本与升级 / Versioning & upgrades
+## Versioning & upgrades
 
-- **schema 字段新增**：兼容；旧行的新列默认 NULL/默认值
-- **embedding 模型变更**：**不兼容**（向量空间不可比）；必须新建表，旧表保留至切换完成
-- **dim 变更**：与 embedding 模型变更绑定，处理方式同上
-- **metric 变更**：建议新建表；同表混 metric 行为未定义
+- **Adding schema fields**: compatible; new columns on old rows default to NULL/default values
+- **Embedding model change**: **incompatible** (vector spaces are not comparable); a new table must be created, and the old one kept until the switchover completes
+- **dim change**: tied to an embedding model change; handled the same way
+- **metric change**: creating a new table is recommended; mixing metrics in one table is undefined behavior
 
-升级流程（建议，spec 阶段先记录）：
-1. 新建 `chunks_v2`，记录新 embedding_model
-2. 全量重摄入到 `chunks_v2`（dry-run → 比对召回 → apply）
-3. 流量切到 v2
-4. 保留 `chunks_v1` 至少一个回滚周期（建议 30 天）
-5. 确认无回滚 → 删除 v1
+Upgrade flow (suggested; recorded at spec stage):
+1. Create `chunks_v2`, recording the new embedding_model
+2. Fully re-ingest into `chunks_v2` (dry-run → compare recall → apply)
+3. Switch traffic to v2
+4. Keep `chunks_v1` for at least one rollback window (30 days recommended)
+5. Once no rollback is needed → drop v1
 
-## 备份与回滚 / Backup & rollback
+## Backup & rollback
 
-- **快照**：摄入前用 LanceDB 的 `version` API 标记当前 manifest 版本；或文件级 cp -al
-- **保留**：默认保留最近 5 次快照
-- **回滚命令（实现阶段）**：`opspilot kb rollback --kb <id> --snapshot <ts>` —— 还原 LanceDB manifest + SQLite snapshot 到同一时间点
+- **Snapshots**: before ingestion, tag the current manifest version with LanceDB's `version` API; or file-level cp -al
+- **Retention**: keep the 5 most recent snapshots by default
+- **Rollback command (implementation stage)**: `opspilot kb rollback --kb <id> --snapshot <ts>` — restores the LanceDB manifest + SQLite snapshot to the same point in time
 
-## 性能注意 / Performance notes
+## Performance notes
 
-- 大批量 upsert 时关闭 `refresh_after_upsert`，最后统一 refresh + optimize
-- ANN 重建窗口建议放在低峰（cron 周日 05:00）
-- 多 namespace 共表：用 scalar filter；超大时拆表
-- 单 chunk 文本 inline ≤ 8 KiB；超过走 artifact，避免 SQLite 行膨胀
+- Disable `refresh_after_upsert` during bulk upserts; refresh + optimize once at the end
+- Schedule ANN rebuild windows off-peak (cron Sunday 05:00)
+- Multiple namespaces sharing a table: use scalar filters; split into separate tables when very large
+- Inline chunk text ≤ 8 KiB; anything larger goes to an artifact, avoiding SQLite row bloat
 
-## 与 SQLite 的事务一致性 / Cross-store consistency
+## Cross-store consistency
 
-LanceDB 与 SQLite 是**两套存储**，没有原生分布式事务。处理：
-- ingestion pipeline 在 §upsert 阶段采用"先写 LanceDB → 再写 SQLite"或反向，统一选一
-- 单文档失败 → 两边一起回滚（按 vector_id / chunk_id 删除新增）
-- 启动时跑一致性检查（`SELECT vector_id FROM kb_chunks` ↔ LanceDB scan）；不一致条目隔离到 quarantine
+LanceDB and SQLite are **two separate stores** with no native distributed transaction. Handling:
+- In the §upsert stage the ingestion pipeline writes "LanceDB first → then SQLite" or the reverse — pick one and stick to it
+- Single-document failure → roll back both sides together (delete the new rows by vector_id / chunk_id)
+- Run a consistency check at startup (`SELECT vector_id FROM kb_chunks` ↔ LanceDB scan); quarantine any mismatched entries
 
-## 强约束 / Hard requirements
+## Hard requirements
 
-- 表创建时锁定 `embedding_model` 与 `dim`；不允许同表混
-- `vector_id` 在 SQLite 与 LanceDB 之间一一对应；不允许孤儿
-- `restricted` 分类的 chunk 不入向量库（只走 keyword + 受限命名空间）
-- LanceDB 数据目录不入 git；markdown 源入 git
-- 任何 schema 变更必须在 `schema_meta`（SQLite 侧）记录新版本
+- Pin `embedding_model` and `dim` at table creation; no mixing within a table
+- `vector_id` maps one-to-one between SQLite and LanceDB; no orphans allowed
+- Chunks with `restricted` classification do not enter the vector store (keyword-only + restricted namespace)
+- The LanceDB data directory stays out of git; markdown sources go in git
+- Any schema change must record a new version in `schema_meta` (SQLite side)

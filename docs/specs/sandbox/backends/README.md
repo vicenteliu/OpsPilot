@@ -1,34 +1,33 @@
-# Sandbox Backends — 隔离后端选型 / Backend Selection Guide
+# Sandbox Backends — Backend Selection Guide
 
-> 本文档**不**包含运行实现，仅给出后端能力对比、选型建议与上线注意事项。
-> Spec only — capability comparison, selection guidance, and rollout notes.
+> Spec only — capability comparison, selection guidance, and rollout notes. This document contains **no** runtime implementation.
 
 ## TL;DR
-- **默认起步**：Docker（L1）
-- **加固生产试点**：Docker hardened（L2，加 seccomp + cap-drop + RO rootfs）
-- **多租户/外部输入**：gVisor
-- **强隔离/微 VM**：Firecracker 或 Kata
-- **生产灰度跨网段**：Remote VM
+- **Default starting point**: Docker (L1)
+- **Hardened production pilot**: Docker hardened (L2, adds seccomp + cap-drop + RO rootfs)
+- **Multi-tenant / external input**: gVisor
+- **Strong isolation / microVM**: Firecracker or Kata
+- **Production canary across network segments**: Remote VM
 
-## 能力对比 / Capability matrix
+## Capability matrix
 
-| 维度 / Dimension | Docker (L1) | Docker hardened (L2) | gVisor | Firecracker / Kata | Remote VM |
+| Dimension | Docker (L1) | Docker hardened (L2) | gVisor | Firecracker / Kata | Remote VM |
 |---|---|---|---|---|---|
-| 隔离强度 | 中 | 中高 | 高（用户态内核） | 很高（microVM） | 取决环境 |
-| 启动开销 | 亚秒 | 亚秒 | 中 | ~125 ms | 数秒～分钟 |
-| 复杂度 | 低 | 中 | 中 | 中高 | 高 |
-| Linux 主机要求 | Docker engine | + seccomp/AppArmor | + runsc | + KVM | 远端 |
-| macOS 主机体验 | 良好（Docker Desktop） | 同 L1 | 需 Linux VM | 不可（无 KVM） | 良好 |
-| 适合场景 | 开发机 / 自托管试点 | 内网生产小流量 | 多租户 / 处理可疑输入 | 强合规 / 多租户高密度 | 生产灰度 |
-| 已知短板 | namespace 共享内核 | 同 L1 性能 | 部分 syscall 不兼容 | 部署链路较长 | 网络延迟、成本 |
+| Isolation strength | Medium | Medium-high | High (user-space kernel) | Very high (microVM) | Environment-dependent |
+| Startup overhead | Sub-second | Sub-second | Medium | ~125 ms | Seconds to minutes |
+| Complexity | Low | Medium | Medium | Medium-high | High |
+| Linux host requirements | Docker engine | + seccomp/AppArmor | + runsc | + KVM | Remote |
+| macOS host experience | Good (Docker Desktop) | Same as L1 | Requires a Linux VM | Not possible (no KVM) | Good |
+| Best-fit scenarios | Dev machines / self-hosted pilots | Small production traffic on internal networks | Multi-tenant / handling suspicious input | Strong compliance / high-density multi-tenancy | Production canary |
+| Known weaknesses | Namespaces share the kernel | Same performance as L1 | Some syscalls incompatible | Longer deployment chain | Network latency, cost |
 
-## 1. Docker (L1) — 默认 / Default
+## 1. Docker (L1) — Default
 
-适用：开发、试点、自托管、内网、个人。
+Suitable for: development, pilots, self-hosting, internal networks, individual use.
 
-要点：
-- 镜像建议：`debian:stable-slim` 或 `ubuntu:24.04` + 仅装必要工具
-- 关键参数（建议默认）：
+Key points:
+- Recommended images: `debian:stable-slim` or `ubuntu:24.04` + only the necessary tools installed
+- Key flags (recommended defaults):
   ```
   --rm
   --read-only
@@ -41,102 +40,102 @@
   --security-opt=no-new-privileges
   -u 65534:65534          # nobody:nogroup
   ```
-- 不要挂载 `~/.ssh`、`~/.aws`、`~/.kube`、`/var/run/docker.sock`
+- Do not mount `~/.ssh`, `~/.aws`, `~/.kube`, `/var/run/docker.sock`
 
-风险：
-- 共享主机内核；内核级 0day 仍可逃逸
-- 默认 root 用户；务必 `-u` 切换非特权 UID
+Risks:
+- Shares the host kernel; a kernel-level 0day can still escape
+- Runs as root by default; always use `-u` to switch to an unprivileged UID
 
-## 2. Docker hardened (L2) — 加固模式
+## 2. Docker hardened (L2) — Hardened mode
 
-在 L1 之上增加：
+On top of L1, add:
 - `--security-opt seccomp=policies/seccomp.template.json`
-- `--security-opt apparmor=opspilot-default`（需主机配置 AppArmor profile）
-- 镜像层面：去掉 `setuid`/`setgid` 二进制；最小依赖
-- 内核 capabilities：仅在必要时添加（默认 `--cap-drop=ALL`）
+- `--security-opt apparmor=opspilot-default` (requires an AppArmor profile configured on the host)
+- At the image level: remove `setuid`/`setgid` binaries; minimal dependencies
+- Kernel capabilities: add only when necessary (default `--cap-drop=ALL`)
 
-适用：内网试点扩到部分生产；处理半可信输入。
+Suitable for: extending internal-network pilots to part of production; handling semi-trusted input.
 
 ## 3. gVisor
 
-> 文档：https://gvisor.dev/docs/
+> Docs: https://gvisor.dev/docs/
 
-定位：用户态内核（runsc），拦截 syscall，把"容器隔离"补到接近 VM。
+Positioning: a user-space kernel (runsc) that intercepts syscalls, raising "container isolation" to near-VM strength.
 
-适用：
-- 多租户共享主机
-- 处理外部/可疑输入（如客户上传日志）
-- 不希望把信任完全押在 Linux 内核上
+Suitable for:
+- Multi-tenant shared hosts
+- Handling external/suspicious input (e.g. customer-uploaded logs)
+- When you do not want to place all your trust in the Linux kernel
 
-要点：
-- Docker 集成：`--runtime=runsc`
-- 性能：CPU/IO 有损（10–30% 量级，依工作负载而定）
-- 兼容性：少量 syscall 不支持（如某些 `io_uring` 路径）；先在 staging 跑 fixture 检测
+Key points:
+- Docker integration: `--runtime=runsc`
+- Performance: CPU/IO overhead (on the order of 10–30%, workload-dependent)
+- Compatibility: a small number of syscalls are unsupported (e.g. some `io_uring` paths); run fixture detection in staging first
 
-部署清单（高层）：
-1. 主机安装 `runsc`
-2. `/etc/docker/daemon.json` 注册 runtime
-3. 测试：`docker run --runtime=runsc -it debian:stable-slim uname -a`
+Deployment checklist (high level):
+1. Install `runsc` on the host
+2. Register the runtime in `/etc/docker/daemon.json`
+3. Test: `docker run --runtime=runsc -it debian:stable-slim uname -a`
 
-> **已实现（L3）**：OpsPilot 的 gVisor 后端见 `src/opspilot/sandbox/docker_l3.py`
-> （选型决策见 [ADR-0009](../../../adr/0009-sandbox-l3-gvisor-over-firecracker.md)）。
-> 用法：`opspilot sandbox run --level l3 <action.yaml>`。`runsc` 未注册时
-> **fail-closed**（不降级到 L2）。
+> **Implemented (L3)**: OpsPilot's gVisor backend lives in `src/opspilot/sandbox/docker_l3.py`
+> (see [ADR-0009](../../../adr/0009-sandbox-l3-gvisor-over-firecracker.md) for the selection decision).
+> Usage: `opspilot sandbox run --level l3 <action.yaml>`. When `runsc` is not registered,
+> it **fails closed** (no fallback to L2).
 
 ## 4. Firecracker / Kata Containers
 
-> 文档：https://firecracker-microvm.github.io/  https://katacontainers.io/
+> Docs: https://firecracker-microvm.github.io/  https://katacontainers.io/
 
-定位：microVM，~125 ms 启动，强硬件隔离（依赖 KVM）。
+Positioning: microVMs, ~125 ms startup, strong hardware isolation (relies on KVM).
 
-适用：
-- 强合规要求（金融、政府）
-- 多租户高密度
-- 已有 Kubernetes + Kata 链路
+Suitable for:
+- Strict compliance requirements (finance, government)
+- High-density multi-tenancy
+- Existing Kubernetes + Kata pipelines
 
-要点：
-- 必须：Linux 主机 + KVM（`/dev/kvm`）
-- macOS / 嵌套虚拟化（云上小机型）通常不可用
-- 部署链路：Firecracker → containerd shim → Kubernetes（CRI）；自建较重，建议先评估 Kata
-- 资源开销：每个 microVM 约 5 MiB 内存底座
+Key points:
+- Required: Linux host + KVM (`/dev/kvm`)
+- Usually unavailable on macOS / under nested virtualization (small cloud instance types)
+- Deployment chain: Firecracker → containerd shim → Kubernetes (CRI); building it yourself is heavy — evaluate Kata first
+- Resource overhead: roughly 5 MiB of baseline memory per microVM
 
-## 5. Remote VM — 远端隔离 VM
+## 5. Remote VM — Remote isolated VM
 
-定位：把 sandbox 跑在独立 VM/账号，最大化爆炸半径隔离。
+Positioning: run the sandbox in a separate VM/account to maximize blast radius isolation.
 
-适用：
-- 生产灰度（跨网段、跨账号）
-- 需要触达内网/特定网络位置
-- 多团队共用 OpsPilot 但隔离审计
+Suitable for:
+- Production canary (across network segments / accounts)
+- Needing to reach internal networks / specific network locations
+- Multiple teams sharing OpsPilot while keeping audits isolated
 
-要点：
-- 控制面（OpsPilot）↔ 数据面（远端 VM）走 mTLS 通道
-- 凭证：远端 VM 不存 OpsPilot 主账号凭证；按动作下发短期凭证
-- 成本：VM 常驻 vs 按需启停 —— 按需启停启动延迟高，常驻成本高，需权衡
+Key points:
+- Control plane (OpsPilot) ↔ data plane (remote VM) communicate over an mTLS channel
+- Credentials: the remote VM stores no OpsPilot primary-account credentials; short-lived credentials are issued per action
+- Cost: always-on VM vs on-demand start/stop — on-demand has high startup latency, always-on costs more; weigh the trade-off
 
-## 选型决策树 / Decision tree
+## Decision tree
 
 ```
-是否仅本机/小团队试点？──▶ 是 ──▶ Docker (L1)
+Local machine / small-team pilot only? ──▶ Yes ──▶ Docker (L1)
         │
-        否
+        No
         ▼
-是否处理外部/可疑输入？──▶ 是 ──▶ gVisor 或 Firecracker
+Handling external / suspicious input? ──▶ Yes ──▶ gVisor or Firecracker
         │
-        否
+        No
         ▼
-是否生产环境跨网段？──▶ 是 ──▶ Remote VM (+ 内层 Docker hardened)
+Production across network segments? ──▶ Yes ──▶ Remote VM (+ inner Docker hardened)
         │
-        否
+        No
         ▼
-是否合规等级很高？──▶ 是 ──▶ Firecracker / Kata
+Very high compliance requirements? ──▶ Yes ──▶ Firecracker / Kata
         │
-        否 ──▶ Docker hardened (L2)
+        No ──▶ Docker hardened (L2)
 ```
 
-## 跨后端的统一接口要求 / Backend abstraction
+## Backend abstraction
 
-任何后端实现都必须满足以下契约（实现细节不在此目录）：
+Every backend implementation must satisfy the following contract (implementation details are out of scope for this directory):
 
 ```
 backend.run(action_request, policy) -> action_record
@@ -145,11 +144,11 @@ backend.cancel(action_id) -> ok
 backend.health() -> {ok|degraded|down, details}
 ```
 
-- `action_record` / `dry_run_record` 字段必须能映射回 `session/schemas/trace-event.schema.json` 中的 `tool_result`
-- 所有后端必须支持 `--network=none` 等价语义
+- `action_record` / `dry_run_record` fields must map back to `tool_result` in `session/schemas/trace-event.schema.json`
+- Every backend must support semantics equivalent to `--network=none`
 
-## 备份 / 回滚 注意 / Backup & rollback notes
+## Backup & rollback notes
 
-- 切换默认后端属于**主路径**变更；变更前先在 staging 跑 harness 全量
-- 切回滚路径：保留前一后端 6 周可回滚；变更前打镜像 tag 与 docker-compose 版本
-- gVisor / Firecracker 升级：先 dry-run 跑 fixture；不兼容 syscall 会显式报错
+- Switching the default backend is a **main-path** change; run the full harness in staging before changing
+- Rollback path: keep the previous backend rollback-ready for 6 weeks; tag the image and pin the docker-compose version before the change
+- gVisor / Firecracker upgrades: dry-run the fixtures first; incompatible syscalls fail with explicit errors

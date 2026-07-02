@@ -1,8 +1,8 @@
-# Google Gemini provider 配置模板 / Gemini provider config template
-# 文档：https://ai.google.dev/docs（信息日期 2026-05-01；使用前核验）
-# 两条接入路径：
-#   1) Generative Language API：API key（本模板默认）
-#   2) Vertex AI：OAuth2 service account（适合企业/GCP 场景；切换 deployment_mode）
+# Google Gemini provider config template
+# Docs: https://ai.google.dev/docs (as of 2026-05-01; verify before use)
+# Two access paths:
+#   1) Generative Language API: API key (this template's default)
+#   2) Vertex AI: OAuth2 service account (suited to enterprise/GCP scenarios; switch deployment_mode)
 
 id: "gemini-main"
 kind: "gemini"
@@ -13,11 +13,11 @@ enabled: true
 base_url: "https://generativelanguage.googleapis.com/v1beta"
 
 auth:
-  # 默认：API key 走 query string（Google 风格）
+  # Default: API key via query string (Google style)
   type: "api_key_query"
   env: "GEMINI_API_KEY"
   query_param: "key"
-  # 走 Vertex AI 时切到：
+  # When going through Vertex AI, switch to:
   # type: "oauth2_service_account"
   # key_file_env: "GOOGLE_APPLICATION_CREDENTIALS"
 
@@ -28,13 +28,13 @@ capabilities:
   tools: true                          # function calling
   vision: true
   audio_in: true
-  audio_out: false                     # TTS 走单独 API
+  audio_out: false                     # TTS goes through a separate API
   json_mode: true                      # responseSchema / responseMimeType=application/json
-  prompt_caching: true                 # context caching（需显式创建 cache）
-  reasoning_mode: true                 # gemini-2.5 thinking 模式（视具体模型）
+  prompt_caching: true                 # context caching (requires explicitly creating a cache)
+  reasoning_mode: true                 # gemini-2.5 thinking mode (model-dependent)
   computer_use: false
-  embeddings: true                     # text-embedding-004 等
-  long_context_tokens: 1000000         # gemini-2.5-pro 量级；以 catalog 为准
+  embeddings: true                     # text-embedding-004 etc.
+  long_context_tokens: 1000000         # gemini-2.5-pro scale; the catalog is authoritative
   max_output_tokens: 8192
 
 limits:
@@ -45,9 +45,9 @@ limits:
   concurrent: 8
 
 cost:
-  # 注意：Gemini 长上下文阈值会切换到不同档位（128k 以上更贵）
+  # Note: above the long-context threshold Gemini switches to a different pricing tier (more expensive beyond 128k)
   pricing:
-    input_per_1k_usd: 0.00125          # 短上下文档位近似
+    input_per_1k_usd: 0.00125          # approximate short-context tier
     output_per_1k_usd: 0.005
     cached_input_per_1k_usd: 0.0003125
     pricing_as_of: "2026-05-01"
@@ -75,16 +75,16 @@ retry:
 timeouts:
   connect_ms: 5000
   read_ms: 60000
-  total_ms: 120000                     # 长上下文 + thinking 模式可能较慢
+  total_ms: 120000                     # long context + thinking mode can be slow
 
 compliance:
-  data_residency: "us"                 # Generative Language API；Vertex 可选 region
-  telemetry_optout: true               # 免费档下可能用于训练；付费档默认不用，仍以官方为准
+  data_residency: "us"                 # Generative Language API; Vertex offers region selection
+  telemetry_optout: true               # free tier may use data for training; paid tier does not by default — official policy is authoritative
   zero_data_retention: false
-  pii_allowed: false                   # 默认禁
+  pii_allowed: false                   # denied by default
   red_lines:
-    - "免费档（unpaid tier）禁止发送任何敏感数据"
-    - "不发送未脱敏 PII"
+    - "Never send any sensitive data on the free (unpaid) tier"
+    - "Never send unredacted PII"
 
 labels:
   region: "global"
@@ -94,7 +94,7 @@ extensions:
     deployment_mode: "generative_language"   # generative_language | vertex
     # vertex_project: "<gcp-project>"
     # vertex_location: "us-central1"
-    # 安全过滤（按官方枚举值；过滤过严会改变输出）
+    # Safety filtering (per official enum values; overly strict filtering changes output)
     safety_settings:
       - category: "HARM_CATEGORY_DANGEROUS_CONTENT"
         threshold: "BLOCK_MEDIUM_AND_ABOVE"
@@ -104,7 +104,7 @@ extensions:
         threshold: "BLOCK_MEDIUM_AND_ABOVE"
       - category: "HARM_CATEGORY_SEXUALLY_EXPLICIT"
         threshold: "BLOCK_MEDIUM_AND_ABOVE"
-    # thinking 模式（如适用）
+    # thinking mode (if applicable)
     thinking:
       enabled: false
       thinking_budget: 0

@@ -9,7 +9,7 @@ ingested_at: "2026-05-01T10:00:00Z"
 last_modified: "2026-04-28T08:30:00Z"
 language: "en"
 tags: ["vpn", "sop", "L1", "ipsec", "ikev2"]
-namespace: "opspilot:public-kb-en"
+namespace: "opspilot:public-kb"
 chunk_strategy: "headings_then_size"
 chunk_count: 3
 embedding_model: "ollama-local/nomic-embed-text@2024-02"

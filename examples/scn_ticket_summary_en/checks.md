@@ -23,7 +23,7 @@
 
 | Instance file | Must validate against | Key checks |
 |---|---|---|
-| `kb/doc-meta.json` | `memory/schemas/kb-document.schema.json` | `redaction_passed=true`; `embedding_model` not `latest`/`auto`/`stable`; `language=en`; `namespace=opspilot:public-kb-en` |
+| `kb/doc-meta.json` | `memory/schemas/kb-document.schema.json` | `redaction_passed=true`; `embedding_model` not `latest`/`auto`/`stable`; `language=en`; `namespace=opspilot:public-kb` |
 | `kb/chunks.jsonl[*]` | `memory/schemas/kb-chunk.schema.json` | `content` & `content_artifact_id` mutually exclusive ✓; `line_end ≥ line_start` ✓ |
 | `retrieval/request.json` | `memory/schemas/retrieval-query.schema.json#oneOf[0]` | `kind=request`; `scopes` ≥ 1; `mode=hybrid` requires `hybrid` block ✓ |
 | `retrieval/response.json` | `memory/schemas/retrieval-query.schema.json#oneOf[1]` | `kind=response`; `score ∈ [0,1]`; `citation` present (because `return_citations=true`) ✓ |

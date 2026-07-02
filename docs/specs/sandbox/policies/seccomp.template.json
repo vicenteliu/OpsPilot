@@ -1,6 +1,6 @@
 {
-  "_comment": "OpsPilot Sandbox seccomp 基线策略 / Baseline seccomp profile",
-  "_note_default": "Docker 默认 seccomp 已禁用 ~44 个高危 syscall；本模板用于 hardened 模式（L2），在默认基础上进一步收紧。",
+  "_comment": "OpsPilot Sandbox baseline seccomp profile",
+  "_note_default": "Docker's default seccomp profile already disables ~44 high-risk syscalls; this template is for hardened mode (L2) and tightens things further on top of the default.",
   "_reference": "Docker default: https://github.com/moby/moby/blob/master/profiles/seccomp/default.json",
   "_apply": "docker run --security-opt seccomp=/path/to/seccomp.json ...",
   "_version": "1.0.0",
@@ -14,7 +14,7 @@
 
   "syscalls": [
     {
-      "_comment": "通用 IO / 进程 / 文件 / 时间—— sandbox 必需的最小集",
+      "_comment": "General IO / process / file / time — the minimal set the sandbox requires",
       "names": [
         "accept", "accept4", "access", "arch_prctl", "bind", "brk", "capget", "capset",
         "chdir", "chmod", "chown", "chown32", "clock_getres", "clock_gettime", "clock_nanosleep",
@@ -61,7 +61,7 @@
       "action": "SCMP_ACT_ALLOW"
     },
     {
-      "_comment": "明确禁用的高危 syscall（默认 deny 已覆盖；列在这里仅为可读性）",
+      "_comment": "High-risk syscalls explicitly disabled (already covered by the default deny; listed here for readability only)",
       "names": [
         "acct", "add_key", "bpf", "clock_adjtime", "clock_settime", "create_module",
         "delete_module", "finit_module", "get_kernel_syms", "get_mempolicy",

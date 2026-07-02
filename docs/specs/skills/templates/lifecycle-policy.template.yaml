@@ -1,13 +1,13 @@
-# Skill 生命周期与信任策略 / Lifecycle & trust policy
-# 与 SPEC.md §1.1 (Trust tiers) + §8 (Lifecycle Operations) 配套
+# Skill lifecycle & trust policy
+# Companion to SPEC.md §1.1 (Trust tiers) + §8 (Lifecycle Operations)
 
 version: "1.0.0"
 
-# 1. 信任分级与默认权限 / Trust tiers
+# 1. Trust tiers & default permissions
 trust_tiers:
 
   self_authored:
-    description: "本地作者编写"
+    description: "Written by a local author"
     default_state: "draft"
     can_call:
       builtin_read: true
@@ -19,7 +19,7 @@ trust_tiers:
       sensitive: true
 
   distilled:
-    description: "从 internal traces/docs/skills 蒸馏；通过本地 review"
+    description: "Distilled from internal traces/docs/skills; passed local review"
     default_state: "draft"
     can_call:
       builtin_read: true
@@ -27,11 +27,11 @@ trust_tiers:
       mcp: true
       sandbox: true
     require_per_call_approval:
-      write: true                       # 蒸馏产物对写动作默认审批
+      write: true                       # distilled output requires approval for write actions by default
       sensitive: true
 
   imported_trusted:
-    description: "从受信源（白名单组织/作者）导入"
+    description: "Imported from trusted sources (allowlisted orgs/authors)"
     default_state: "reviewed"
     can_call:
       builtin_read: true
@@ -43,17 +43,17 @@ trust_tiers:
       sensitive: true
 
   imported_community:
-    description: "社区/未审计来源；强制 sandbox 隔离"
+    description: "Community / unaudited sources; sandbox isolation enforced"
     default_state: "draft"
     can_call:
-      builtin_read: true                # 仅读
+      builtin_read: true                # read-only
       builtin_write: false
       mcp: false
-      sandbox: true                     # 只允许只读 sandbox
+      sandbox: true                     # only read-only sandbox allowed
     require_per_call_approval:
       read: false
       execute: true
-      write: true                       # 即使被允许也每次审批
+      write: true                       # even if permitted, approve every call
       sensitive: true
     sandbox_class_allowlist:
       - "shell.read_only"
@@ -61,7 +61,7 @@ trust_tiers:
     network_default: "deny-all"
 
   imported_unknown:
-    description: "不明来源；默认拒绝调用"
+    description: "Unknown origin; invocation denied by default"
     default_state: "draft"
     enabled_by_default: false
     can_call:
@@ -69,69 +69,72 @@ trust_tiers:
       builtin_write: false
       mcp: false
       sandbox: false
-    notes: "需用户 explicit opt-in 才能升级到 imported_community 等级"
+    notes: "Requires explicit user opt-in to be promoted to the imported_community tier"
 
-# 2. 操作 / Operations
+# 2. Operations
 operations:
 
   install:
-    require_pii_check: true             # 加载前静态扫描 SKILL.md
+    require_pii_check: true             # statically scan SKILL.md before loading
     require_schema_valid: true
     require_no_prompt_injection: true
     default_lifecycle_state: "draft"
-    on_checksum_mismatch: "reject"      # SKILL.md 与 registry 中 checksum 不符 → 拒绝加载
+    on_checksum_mismatch: "reject"      # SKILL.md checksum differs from the registry's → refuse to load
 
   enable:
-    require_trigger_eval_pass: true     # 必须先过 trigger eval（recall ≥0.9, FP ≤0.05）
-    require_dependencies_resolvable: true   # requires.tools / mcps / providers 全部就位
+    require_trigger_eval_pass: true     # must pass the trigger eval first (recall ≥0.9, FP ≤0.05)
+    require_dependencies_resolvable: true   # requires.tools / mcps / providers all in place
     on_failure: "stay_in_reviewed"
 
   update:
-    require_diff_review: true           # 与上一版 diff 必须人工 review
-    require_regression_eval: true       # harness 跑既有 fixture，分数掉点 >3% → 阻断
-    backup_previous_version: true       # 升级前快照旧版本，便于回滚
+    require_diff_review: true           # the diff against the previous version must be human-reviewed
+    require_regression_eval: true       # harness runs the existing Fixtures; a score drop >3% blocks the update
+    backup_previous_version: true       # snapshot the old version before upgrading, for easy rollback
 
   deprecate:
-    require_migration_note: true        # 必须给出迁移到哪个 skill 的说明
-    grace_period_days: 30               # 30 天宽限期内仍可调用（带 warning）
+    require_migration_note: true        # a note on which skill to migrate to is mandatory
+    grace_period_days: 30               # still invocable during the 30-day grace period (with a warning)
 
   uninstall:
     require_two_person_for_trusted: true
-    cascade_disable_dependents: true    # 依赖此 skill 的其他 skill 自动 disable
+    cascade_disable_dependents: true    # other skills depending on this one are auto-disabled
 
-# 3. 审计 / Audit
+# 3. Audit
 audit:
-  log_every_invocation: true            # 每次 skill 触发写一条 audit
+  log_every_invocation: true            # write one audit record per skill trigger
   log_every_install: true
   log_every_state_change: true
   retention_days: 365
 
-# 4. 安全静态检查 / Static security checks（加载时跑）
+# 4. Static security checks (run at load time)
 static_checks:
 
+  # The last two patterns match Chinese prompt-injection phrases
+  # ("ignore the previous/above instructions", "you are now ...");
+  # CJK characters are written as \u escapes to keep this file ASCII-only.
   prompt_injection_patterns:
     - "(?i)\\bignore (?:all )?previous (?:instructions|messages)\\b"
     - "(?i)\\bdisregard (?:all )?(?:prior|above|earlier)\\b"
     - "(?i)\\byou are now (?:a )?(?:different|new)\\b"
     - "(?i)\\bsystem (?:prompt|message)\\b.*(?:override|replace|change)"
-    - "(?i)忽略(?:之前|以上|上面)的(?:指令|提示)"
-    - "(?i)你现在(?:是|扮演)"
+    - "(?i)\u5FFD\u7565(?:\u4E4B\u524D|\u4EE5\u4E0A|\u4E0A\u9762)\u7684(?:\u6307\u4EE4|\u63D0\u793A)"
+    - "(?i)\u4F60\u73B0\u5728(?:\u662F|\u626E\u6F14)"
 
   description_must_have:
-    - "verb"                            # 触发动词（summarize/draft/triage 等）
-    - "object_or_trigger"               # 处理对象或触发条件
+    - "verb"                            # a trigger verb (summarize/draft/triage etc.)
+    - "object_or_trigger"               # the object being handled, or the trigger condition
 
   description_must_not_have:
     - "always use"
     - "must use"
-    - "preferred over"                  # 试图篡改路由优先级
+    - "preferred over"                  # attempts to tamper with routing priority
 
   body_must_not_have:
-    - "system_prompt:"                  # 不允许嵌入 system prompt 重定义
+    - "system_prompt:"                  # embedding system-prompt redefinitions is forbidden
     - "<|im_start|>system"
     - "<|system|>"
 
-# 5. 升级与降级路径 / Tier escalation / de-escalation
+# 5. Tier escalation / de-escalation
 tier_transitions:
   allowed:
     - { from: "imported_unknown",   to: "imported_community", requires: ["explicit_user_opt_in"] }
@@ -139,5 +142,5 @@ tier_transitions:
     - { from: "draft",              to: "reviewed",           requires: ["auto_checks_pass", "human_review"] }
     - { from: "reviewed",           to: "trusted",            requires: ["trigger_eval_pass"] }
   forbidden:
-    - { from: "imported_unknown",   to: "imported_trusted" }   # 不允许跨级升信
-    - { from: "*",                  to: "self_authored" }      # self_authored 只能创建时设
+    - { from: "imported_unknown",   to: "imported_trusted" }   # skipping a trust tier is forbidden
+    - { from: "*",                  to: "self_authored" }      # self_authored can only be set at creation

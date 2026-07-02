@@ -1,12 +1,12 @@
-# Skill tool/MCP 绑定模板 / Skill tool binding template
-# 与 schemas/tool-binding.schema.json 等价
-# 放在每个 skill 目录内：skills/repo/<skill_name>/tool-binding.yaml
+# Skill tool/MCP binding template
+# Equivalent to schemas/tool-binding.schema.json
+# Lives inside each skill directory: skills/repo/<skill_name>/tool-binding.yaml
 
 skill_ref: "ticket_summary_zh@1.2.0"
 
 bindings:
 
-  # —— 内置工具 / Builtin tools ——————————————————
+  # —— Builtin tools ——————————————————
   - tool: "kb.search"
     kind: "builtin"
     safety_class: "read"
@@ -28,18 +28,18 @@ bindings:
   - tool: "artifact.write"
     kind: "builtin"
     safety_class: "write"
-    approval_required: false        # 写到本 session 的 artifact 区是默认允许的
+    approval_required: false        # writing to this Session's own artifact area is allowed by default
     timeout_ms: 5000
     config:
       schema_name: "ticket_summary_v1"
       max_size_bytes: 32768
 
-  # —— MCP 工具示例（本 skill 不实际使用；仅说明形态）——————————
+  # —— MCP tool example (not actually used by this skill; shown for shape only) ——————————
   # - tool: "mcp__notion__create_page"
   #   kind: "mcp"
   #   mcp_id: "notion-main"
   #   safety_class: "write"
-  #   approval_required: true       # 第三方写动作 → 强制审批
+  #   approval_required: true       # third-party write action → approval enforced
   #   rate_limit:
   #     rpm: 10
   #     per_session_max: 3
@@ -48,10 +48,10 @@ bindings:
   #     default_database_id: "${NOTION_DB_ID}"
   #     default_visibility: "team"
 
-  # —— Sandbox 动作示例 ——————————————————
+  # —— Sandbox action example ——————————————————
   # - tool: "shell.exec"
   #   kind: "sandbox"
-  #   sandbox_class: "shell.read_only"   # 见 sandbox/policies/resource-quota.template.yaml
+  #   sandbox_class: "shell.read_only"   # see sandbox/policies/resource-quota.template.yaml
   #   safety_class: "execute"
   #   approval_required: true
   #   timeout_ms: 30000
@@ -59,8 +59,8 @@ bindings:
   #     allowed_commands_regex: "^(grep|cat|tail|head|jq|wc) "
   #     network: "deny-all"
 
-# 全局策略 / Global policy
+# Global policy
 global_policy:
-  deny_on_unknown_tool: true                    # SKILL.md.requires 中没声明的工具不允许调
-  max_total_calls_per_invocation: 12            # 单次 skill 触发的总工具调用上限
-  max_total_cost_usd_per_invocation: 0.05       # 含 LLM token 与 MCP 计费
+  deny_on_unknown_tool: true                    # tools not declared in SKILL.md.requires must not be called
+  max_total_calls_per_invocation: 12            # cap on total tool calls per skill invocation
+  max_total_cost_usd_per_invocation: 0.05       # includes LLM tokens and MCP billing

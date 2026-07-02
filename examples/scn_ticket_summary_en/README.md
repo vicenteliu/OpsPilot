@@ -97,7 +97,7 @@ fixed in the schemas/templates:
 ## Relationship with `scn_ticket_summary_zh`
 
 This sample is a **structural mirror** of `scn_ticket_summary_zh/`, with:
-- Different namespace (`opspilot:public-kb-en` vs `opspilot:public-kb`)
+- Different namespace (`opspilot:public-kb` vs `opspilot:public-kb`)
 - Different language (`en` vs `zh-CN`)
 - Different IDs throughout (so neither sample collides with the other)
 - Same 5-tier contract & schemas

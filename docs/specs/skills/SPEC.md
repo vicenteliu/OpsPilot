@@ -1,118 +1,118 @@
-# Skills — 详细规范 / Detailed Spec
+# Skills — Detailed Spec
 
-## 1. Skill 数据模型 / Data model
+## 1. Skill data model
 
-每个 skill = 一个目录：
+Each skill = one directory:
 
 ```
 <skill_root>/<skill_name>/
-├── SKILL.md                  # 必需：frontmatter (yaml) + body (markdown)
-├── tool-binding.yaml         # 可选：本 skill 用到的 tools/MCP 的具体绑定
-└── resources/                # 可选：脚本、模板、参考资料
+├── SKILL.md                  # required: frontmatter (yaml) + body (markdown)
+├── tool-binding.yaml         # optional: concrete bindings for the tools/MCPs this skill uses
+└── resources/                # optional: scripts, templates, reference material
     ├── ...
     └── examples/
 ```
 
-### 1.1 SKILL.md frontmatter（权威定义见 `schemas/skill.schema.json`）
+### 1.1 SKILL.md frontmatter (authoritative definition in `schemas/skill.schema.json`)
 
-| 字段 | 必填 | 说明 |
+| Field | Required | Description |
 |---|---|---|
-| `name` | ✓ | 唯一 slug，例 `ticket_summary_zh`；支持命名空间 `<plugin>:<name>` |
-| `description` | ✓ | **一行**触发描述；详细规则见 §3 |
+| `name` | ✓ | Unique slug, e.g. `ticket_summary_zh`; namespacing supported as `<plugin>:<name>` |
+| `description` | ✓ | **One-line** trigger description; detailed rules in §3 |
 | `version` | ✓ | semver |
 | `language` | ✓ | `en` / `zh-CN` / `mixed` |
-| `author` | ✓ | 作者标识 |
-| `source` | ✓ | enum：`self_authored / distilled / imported_trusted / imported_community / imported_unknown` |
-| `license` | ✓ | SPDX 标识符或 `proprietary` |
-| `model_compat` | ✓ | 数组；可用模型 alias 或 `["any"]` |
-| `requires.tools` | ✗ | 内置工具依赖列表（如 `kb.search`） |
-| `requires.mcps` | ✗ | MCP server id 列表（与 mcp-config 一致） |
-| `requires.providers` | ✗ | provider capability 约束（如 `vision: true`） |
-| `requires.skills` | ✗ | 本 skill 依赖的其他 skill |
+| `author` | ✓ | Author identifier |
+| `source` | ✓ | enum: `self_authored / distilled / imported_trusted / imported_community / imported_unknown` |
+| `license` | ✓ | SPDX identifier or `proprietary` |
+| `model_compat` | ✓ | Array; model aliases or `["any"]` |
+| `requires.tools` | ✗ | List of builtin tool dependencies (e.g. `kb.search`) |
+| `requires.mcps` | ✗ | List of MCP server ids (consistent with mcp-config) |
+| `requires.providers` | ✗ | Provider capability constraints (e.g. `vision: true`) |
+| `requires.skills` | ✗ | Other skills this skill depends on |
 | `safety.classification` | ✓ | `public/internal/confidential/restricted` |
-| `safety.approval_required` | ✓ | bool；是否每次调用都需用户确认 |
+| `safety.approval_required` | ✓ | bool; whether every invocation requires user confirmation |
 | `safety.telemetry_optout` | ✓ | bool |
-| `inputs.schema_ref` | ✗ | JSON Schema 引用 |
-| `outputs.schema_ref` | ✗ | JSON Schema 引用 |
-| `distillation` | ✗ | 若 source ≠ self_authored，记录蒸馏来源（type + refs） |
-| `redacted` | ✓ | bool；body 内不允许残留 PII |
-| `redaction_rules_version` | ✗ | 与 session 对齐 |
+| `inputs.schema_ref` | ✗ | JSON Schema reference |
+| `outputs.schema_ref` | ✗ | JSON Schema reference |
+| `distillation` | ✗ | If source ≠ self_authored, records the distillation source (type + refs) |
+| `redacted` | ✓ | bool; no residual PII allowed in the body |
+| `redaction_rules_version` | ✗ | Aligned with Session redaction |
 
-### 1.2 Body 约定
+### 1.2 Body conventions
 
-- markdown；可包含步骤、规则、约束、示例
-- 引用同目录 resources：`resources/<file>`，禁用绝对路径
-- 任何"调用工具"的语句必须能映射到 `requires.tools` / `requires.mcps`
-- 不允许在 body 中嵌入 system prompt 重定义（防 prompt injection）
+- markdown; may contain steps, rules, constraints, examples
+- reference sibling resources as `resources/<file>`; absolute paths forbidden
+- any "call tool X" statement must map to `requires.tools` / `requires.mcps`
+- embedding system-prompt redefinitions in the body is forbidden (prompt-injection prevention)
 
-## 2. ID 与命名 / IDs & naming
+## 2. IDs & naming
 
-- `skill_id` = `<name>@<version>`，例 `ticket_summary_zh@1.2.0`
-- 跨命名空间：`<plugin>:<name>@<version>`，例 `data:analyze@1.0.0`
-- 内部哈希引用：`skl_<sha256(SKILL.md)[:16]>` —— 用于 audit / 完整性校验
+- `skill_id` = `<name>@<version>`, e.g. `ticket_summary_zh@1.2.0`
+- Cross-namespace: `<plugin>:<name>@<version>`, e.g. `data:analyze@1.0.0`
+- Internal hash reference: `skl_<sha256(SKILL.md)[:16]>` — used for audit / integrity checks
 
-## 3. Description tuning（关键）/ How to write description
+## 3. Description tuning (critical) / How to write description
 
-description 是模型决定"现在该不该用这个 skill"的唯一信号。**写不好就召回不了**。
+The description is the model's only signal for deciding "should this skill be used right now". **A poorly written one will never be recalled.**
 
-### 3.1 强约束
+### 3.1 Hard constraints
 
-- **一行**（≤ 300 字符）
-- 必须包含 *用途* + *触发关键词*：例 "Summarize an IT ticket and produce a structured JSON with citations to KB SOPs."
-- 不要把使用步骤塞进 description（步骤在 body）
-- 不要承诺工具不具备的能力
+- **One line** (≤ 300 characters)
+- Must include the *purpose* + *trigger keywords*: e.g. "Summarize an IT ticket and produce a structured JSON with citations to KB SOPs."
+- Don't stuff usage steps into the description (steps belong in the body)
+- Don't promise capabilities the tools don't have
 
-### 3.2 推荐模板
+### 3.2 Recommended template
 
 ```
 {ACTION_VERB} {OBJECT} when {TRIGGER_CONDITION}.
 Returns {OUTPUT_SHAPE}. Requires {KEY_DEPENDENCY}.
 ```
 
-例：
+Example:
 - *"Summarize an IT support ticket when the user pastes ticket content or attaches log snippets. Returns ticket_summary_v1 JSON with KB citations. Requires kb.search and an LLM with json_mode."*
 
-### 3.3 反模式
+### 3.3 Anti-patterns
 
-- ❌ "Useful for many tasks" —— 模型无法决断何时用
-- ❌ "Always use this skill" —— 篡改路由优先级，等同 prompt injection
-- ❌ "When the user says 'magic word'" —— 关键词依赖脆弱
+- ❌ "Useful for many tasks" — the model cannot decide when to use it
+- ❌ "Always use this skill" — tampers with routing priority; equivalent to prompt injection
+- ❌ "When the user says 'magic word'" — keyword dependence is brittle
 
-### 3.4 触发评估（与 harness 对接）
+### 3.4 Trigger evaluation (integrated with Harness)
 
-发布前必须用 `harness/` 跑 *trigger fixtures*：
-- 正例：100 条应触发的 query → recall ≥ 0.9
-- 负例：100 条不应触发的 query → false_positive ≤ 0.05
+Before release, *trigger fixtures* must be run via `harness/`:
+- Positives: 100 queries that should trigger → recall ≥ 0.9
+- Negatives: 100 queries that should not trigger → false_positive ≤ 0.05
 
-未跑 trigger eval 的 skill 不允许进入 `enabled` 状态。
+A skill that has not run the trigger eval must not enter the `enabled` state.
 
-## 4. Quality checklist（发布前必跑）
+## 4. Quality checklist (must run before release)
 
 ```
-[ ] 1. description ≤ 300 chars，含动词 + 触发条件 + 输出形态
-[ ] 2. requires.tools / requires.mcps 全部在 registry 中可解析
-[ ] 3. body 里所有 "call X" 都能映射到 requires
-[ ] 4. redacted=true，且 body 通过 rule.pii_check
-[ ] 5. safety.classification 与 body 实际操作匹配（写动作必须 ≥ internal）
-[ ] 6. 模型版本兼容性测试通过（model_compat 中至少 1 个跑通）
-[ ] 7. trigger eval 通过（recall ≥ 0.9, FP ≤ 0.05）
+[ ] 1. description ≤ 300 chars, includes a verb + trigger condition + output shape
+[ ] 2. requires.tools / requires.mcps all resolvable in the registry
+[ ] 3. every "call X" in the body maps to requires
+[ ] 4. redacted=true, and the body passes rule.pii_check
+[ ] 5. safety.classification matches the body's actual operations (write actions must be ≥ internal)
+[ ] 6. model version compatibility test passes (at least 1 model in model_compat runs green)
+[ ] 7. trigger eval passes (recall ≥ 0.9, FP ≤ 0.05)
 ```
 
-## 5. Skill Registry / 注册表
+## 5. Skill Registry
 
-`templates/skill-registry.template.yaml` 是入口：
-- `skills[]`：每条引用一个 SKILL.md 路径 + 元数据（trust tier / enabled）
-- `aliases`：如 `@summarize-ticket` → `ticket_summary_zh@1.2.0`
-- `groups`：场景包打包，例 `it-l1-bundle = [ticket_summary_zh, log_triage_zh, vpn_runbook_zh]`
-- `installation_policy`：从远端导入时的默认 trust tier 与隔离策略
+`templates/skill-registry.template.yaml` is the entry point:
+- `skills[]`: each entry references a SKILL.md path + metadata (trust tier / enabled)
+- `aliases`: e.g. `@summarize-ticket` → `ticket_summary_zh@1.2.0`
+- `groups`: scenario bundles, e.g. `it-l1-bundle = [ticket_summary_zh, log_triage_zh, vpn_runbook_zh]`
+- `installation_policy`: default trust tier and isolation policy for remote imports
 
-权威定义见 `schemas/skill-registry.schema.json`。
+Authoritative definition in `schemas/skill-registry.schema.json`.
 
-## 6. Tool & MCP Integration / 工具与 MCP 集成
+## 6. Tool & MCP Integration
 
-### 6.1 Tool binding 契约
+### 6.1 Tool binding contract
 
-`tool-binding.yaml`（在 skill 目录内）声明本 skill 实际调用的每个工具：
+`tool-binding.yaml` (inside the skill directory) declares each tool the skill actually invokes:
 
 ```yaml
 skill_ref: "ticket_summary_zh@1.2.0"
@@ -128,22 +128,22 @@ bindings:
   - tool: "artifact.write"
     kind: "builtin"
     safety_class: "write"
-    approval_required: false       # 写到 session 自家 artifact 区是默认允许的
+    approval_required: false       # writing to the session's own artifact area is allowed by default
 
   - tool: "mcp__notion__create_page"
     kind: "mcp"
     mcp_id: "notion-main"
     safety_class: "write"
-    approval_required: true        # 第三方写动作 → 强制审批
+    approval_required: true        # third-party write action → approval enforced
     config:
       default_database_id: "${NOTION_DB_ID}"
 ```
 
-权威定义见 `schemas/tool-binding.schema.json`。
+Authoritative definition in `schemas/tool-binding.schema.json`.
 
-### 6.2 MCP server 配置
+### 6.2 MCP server configuration
 
-`mcp-config.template.yaml` 注册 MCP server，与 `provider-registry` 同等地位：
+`mcp-config.template.yaml` registers MCP servers, with the same standing as `provider-registry`:
 
 ```yaml
 mcps:
@@ -161,34 +161,34 @@ mcps:
       interval_seconds: 600
 ```
 
-权威定义见 `schemas/mcp-config.schema.json`。
+Authoritative definition in `schemas/mcp-config.schema.json`.
 
-### 6.3 调用流转
+### 6.3 Invocation flow
 
 ```
 session.trace[tool_call] (tool=mcp__notion__create_page)
    │
    ▼
-tool-binding 查找：skill_ref + tool → mcp_id
+tool-binding lookup: skill_ref + tool → mcp_id
    │
    ▼
-mcp-config 查找：mcp_id → command/args/env
+mcp-config lookup: mcp_id → command/args/env
    │
    ▼
 [approval_required?] ──yes──▶ user_action.approve
    │
    ▼
-sandbox / direct exec（按 safety_class）
+sandbox / direct exec (per safety_class)
    │
    ▼
 session.trace[tool_result]  + audit.log
 ```
 
-## 7. Distillation Pipeline / 蒸馏管道
+## 7. Distillation Pipeline
 
-四类蒸馏来源，每类一个 recipe（见 `templates/distillation-from-*.template.yaml`）。
+Four kinds of distillation sources, one recipe per kind (see `templates/distillation-from-*.template.yaml`).
 
-### 7.1 通用阶段
+### 7.1 Common stages
 
 ```
 discover  ──▶  redact  ──▶  mine  ──▶  draft  ──▶  review  ──▶  register
@@ -198,57 +198,57 @@ sources     redacted     patterns    SKILL.md    pass/fail    in registry
 manifest    inputs                   + bindings  + diff         (draft tier)
 ```
 
-| 阶段 | 输入 | 输出 | 失败处理 |
+| Stage | Input | Output | On failure |
 |---|---|---|---|
-| discover | 配置中的 sources | manifest（路径 + last_modified） | skip + log |
-| redact | 原始 traces / 文档 | 脱敏文本 | hard-fail（PII 残留即拒绝）|
-| mine | 脱敏文本 | 候选 pattern 列表（prompt 模式 / tool 序列 / 输出形态） | 跳过该来源 |
-| draft | 候选 pattern + 模板 | SKILL.md draft + tool-binding.yaml draft | 再 prompt LLM 重试 |
-| review | draft | pass/fail + diff vs 基线 | 进 review queue |
-| register | reviewed draft | skill-registry 条目，tier=`distilled` | rollback |
+| discover | sources from config | manifest (paths + last_modified) | skip + log |
+| redact | raw traces / docs | redacted text | hard-fail (any residual PII rejects the run) |
+| mine | redacted text | candidate pattern list (prompt patterns / tool sequences / output shapes) | skip that source |
+| draft | candidate patterns + template | SKILL.md draft + tool-binding.yaml draft | re-prompt the LLM and retry |
+| review | draft | pass/fail + diff vs baseline | goes into the review queue |
+| register | reviewed draft | skill-registry entry, tier=`distilled` | rollback |
 
-### 7.2 四种来源详解
+### 7.2 The four source kinds in detail
 
-**(a) from_traces — 从 session traces 蒸馏**（最常用）
+**(a) from_traces — distill from Session traces** (most common)
 
-适合：把团队反复做、harness 评分高的成功 session 固化为可复用 skill。
+Best for: solidifying successful Sessions the team repeats and that score high on the Harness into a reusable skill.
 
-- 输入：`session/<id>/trace.jsonl` 集合（脱敏）
-- mine：找出共有 prompt 模式、工具调用序列、citation 风格、prompt 参数
-- draft：把高频模式抽象成步骤指令
-- 风险：traces 里的具体内容（工单号、用户名）必须先脱敏
+- Input: a set of `session/<id>/trace.jsonl` (redacted)
+- mine: find shared prompt patterns, tool-call sequences, citation style, prompt parameters
+- draft: abstract the high-frequency patterns into step instructions
+- Risk: concrete content in traces (ticket numbers, usernames) must be redacted first
 
-**(b) from_skills — 从他人 skill 集合蒸馏**
+**(b) from_skills — distill from other skill collections**
 
-适合：学习外部受信 skill 库（如 anthropic-skills 仓库）的结构与风格。
+Best for: learning the structure and style of external trusted skill libraries (e.g. the anthropic-skills repo).
 
-- 输入：N 个 SKILL.md 文件
-- mine：frontmatter 字段分布、description phrasing、body section 结构
-- draft：产出 meta-template 或单个新 skill（融合多 skill 风格）
+- Input: N SKILL.md files
+- mine: frontmatter field distributions, description phrasing, body section structure
+- draft: produce a meta-template or a single new skill (blending the style of multiple skills)
 
-**(c) from_docs — 从文档蒸馏**
+**(c) from_docs — distill from documents**
 
-适合：把现有 SOP / Runbook / playbook（markdown）转成可执行 skill。
+Best for: converting existing SOPs / Runbooks / playbooks (markdown) into executable skills.
 
-- 输入：playbooks/ 下的 markdown
-- mine：识别 trigger 条件、步骤、所需工具、安全约束
-- draft：生成 SKILL.md，引用原文档为 resource
+- Input: markdown under playbooks/
+- mine: identify trigger conditions, steps, required tools, safety constraints
+- draft: generate SKILL.md, referencing the original document as a resource
 
-**(d) from_foreign — 跨平台 skill 翻译**（占位）
+**(d) from_foreign — cross-platform skill translation** (placeholder)
 
-适合：把 OpenAI Custom GPT / LangChain agent / Claude Code skill 翻译成 OpsPilot skill 形态。
+Best for: translating an OpenAI Custom GPT / LangChain agent / Claude Code skill into the OpsPilot skill format.
 
-- 输入：外部平台的 skill 描述文件
-- mine：字段映射 + 工具/MCP 等价物
-- draft：OpsPilot 形态 SKILL.md
-- 状态：spec 中先不展开模板，列入 catalogs.md 的兼容性矩阵
+- Input: the external platform's skill description file
+- mine: field mapping + tool/MCP equivalents
+- draft: SKILL.md in OpsPilot format
+- Status: no template in the spec stage; listed in catalogs.md's compatibility matrix
 
-### 7.3 强约束
+### 7.3 Hard constraints
 
-- 蒸馏产出**默认进入 draft tier**，不允许直接 enabled
-- 来源必须显式 redact（PII 检查 hard-fail）
-- 蒸馏 LLM 模型版本必须锁定（避免漂移）
-- distillation.source 字段在 SKILL.md frontmatter 里**必填**：
+- Distillation output **defaults into the draft tier**; going straight to enabled is forbidden
+- Sources must be explicitly redacted (PII check hard-fails)
+- The distillation LLM model version must be pinned (avoid drift)
+- The distillation.source field is **required** in SKILL.md frontmatter:
   ```yaml
   distillation:
     type: "from_traces"
@@ -260,40 +260,40 @@ manifest    inputs                   + bindings  + diff         (draft tier)
     redaction_rules_version: "1.0.0"
   ```
 
-## 8. Lifecycle Operations / 生命周期操作
+## 8. Lifecycle Operations
 
-详见 `templates/lifecycle-policy.template.yaml`。核心操作：
+See `templates/lifecycle-policy.template.yaml` for details. Core operations:
 
-| 操作 | 输入 | 输出 |
+| Operation | Input | Output |
 |---|---|---|
-| `install` | skill source（local path / git url / package） | 写入 registry，tier 由 trust 评估决定 |
-| `enable` | skill_id | 允许 session 触发 |
-| `disable` | skill_id | 不再触发；不删除 |
-| `update` | new version | 跑 trigger eval + 回归 → 通过则替换 |
-| `deprecate` | skill_id + reason | 标记弃用；保留至 retention 到期 |
-| `audit` | skill_id | 输出依赖图 + 调用统计 + 安全审计 |
+| `install` | skill source (local path / git url / package) | written to registry; tier determined by trust assessment |
+| `enable` | skill_id | Sessions may trigger it |
+| `disable` | skill_id | no longer triggers; not deleted |
+| `update` | new version | run trigger eval + regression → replace on pass |
+| `deprecate` | skill_id + reason | mark deprecated; kept until retention expires |
+| `audit` | skill_id | outputs dependency graph + invocation stats + security audit |
 
-## 9. 安全 / Security
+## 9. Security
 
-- skill 加载时静态扫描 description / body：禁用 prompt injection 模式（`ignore previous`、`你现在是` 等系统级指令）
-- description 不允许动态生成（无变量插值）
-- community / unknown tier skill：默认禁所有 write 类工具；只允许 read + sandbox
-- approval_required：每次调用都触发，无 "remember my choice"
+- Statically scan description / body at skill load time: prompt-injection patterns are banned (system-level directives such as `ignore previous` and their Chinese-language equivalents)
+- Descriptions must not be dynamically generated (no variable interpolation)
+- community / unknown tier skills: all write-class tools denied by default; only read + sandbox allowed
+- approval_required: fires on every invocation; no "remember my choice"
 
-## 10. 强约束 / Hard requirements
+## 10. Hard requirements
 
 - description ≤ 300 chars
-- version 不允许 `latest` / `auto` / `stable`
-- 所有 SKILL.md 必须 `redacted=true`
-- 所有 mcp-config 中 secrets 必须 env 占位，不许内联
-- 蒸馏来源必须保留至少 retention 期，便于复现
+- version must not be `latest` / `auto` / `stable`
+- every SKILL.md must have `redacted=true`
+- all secrets in mcp-config must be env placeholders; inlining forbidden
+- distillation sources must be kept for at least the retention period, for reproducibility
 
-## 11. 与其他目录的接口 / Interfaces
+## 11. Interfaces with other directories
 
-### 11.1 Session 中的 skill 调用
+### 11.1 Skill invocation within a Session
 
 ```yaml
-# 在 trace 里：
+# in the trace:
 - type: tool_call
   tool: "skill.invoke"
   args:
@@ -305,24 +305,24 @@ manifest    inputs                   + bindings  + diff         (draft tier)
   artifact_ids: ["art_<sha8>"]
 ```
 
-### 11.2 Harness 评估
+### 11.2 Harness evaluation
 
-新增 evaluator 类型：
-- `skill.trigger_recall`：description 召回率
-- `skill.trigger_precision`：误触发率
-- `skill.contract_compliance`：输出是否符合 SKILL.md 声明的 outputs.schema_ref
+New evaluator types:
+- `skill.trigger_recall`: description recall rate
+- `skill.trigger_precision`: false-trigger rate
+- `skill.contract_compliance`: whether outputs conform to the outputs.schema_ref declared in SKILL.md
 
-## 12. 扩展点 / Extension points
+## 12. Extension points
 
-- `frontmatter.extensions.<vendor>`：厂商/工具自定义元数据
-- 新 distillation 类型：通过新增 `templates/distillation-from-<source>.template.yaml`
-- MCP transport：可扩展（除 stdio/http/sse 外，未来支持 websocket）
+- `frontmatter.extensions.<vendor>`: vendor/tool-specific custom metadata
+- New distillation types: add a new `templates/distillation-from-<source>.template.yaml`
+- MCP transport: extensible (beyond stdio/http/sse, websocket support in the future)
 
-## 13. Iteration Mechanism / 迭代机制
+## 13. Iteration Mechanism
 
-> 详细规范见独立文档 `skills/ITERATION.md`。本节给概览。
+> Detailed spec in the standalone document `skills/ITERATION.md`. This section is an overview.
 
-Skill 不是"一次写完就用"——它需要**持续小步演进**到稳定。OpsPilot 给出的迭代闭环：
+A skill is not "written once and done" — it needs **continuous small-step evolution** toward stability. OpsPilot's iteration loop:
 
 ```
 feedback signals → trigger → propose → vary (1..M variants)
@@ -337,52 +337,52 @@ feedback signals → trigger → propose → vary (1..M variants)
                   registry update + lineage entry + rollback window
 ```
 
-### 13.1 关键对象
+### 13.1 Key objects
 
-- **Iteration**（`itr_<ULID>`）：一次完整的"针对某 skill 改进"尝试，含 trigger / hypothesis / proposed_changes / evaluation / decision；schema：`schemas/iteration.schema.json`
-- **Variant**（`var_<sha8>`）：候选版本，从 stable fork；schema：`schemas/skill-variant.schema.json`
-- **FeedbackSignal**（`fb_<ULID>`）：单条结构化反馈；schema：`schemas/feedback-signal.schema.json`
+- **Iteration** (`itr_<ULID>`): one complete "improve this skill" attempt, with trigger / hypothesis / proposed_changes / evaluation / decision; schema: `schemas/iteration.schema.json`
+- **Variant** (`var_<sha8>`): a candidate version, forked from stable; schema: `schemas/skill-variant.schema.json`
+- **FeedbackSignal** (`fb_<ULID>`): a single structured feedback record; schema: `schemas/feedback-signal.schema.json`
 
-### 13.2 6 类触发条件
+### 13.2 6 trigger types
 
-`regression_detected` / `feedback_signal` / `distillation_candidate` / `model_upgrade` / `scheduled` / `manual`。每次 iteration 必须显式声明 trigger.type，否则加载时拒绝。
+`regression_detected` / `feedback_signal` / `distillation_candidate` / `model_upgrade` / `scheduled` / `manual`. Every iteration must explicitly declare trigger.type; otherwise it is rejected at load time.
 
-### 13.3 7 类反馈信号
+### 13.3 7 feedback signal types
 
-`user_action.{accept,reject,edit}` / `harness_score` / `distillation_pattern` / `model_drift` / `trace_failure`。统一脱敏后写入 `skills/feedback/<skill_ref>/signals.jsonl`，按 14 天半衰期衰减后聚合，超过 `feedback_min_weight_to_trigger`（默认 5.0）触发 iteration。
+`user_action.{accept,reject,edit}` / `harness_score` / `distillation_pattern` / `model_drift` / `trace_failure`. Uniformly redacted and written to `skills/feedback/<skill_ref>/signals.jsonl`, aggregated with a 14-day half-life decay; once the total exceeds `feedback_min_weight_to_trigger` (default 5.0), an iteration is triggered.
 
-### 13.4 晋升必须**全部**满足
+### 13.4 Promotion requires **all** of
 
-1. anchor fixtures 上无回归
-2. 加权分提升 ≥ `min_delta_weighted`（默认 0.01）
-3. cost 增长 ≤ 10%
-4. trigger eval 仍达标（recall ≥0.9, FP ≤0.05）
-5. 静态检查全过（PII / prompt-injection / tool resolvable）
+1. no regression on anchor fixtures
+2. weighted score improvement ≥ `min_delta_weighted` (default 0.01)
+3. cost growth ≤ 10%
+4. trigger eval still passing (recall ≥0.9, FP ≤0.05)
+5. all static checks pass (PII / prompt-injection / tool resolvable)
 
-不满足任一 → losing → archive。
+Failing any one → losing → archive.
 
-### 13.5 Lineage（演化谱系）
+### 13.5 Lineage
 
-每个 stable skill 维护 `skills/lineage/<skill_name>.yaml`，是有向 DAG，记录每个 version 的 parent + iteration_id + summary。回滚不删历史，只追加 "rolled_back_to_x.y.z" 条目。
+Every stable skill maintains `skills/lineage/<skill_name>.yaml`, a directed DAG recording each version's parent + iteration_id + summary. Rollback does not delete history; it only appends a "rolled_back_to_x.y.z" entry.
 
-### 13.6 反模式（来自 ITERATION.md）
+### 13.6 Anti-patterns (from ITERATION.md)
 
-- ❌ 跳过 evaluate 直接 promote
-- ❌ 同次同时改 description + body + requires.tools（无法归因）
-- ❌ 用过期 fixtures
-- ❌ 把 user_action.edit 的 diff 视为权威（只是信号，不是答案）
+- ❌ Skipping evaluate and promoting directly
+- ❌ Changing description + body + requires.tools in the same iteration (impossible to attribute)
+- ❌ Using stale fixtures
+- ❌ Treating a user_action.edit diff as authoritative (it is a signal, not the answer)
 
-### 13.7 文件清单
+### 13.7 File inventory
 
 ```
 skills/
-├── ITERATION.md                                       # 详细规范
+├── ITERATION.md                                       # detailed spec
 ├── schemas/
 │   ├── iteration.schema.json
 │   ├── skill-variant.schema.json
 │   └── feedback-signal.schema.json
 └── templates/
-    ├── iteration-recipe.template.yaml                # 单次配方
-    ├── iteration-policy.template.yaml                # 全局策略
-    └── feedback-collector.template.yaml              # 反馈源配置
+    ├── iteration-recipe.template.yaml                # single-iteration recipe
+    ├── iteration-policy.template.yaml                # global policy
+    └── feedback-collector.template.yaml              # feedback source config
 ```
