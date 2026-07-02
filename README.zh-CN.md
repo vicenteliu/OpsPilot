@@ -136,8 +136,9 @@ opspilot serve --reload --with-ui         # API + Web UI → http://localhost:51
 
 ## 安全
 
-- OpsPilot 目前是**单用户、仅本地**设计 —— 不要把 API 暴露到公网
-  （[ADR-0002](docs/adr/0002-stage2-single-user-no-auth.md)、
+- OpsPilot 是**单用户**设计；本地使用无需认证，非回环绑定 fail-closed——
+  必须配置 bearer token，并在前面加 TLS
+  （[ADR-0011](docs/adr/0011-remote-access-bearer-token-proxy-tls.md)、
   [SECURITY.md](SECURITY.md)）
 - 脱敏层处理结构化工作项中的 PII，但向任何模型或工具粘贴内容前请务必先
   手动清理

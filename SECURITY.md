@@ -2,16 +2,22 @@
 
 ## Deployment model — read this first
 
-OpsPilot is currently designed for **single-user, local-only** operation
-([ADR-0002](docs/adr/0002-stage2-single-user-no-auth.md)):
+OpsPilot is a **single-user** tool
+([ADR-0002](docs/adr/0002-stage2-single-user-no-auth.md)). Remote access is
+supported through the remote-access foundation
+([ADR-0011](docs/adr/0011-remote-access-bearer-token-proxy-tls.md)):
 
-- The API has **no authentication** — anything that can reach it can use it.
-- **Do not expose the API or web UI to the internet** (including via tunnels
-  such as ngrok or Cloudflare Tunnel). Every safety property below assumes a
-  trusted local caller.
-- A remote-access foundation (authentication + TLS) is the prerequisite for
-  any remote surface and is tracked on the [roadmap](ROADMAP.md)
-  ([ADR-0010](docs/adr/0010-remote-access-foundation-before-channels.md)).
+- **Local (loopback) use needs no auth** — the default bind is `127.0.0.1`.
+- **Remote binding is fail-closed**: `opspilot serve` refuses any
+  non-loopback host unless an API token is configured
+  (`OPSPILOT_API_TOKEN`). With a token set, every endpoint except `/health`
+  requires `Authorization: Bearer <token>` (constant-time compare).
+- **Always put TLS in front of a remote deployment** — a reverse proxy
+  (nginx/caddy) is the supported path; see
+  [docs/deployment.md](docs/deployment.md#remote-access). A bearer token
+  over plain HTTP is trivially sniffable.
+- There is still **one user and one token** — no accounts, roles, or
+  audit-per-identity. Do not share a deployment across trust boundaries.
 
 ## Safety layers
 

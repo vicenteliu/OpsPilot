@@ -37,7 +37,7 @@ from ..orchestrator.types import load_playbook
 from ..providers.registry import make_provider
 from ..redaction import Redactor
 from ..session.manager import SessionManager
-from .middleware import ObservabilityMiddleware
+from .middleware import AuthMiddleware, ObservabilityMiddleware
 from .routes.chat import router as chat_router
 from .routes.config import router as config_router
 from .routes.doc import router as doc_router
@@ -139,6 +139,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="OpsPilot API", version="0.2.0", lifespan=lifespan)
+
+# Bearer-token auth (ADR-0011). Added first so it runs INNERMOST: CORS
+# preflights short-circuit before it, and Observability still logs 401s.
+# Enabled only when a token is configured (env OPSPILOT_API_TOKEN or
+# config.yaml api_token) — bare local dev stays friction-free.
+_api_token = load_config().api_token
+if _api_token:
+    app.add_middleware(AuthMiddleware, token=_api_token)
 
 # Allow Svelte dev server (5173) and preview server (4173) to call the API.
 app.add_middleware(

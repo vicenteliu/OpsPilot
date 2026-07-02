@@ -1,6 +1,6 @@
 <script lang="ts">
   import '../app.css';
-  import { getConfig, getModels, type ModelOption } from '$lib/api';
+  import { getApiToken, getConfig, getModels, setApiToken, type ModelOption } from '$lib/api';
   import GuideTab from '$lib/components/GuideTab.svelte';
   import MCPTab from '$lib/components/MCPTab.svelte';
   import IterationTab from '$lib/components/IterationTab.svelte';
@@ -25,6 +25,10 @@
   function toggleTheme() {
     theme = theme === 'dark' ? 'light' : 'dark';
   }
+
+  // --- API token (only needed when the backend sets OPSPILOT_API_TOKEN) ---
+  let apiToken = $state<string>(typeof localStorage !== 'undefined' ? getApiToken() : '');
+  $effect(() => setApiToken(apiToken));
 
   // --- Active Tab ---
   type Tab = 'run' | 'kb' | 'wiki' | 'vendordoc' | 'mcp' | 'iteration' | 'chat' | 'guide';
@@ -109,6 +113,14 @@
       {:else}
         <span class="model-ref" title="Active model">{selectedModelId || modelRef || '—'}</span>
       {/if}
+      <div class="foot-label">API token</div>
+      <input
+        class="token-input"
+        type="password"
+        placeholder="unset (local mode)"
+        bind:value={apiToken}
+        autocomplete="off"
+      />
       <button class="theme-toggle" onclick={toggleTheme} title="Toggle theme" aria-label="Toggle theme">
         {theme === 'dark' ? '☀ light' : '☾ dark'}
       </button>
@@ -291,6 +303,17 @@
 
   .model-select { cursor: pointer; }
   .model-select:disabled { opacity: 0.6; cursor: not-allowed; }
+
+  .token-input {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    padding: 0.3rem 0.5rem;
+    border-radius: 4px;
+    border: 1px solid var(--border-strong);
+    background: var(--bg-subtle);
+    color: var(--text);
+    width: 100%;
+  }
 
   .theme-toggle {
     background: none;

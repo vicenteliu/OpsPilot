@@ -1,3 +1,28 @@
+// ── Auth (ADR-0011) ────────────────────────────────────────────────────────
+// When the backend has OPSPILOT_API_TOKEN set, every request needs a Bearer
+// token. The token is kept in localStorage (set from the sidebar) and
+// attached here so call sites stay unchanged.
+
+const TOKEN_KEY = 'opspilot_api_token';
+
+export function getApiToken(): string {
+  return typeof localStorage !== 'undefined' ? (localStorage.getItem(TOKEN_KEY) ?? '') : '';
+}
+
+export function setApiToken(token: string): void {
+  if (typeof localStorage === 'undefined') return;
+  if (token) localStorage.setItem(TOKEN_KEY, token);
+  else localStorage.removeItem(TOKEN_KEY);
+}
+
+function apiFetch(input: string, init: RequestInit = {}): Promise<Response> {
+  const token = getApiToken();
+  if (token) {
+    init.headers = { ...(init.headers ?? {}), Authorization: `Bearer ${token}` };
+  }
+  return fetch(input, init);
+}
+
 export interface RunRequest {
   input: Record<string, unknown>;
 }
@@ -84,13 +109,13 @@ export interface ModelsResponse {
 }
 
 export async function getConfig(): Promise<ConfigResponse> {
-  const res = await fetch('/api/config');
+  const res = await apiFetch('/api/config');
   if (!res.ok) throw new Error(`Config fetch failed: ${res.status}`);
   return res.json();
 }
 
 export async function getModels(): Promise<ModelsResponse> {
-  const res = await fetch('/api/models');
+  const res = await apiFetch('/api/models');
   if (!res.ok) throw new Error(`Models fetch failed: ${res.status}`);
   return res.json();
 }
@@ -100,7 +125,7 @@ export async function runTicket(
   modelId?: string,
   playbookId?: string
 ): Promise<RunResponse> {
-  const res = await fetch('/api/run', {
+  const res = await apiFetch('/api/run', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ input, model_id: modelId ?? null, playbook_id: playbookId ?? null })
@@ -119,7 +144,7 @@ export async function* runTicketStream(
   modelId?: string,
   playbookId?: string
 ): AsyncGenerator<StreamEvent> {
-  const res = await fetch('/api/run/stream', {
+  const res = await apiFetch('/api/run/stream', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ input, model_id: modelId ?? null, playbook_id: playbookId ?? null })
@@ -165,14 +190,14 @@ export interface SessionSummary {
 }
 
 export async function listSessions(): Promise<SessionSummary[]> {
-  const res = await fetch('/api/sessions');
+  const res = await apiFetch('/api/sessions');
   if (!res.ok) throw new Error(`Sessions fetch failed: ${res.status}`);
   const data = await res.json();
   return data.sessions;
 }
 
 export async function getSession(sessionId: string): Promise<RunResponse> {
-  const res = await fetch(`/api/sessions/${sessionId}`);
+  const res = await apiFetch(`/api/sessions/${sessionId}`);
   if (!res.ok) throw new Error(`Session fetch failed: ${res.status}`);
   return res.json();
 }
@@ -196,7 +221,7 @@ export interface SkillLineage {
 }
 
 export async function getLineage(): Promise<SkillLineage[]> {
-  const res = await fetch('/api/iteration/lineage');
+  const res = await apiFetch('/api/iteration/lineage');
   if (!res.ok) throw new Error(`Lineage fetch failed: ${res.status}`);
   const data = await res.json();
   return data.lineages;
@@ -260,13 +285,13 @@ export interface KBConflict {
 }
 
 export async function getKBStats(): Promise<KBStats> {
-  const res = await fetch('/api/kb/stats');
+  const res = await apiFetch('/api/kb/stats');
   if (!res.ok) throw new Error(`KB stats fetch failed: ${res.status}`);
   return res.json();
 }
 
 export async function listKBDocs(): Promise<KBDoc[]> {
-  const res = await fetch('/api/kb/docs');
+  const res = await apiFetch('/api/kb/docs');
   if (!res.ok) throw new Error(`KB docs fetch failed: ${res.status}`);
   const data = await res.json();
   return data.docs;
@@ -275,7 +300,7 @@ export async function listKBDocs(): Promise<KBDoc[]> {
 export async function listCorrections(chunkId?: string, limit = 50): Promise<KBCorrection[]> {
   const params = new URLSearchParams({ limit: String(limit) });
   if (chunkId) params.set('chunk_id', chunkId);
-  const res = await fetch(`/api/kb/corrections?${params}`);
+  const res = await apiFetch(`/api/kb/corrections?${params}`);
   if (!res.ok) throw new Error(`Corrections fetch failed: ${res.status}`);
   const data = await res.json();
   return data.corrections;
@@ -283,14 +308,14 @@ export async function listCorrections(chunkId?: string, limit = 50): Promise<KBC
 
 export async function searchKB(query: string, topK = 5): Promise<KBHit[]> {
   const params = new URLSearchParams({ q: query, top_k: String(topK) });
-  const res = await fetch(`/api/kb/search?${params}`);
+  const res = await apiFetch(`/api/kb/search?${params}`);
   if (!res.ok) throw new Error(`KB search failed: ${res.status}`);
   const data = await res.json();
   return data.hits;
 }
 
 export async function ingestKB(paths: string[]): Promise<{ docs_succeeded: number; docs_failed: number; chunks_total: number }> {
-  const res = await fetch('/api/kb/ingest', {
+  const res = await apiFetch('/api/kb/ingest', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ paths })
@@ -301,7 +326,7 @@ export async function ingestKB(paths: string[]): Promise<{ docs_succeeded: numbe
 
 export async function listConflicts(status = 'open'): Promise<KBConflict[]> {
   const params = new URLSearchParams({ status });
-  const res = await fetch(`/api/kb/conflicts?${params}`);
+  const res = await apiFetch(`/api/kb/conflicts?${params}`);
   if (!res.ok) throw new Error(`Conflicts fetch failed: ${res.status}`);
   const data = await res.json();
   return data.conflicts;
@@ -313,7 +338,7 @@ export async function resolveConflict(
   resolvedBy = 'web-user',
   note = ''
 ): Promise<void> {
-  const res = await fetch(`/api/kb/conflicts/${conflictId}/resolve`, {
+  const res = await apiFetch(`/api/kb/conflicts/${conflictId}/resolve`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ resolution, resolved_by: resolvedBy, note })
@@ -327,7 +352,7 @@ export async function correctChunk(
   reason: string,
   correctedBy = 'web-user'
 ): Promise<{ corr_id: string; chunk_id: string; ok: boolean }> {
-  const res = await fetch(`/api/kb/chunks/${encodeURIComponent(chunkId)}/correct`, {
+  const res = await apiFetch(`/api/kb/chunks/${encodeURIComponent(chunkId)}/correct`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ new_content: newContent, reason, corrected_by: correctedBy })
@@ -363,7 +388,7 @@ export interface DocGenRequest {
 }
 
 export async function generateVendorDoc(req: DocGenRequest): Promise<RunResponse & { result: VendorDoc }> {
-  const res = await fetch('/api/doc/generate', {
+  const res = await apiFetch('/api/doc/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(req)
@@ -373,7 +398,7 @@ export async function generateVendorDoc(req: DocGenRequest): Promise<RunResponse
 }
 
 export async function* generateVendorDocStream(req: DocGenRequest): AsyncGenerator<StreamEvent> {
-  const res = await fetch('/api/doc/generate/stream', {
+  const res = await apiFetch('/api/doc/generate/stream', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(req)
@@ -435,7 +460,7 @@ export interface WikiLintIssue {
 }
 
 export async function wikiIngest(docId: string, model = 'qwen2.5:7b'): Promise<WikiIngestResult> {
-  const res = await fetch('/api/wiki/ingest', {
+  const res = await apiFetch('/api/wiki/ingest', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ doc_id: docId, model })
@@ -445,7 +470,7 @@ export async function wikiIngest(docId: string, model = 'qwen2.5:7b'): Promise<W
 }
 
 export async function wikiQueryToPage(sessionId?: string): Promise<{ pages_created: number; pages: WikiPage[] }> {
-  const res = await fetch('/api/wiki/query-to-page', {
+  const res = await apiFetch('/api/wiki/query-to-page', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ session_id: sessionId ?? null })
@@ -455,14 +480,14 @@ export async function wikiQueryToPage(sessionId?: string): Promise<{ pages_creat
 }
 
 export async function wikiLint(): Promise<WikiLintIssue[]> {
-  const res = await fetch('/api/wiki/lint');
+  const res = await apiFetch('/api/wiki/lint');
   if (!res.ok) throw new Error(`Wiki lint failed: ${res.status}`);
   const data = await res.json();
   return data.issues;
 }
 
 export async function wikiPromote(slug: string): Promise<{ old_state: string; new_state: string; new_version: string; skipped: boolean; skip_reason: string }> {
-  const res = await fetch(`/api/wiki/promote/${encodeURIComponent(slug)}`, { method: 'POST' });
+  const res = await apiFetch(`/api/wiki/promote/${encodeURIComponent(slug)}`, { method: 'POST' });
   if (!res.ok) throw new Error(`Wiki promote failed: ${res.status}`);
   return res.json();
 }
@@ -480,7 +505,7 @@ export interface WikiPageSummary {
 }
 
 export async function listWikiPages(): Promise<WikiPageSummary[]> {
-  const res = await fetch('/api/wiki/pages');
+  const res = await apiFetch('/api/wiki/pages');
   if (!res.ok) throw new Error(`Wiki pages fetch failed: ${res.status}`);
   const data = await res.json();
   return data.pages;
@@ -494,7 +519,7 @@ export interface WikiPageDetail extends WikiPageSummary {
 }
 
 export async function getWikiPage(slug: string): Promise<WikiPageDetail> {
-  const res = await fetch(`/api/wiki/pages/${encodeURIComponent(slug)}`);
+  const res = await apiFetch(`/api/wiki/pages/${encodeURIComponent(slug)}`);
   if (!res.ok) throw new Error(`Wiki page fetch failed: ${res.status}`);
   return res.json();
 }
@@ -510,14 +535,14 @@ export interface VendorDocSummary {
 }
 
 export async function listVendorDocs(): Promise<VendorDocSummary[]> {
-  const res = await fetch('/api/vendor-docs');
+  const res = await apiFetch('/api/vendor-docs');
   if (!res.ok) throw new Error(`Vendor docs fetch failed: ${res.status}`);
   const data = await res.json();
   return data.docs;
 }
 
 export async function getVendorDoc(filename: string): Promise<VendorDoc> {
-  const res = await fetch(`/api/vendor-docs/${encodeURIComponent(filename)}`);
+  const res = await apiFetch(`/api/vendor-docs/${encodeURIComponent(filename)}`);
   if (!res.ok) throw new Error(`Vendor doc fetch failed: ${res.status}`);
   return res.json();
 }
@@ -543,7 +568,7 @@ export async function* chatStream(
   messages: ChatMessage[],
   modelId?: string
 ): AsyncGenerator<ChatStreamEvent> {
-  const res = await fetch('/api/chat/stream', {
+  const res = await apiFetch('/api/chat/stream', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ messages, model_id: modelId ?? null })
@@ -594,7 +619,7 @@ export interface MCPServer {
 }
 
 export async function listMCPServers(): Promise<MCPServer[]> {
-  const res = await fetch('/api/mcp/servers');
+  const res = await apiFetch('/api/mcp/servers');
   if (!res.ok) throw new Error(`MCP servers fetch failed: ${res.status}`);
   const data = await res.json();
   return data.servers;

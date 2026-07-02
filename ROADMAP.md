@@ -10,16 +10,17 @@ Coarse-grained direction, not a commitment. Concrete work items live in
   (`README.zh-CN.md` at root), plus `CONTRIBUTING.md` and `SECURITY.md`
 - Web UI redesign: dark-first developer-tool theme, sidebar navigation
 
-## Next — remote access foundation
+## Shipped — remote access foundation
 
-Everything below this line requires remote, multi-device access to the API.
-Today OpsPilot is deliberately single-user / no-auth / local-only
-([ADR-0002](docs/adr/0002-stage2-single-user-no-auth.md)), so the foundation
-comes first ([ADR-0010](docs/adr/0010-remote-access-foundation-before-channels.md)):
+Everything below requires remote, multi-device access to the API. The
+foundation required by
+[ADR-0010](docs/adr/0010-remote-access-foundation-before-channels.md) landed
+as [ADR-0011](docs/adr/0011-remote-access-bearer-token-proxy-tls.md):
 
-- Authentication and TLS for the FastAPI surface
-- Re-evaluate the PII-redaction boundary for remote callers
-- A new ADR superseding ADR-0002 when this lands
+- ✅ Bearer-token authentication (fail-closed for non-loopback binds)
+- ✅ TLS via reverse proxy (supported path) or uvicorn `--ssl-*` passthrough
+- ✅ PII boundary re-evaluated for remote callers (redact-before-store holds;
+  token gates reads, TLS protects transit)
 
 ## Later — Channels
 

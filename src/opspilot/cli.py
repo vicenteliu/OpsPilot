@@ -1824,6 +1824,25 @@ def tui_run(
 # ──────────────────────────────────────────────────────────────────────────
 
 
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+
+
+def _remote_binding_error(host: str, token: str | None) -> str | None:
+    """Fail-closed guard (ADR-0011): non-loopback binds require an API token.
+
+    Mirrors the sandbox L3 philosophy — refuse to start rather than silently
+    expose an unauthenticated API beyond localhost.
+    """
+    if host in _LOOPBACK_HOSTS or token:
+        return None
+    return (
+        f"Refusing to bind on {host!r} without an API token: every safety "
+        "property assumes a trusted local caller (see SECURITY.md). Set "
+        "OPSPILOT_API_TOKEN (or api_token in ~/.opspilot/config.yaml) and "
+        "retry, or bind to 127.0.0.1."
+    )
+
+
 @app.command("serve")
 def serve(
     host: str = typer.Option("127.0.0.1", "--host", "-H", help="Bind host."),
@@ -1837,11 +1856,20 @@ def serve(
     ui_port: int = typer.Option(
         5173, "--ui-port", help="Frontend dev server port (used with --with-ui)."
     ),
+    ssl_certfile: Path | None = typer.Option(  # noqa: B008
+        None, "--ssl-certfile", help="TLS certificate (PEM); prefer a reverse proxy."
+    ),
+    ssl_keyfile: Path | None = typer.Option(  # noqa: B008
+        None, "--ssl-keyfile", help="TLS private key (PEM); prefer a reverse proxy."
+    ),
 ) -> None:
     """Start the OpsPilot FastAPI server with uvicorn.
 
     Use --with-ui to start the Svelte frontend alongside the API server.
     Both processes are stopped together on Ctrl+C.
+
+    Binding beyond loopback requires an API token (OPSPILOT_API_TOKEN);
+    see docs/deployment.md for the remote-access setup.
     """
     import atexit
     import os
@@ -1850,6 +1878,11 @@ def serve(
     import uvicorn
 
     from .api.middleware import configure_json_logging
+
+    binding_error = _remote_binding_error(host, load_config().api_token)
+    if binding_error:
+        _err.print(f"[red]{binding_error}[/red]")
+        raise typer.Exit(code=1)
 
     if json_logs:
         configure_json_logging()
@@ -1880,13 +1913,16 @@ def serve(
 
         atexit.register(_stop_frontend)
 
-    _console.print(f"Starting OpsPilot API on http://{host}:{port}")
+    scheme = "https" if ssl_certfile else "http"
+    _console.print(f"Starting OpsPilot API on {scheme}://{host}:{port}")
     uvicorn.run(
         "opspilot.api.app:app",
         host=host,
         port=port,
         workers=workers,
         reload=reload,
+        ssl_certfile=str(ssl_certfile) if ssl_certfile else None,
+        ssl_keyfile=str(ssl_keyfile) if ssl_keyfile else None,
         log_config=None if json_logs else uvicorn.config.LOGGING_CONFIG,
     )
 
