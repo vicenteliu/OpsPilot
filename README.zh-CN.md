@@ -74,7 +74,9 @@ cp .env.example .env
 ### 4. 摄取知识库
 
 ```bash
-opspilot kb ingest kb/
+# 仓库自带的英文示例知识库（SOP 与 runbook）：
+opspilot ingest examples/sample_data_en/kb/
+# 也可以指向你自己的 markdown/PDF/DOCX 文档目录。
 ```
 
 ### 5. 运行

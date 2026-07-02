@@ -75,10 +75,12 @@ cp .env.example .env
 # Edit .env — add ANTHROPIC_API_KEY or other cloud keys if using cloud providers
 ```
 
-### 4. Ingest the knowledge base
+### 4. Ingest a knowledge base
 
 ```bash
-opspilot kb ingest kb/
+# Sample English KB (SOPs and runbooks) shipped with the repo:
+opspilot ingest examples/sample_data_en/kb/
+# Or point it at your own directory of markdown/PDF/DOCX documents.
 ```
 
 ### 5. Run

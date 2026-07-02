@@ -3,7 +3,7 @@
   "kind": "request",
   "query": "VPN authentication failed multiple users how to triage",
   "mode": "hybrid",
-  "scopes": ["opspilot:public-kb-en"],
+  "scopes": ["opspilot:public-kb"],
   "top_k": 8,
   "filters": {
     "classification": { "in": ["public", "internal"] },

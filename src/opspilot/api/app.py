@@ -60,7 +60,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     cfg = load_config()
 
     playbooks_base = cfg.playbooks_dir or Path("playbooks")
-    playbook_id = os.environ.get("OPSPILOT_DEFAULT_PLAYBOOK", "pb_ticket_summary_zh")
+    playbook_id = os.environ.get("OPSPILOT_DEFAULT_PLAYBOOK", "pb_ticket_summary_en")
     playbook = load_playbook(playbooks_base / playbook_id)
     vendor_doc_pb = load_playbook(playbooks_base / "pb_vendor_doc_en")
     request_fulfillment_pb = load_playbook(playbooks_base / "pb_request_fulfillment_zh")

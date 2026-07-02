@@ -11,7 +11,7 @@ class ApiRunRequest(BaseModel):
     """Request body for POST /api/run."""
 
     input: dict[str, Any]  # raw ticket JSON
-    playbook_id: str | None = None  # defaults to "pb_ticket_summary_zh"
+    playbook_id: str | None = None  # defaults to "pb_ticket_summary_en"
     model_id: str | None = (
         None  # e.g. "anthropic/claude-haiku-4-5-20251001"; None = playbook default
     )

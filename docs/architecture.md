@@ -55,7 +55,7 @@ src/opspilot/
   mcp/          MCP JSON-RPC 2.0 client — stdio + HTTP transports
 web/            Svelte 5 frontend (tabbed UI)
 playbooks/      YAML playbook specs + system prompts
-kb/             Source documents for KB ingestion
+examples/       Frozen e2e scenarios + sample KBs (sample_data_en, …)
 deploy/         systemd unit + nginx config for Linux production
 ```
 

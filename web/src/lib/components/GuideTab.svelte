@@ -2,7 +2,7 @@
   // Guide tab — static, self-contained architecture/workflow/feature reference.
   // No API calls; owns all its own state and data.
   type GuideKey = 'zh' | 'en';
-  let guideLang  = $state<GuideKey>('zh');
+  let guideLang  = $state<GuideKey>('en');
   let selectedArch = $state<string | null>(null);
   let selectedStep = $state<number | null>(null);
   let expandedFeat = $state<string | null>(null);
@@ -21,14 +21,14 @@
 
   const WF_STEPS: Record<GuideKey, { n: number; name: string; desc: string; accent?: boolean }[]> = {
     zh: [
-      { n: 1, name: 'Input',        desc: 'Ticket JSON / 自然语言' },
+      { n: 1, name: 'Input',        desc: 'Work item JSON / 自然语言' },
       { n: 2, name: 'WebUI / API',  desc: 'SSE streaming' },
       { n: 3, name: 'Orchestrator', desc: 'ReAct · KB · MCP · LLM', accent: true },
       { n: 4, name: 'Session',      desc: 'trace · score · audit' },
       { n: 5, name: 'Output',       desc: 'JSON + Markdown' },
     ],
     en: [
-      { n: 1, name: 'Input',        desc: 'Ticket JSON / Natural Language' },
+      { n: 1, name: 'Input',        desc: 'Work item JSON / Natural Language' },
       { n: 2, name: 'WebUI / API',  desc: 'SSE streaming' },
       { n: 3, name: 'Orchestrator', desc: 'ReAct · KB · MCP · LLM', accent: true },
       { n: 4, name: 'Session',      desc: 'trace · score · audit' },
@@ -43,7 +43,7 @@
       { key: 'mcp',  accent: 'teal',  title: 'MCP 集成',   items: ['JSON-RPC 2.0，支持 stdio 和 HTTP 两种传输', '工具前缀路由：mcp__fs__read_file', 'allowlist / denylist 工具过滤，全局审计开关', 'MCP tab 展示已注册服务器和工具列表'] },
       { key: 'eval', accent: 'amber', title: '评估与迭代', items: ['Golden Test Harness，多维度 evaluator 打分', 'Skill Lineage 版本树，支持 rollback 标记', 'OpenRouter / Gemini 两条 golden-test 管道', 'make golden-* 一键运行对比测试'] },
       { key: 'sec',  accent: 'red',   title: '安全与合规', items: ['PII 自动脱敏：邮箱、手机、IP、主机名等', '防二次脱敏：已有占位符不会被重复处理', 'MCP 配置禁止内联 secret，必须用环境变量', '全局 audit_every_call 审计开关'] },
-      { key: 'ui',   accent: 'slate', title: '操作界面',   items: ['8 Tab WebUI：Run/Chat/KB/Wiki/VendorDoc/MCP/Iteration/Guide', 'REPL TUI，类 Claude Code 的终端交互体验', 'FastAPI REST + SSE，支持前后端分离部署', '暗色 / 亮色主题切换，响应式布局'] },
+      { key: 'ui',   accent: 'slate', title: '操作界面',   items: ['8 模块侧边栏 WebUI：Run/Chat/KB/Wiki/VendorDoc/MCP/Iteration/Guide', 'REPL TUI，类 Claude Code 的终端交互体验', 'FastAPI REST + SSE，支持前后端分离部署', '暗色优先主题（可切亮色），响应式布局'] },
     ],
     en: [
       { key: 'ai',   accent: 'blue',  title: 'AI Capabilities',  items: ['Supports Anthropic Claude, Google Gemini, OpenRouter and more', 'ReAct reasoning loop, continues generation after tool calls', 'SSE streaming output, Run / Chat both support real-time responses', 'Session-level model and provider recording'] },
@@ -51,7 +51,7 @@
       { key: 'mcp',  accent: 'teal',  title: 'MCP Integration',  items: ['JSON-RPC 2.0, supports stdio and HTTP transports', 'Tool prefix routing: mcp__fs__read_file', 'allowlist / denylist filtering, global audit switch', 'MCP tab shows registered servers and tool lists'] },
       { key: 'eval', accent: 'amber', title: 'Eval & Iteration',  items: ['Golden Test Harness with multi-dimensional evaluator scoring', 'Skill Lineage version tree with rollback markers', 'OpenRouter / Gemini two golden-test pipelines', 'make golden-* for one-command comparison testing'] },
       { key: 'sec',  accent: 'red',   title: 'Security',         items: ['Auto PII masking: email, phone, IP, hostname rules', 'Double-redaction guard: existing placeholders are skipped', 'MCP config prohibits inline secrets, must use env vars', 'Global audit_every_call switch'] },
-      { key: 'ui',   accent: 'slate', title: 'Interfaces',        items: ['8 Tab WebUI: Run/Chat/KB/Wiki/VendorDoc/MCP/Iteration/Guide', 'REPL TUI, Claude Code-style terminal interaction', 'FastAPI REST + SSE, supports separated deployment', 'Light / dark theme toggle, responsive layout'] },
+      { key: 'ui',   accent: 'slate', title: 'Interfaces',        items: ['8-module sidebar WebUI: Run/Chat/KB/Wiki/VendorDoc/MCP/Iteration/Guide', 'REPL TUI, Claude Code-style terminal interaction', 'FastAPI REST + SSE, supports separated deployment', 'Dark-first theme (light available), responsive layout'] },
     ],
   };
 
@@ -77,7 +77,7 @@
         { name: '/iteration',             desc: 'Skill lineage 版本树查询，支持 rollback 标记历史' },
       ]},
       en: { title: 'API Layer — Unified Gateway', desc: 'FastAPI provides REST + SSE endpoints. All UI layers access backend capabilities through this layer, supporting separated deployment.', items: [
-        { name: '/run · /run/stream',     desc: 'Submit tickets; stream variant pushes orchestrator trace events via SSE incrementally' },
+        { name: '/run · /run/stream',     desc: 'Submit work items; stream variant pushes orchestrator trace events via SSE incrementally' },
         { name: '/chat · /chat/stream',   desc: 'KB-augmented chat, SSE streaming, auto-retrieves relevant knowledge chunks' },
         { name: '/kb · /wiki · /vendordoc', desc: 'Knowledge base CRUD: upload, query, detail view, JSON/Markdown download' },
         { name: '/mcp',                   desc: 'MCP server registration status and available tool list queries' },
@@ -124,26 +124,26 @@
 
   const WF_DATA: Record<number, Record<GuideKey, WfSec>> = {
     1: {
-      zh: { title: 'Input — 工单输入', desc: '支持 JSON 直接提交或自然语言描述，统一进入 RunRequest schema 校验。', items: [
-        { name: 'JSON 模式',   desc: '字段：title / description / severity(critical|high|medium|low) / tags[] / context{}' },
-        { name: '自然语言模式', desc: 'WebUI NL tab 输入描述，系统自动映射到 RunRequest 字段结构' },
+      zh: { title: 'Input — 工单（Work item）输入', desc: '支持 JSON 直接提交或自然语言描述，统一进入 schema 校验。', items: [
+        { name: 'JSON 模式',   desc: '字段：ticket_id / channel / submitted_at / submitter_role / subject / body' },
+        { name: '自然语言模式', desc: 'WebUI NL tab 输入描述，系统自动映射到工单字段结构' },
         { name: 'Schema 校验', desc: '输入先通过 Pydantic 校验，字段缺失或格式错误立即返回 400 而非进入 orchestrator' },
       ]},
-      en: { title: 'Input — Ticket Submission', desc: 'Supports direct JSON or natural language input, unified through RunRequest schema validation.', items: [
-        { name: 'JSON mode',              desc: 'Fields: title / description / severity(critical|high|medium|low) / tags[] / context{}' },
-        { name: 'Natural language mode',  desc: 'Enter NL description in WebUI NL tab; system auto-maps to RunRequest fields' },
+      en: { title: 'Input — Work Item Submission', desc: 'Supports direct JSON or natural language input, unified through schema validation.', items: [
+        { name: 'JSON mode',              desc: 'Fields: ticket_id / channel / submitted_at / submitter_role / subject / body' },
+        { name: 'Natural language mode',  desc: 'Enter NL description in WebUI NL tab; system auto-maps to work item fields' },
         { name: 'Schema validation',      desc: 'Pydantic validates first; missing fields or format errors return 400 immediately, never reaching orchestrator' },
       ]},
     },
     2: {
       zh: { title: 'WebUI / API — 请求层', desc: 'WebUI 通过 EventSource 建立 SSE 长连接，实时接收 orchestrator 推送的 trace 事件流。', items: [
         { name: 'SSE 连接',  desc: 'POST /api/run/stream 返回 text/event-stream，每个 trace 步骤独立推送，前端逐步渲染' },
-        { name: '模型选择',  desc: '顶部 model selector 切换 provider 与模型，选择写入 RunRequest.model_ref（如 claude-sonnet-4-6）' },
+        { name: '模型选择',  desc: '侧边栏 model selector 切换 provider 与模型，选择写入 RunRequest.model_ref（如 claude-haiku-4-5）' },
         { name: '非流式模式', desc: 'POST /api/run 同步等待完整结果，适合 CLI / CI 自动化场景' },
       ]},
       en: { title: 'WebUI / API — Request Layer', desc: 'WebUI establishes an SSE long-polling connection via EventSource, receiving orchestrator trace events in real time.', items: [
         { name: 'SSE connection',  desc: 'POST /api/run/stream returns text/event-stream; each trace step pushed independently, frontend renders progressively' },
-        { name: 'Model selection', desc: 'Top model selector switches provider and model; written to RunRequest.model_ref (e.g. claude-sonnet-4-6)' },
+        { name: 'Model selection', desc: 'Sidebar model selector switches provider and model; written to RunRequest.model_ref (e.g. claude-haiku-4-5)' },
         { name: 'Non-streaming',   desc: 'POST /api/run synchronously waits for complete result, suitable for CLI / CI automation' },
       ]},
     },
@@ -177,12 +177,12 @@
     },
     5: {
       zh: { title: 'Output — 结果交付', desc: '结果以 JSON 和 Markdown 两种格式导出，可直接归档到 Wiki 或下游系统消费。', items: [
-        { name: 'RunResult JSON', desc: '字段：summary / tried_steps[] / root_cause / recommended_action / score / session_id' },
+        { name: 'RunResult JSON', desc: '字段：summary / symptoms / tried_steps[] / tasks[] / severity_suggested / citations[]（incident_summary_v1）' },
         { name: 'Markdown 导出',  desc: '人类可读报告，包含 trace 摘要与评分，适合写入 Wiki / Notion / Confluence' },
         { name: 'Skill Lineage', desc: '若执行 opspilot iteration promote，结果挂入版本树，可 rollback 到任意历史 skill 版本' },
       ]},
       en: { title: 'Output — Result Delivery', desc: 'Results exported as JSON and Markdown for direct archival to Wiki or downstream system consumption.', items: [
-        { name: 'RunResult JSON', desc: 'Fields: summary / tried_steps[] / root_cause / recommended_action / score / session_id' },
+        { name: 'RunResult JSON', desc: 'Fields: summary / symptoms / tried_steps[] / tasks[] / severity_suggested / citations[] (incident_summary_v1)' },
         { name: 'Markdown export', desc: 'Human-readable report with trace summary and scores; suitable for Wiki / Notion / Confluence' },
         { name: 'Skill Lineage',  desc: 'If opspilot iteration promote is run, result is attached to version tree, enabling rollback to any historical skill version' },
       ]},
@@ -191,8 +191,8 @@
 
   const FEAT_EXTRA: Record<string, Record<GuideKey, { items: SpecItem[] }>> = {
     ai: {
-      zh: { items: [{ label: '默认模型', val: 'claude-sonnet-4-6' }, { label: 'Provider 抽象', val: '自实现，不依赖 LiteLLM' }, { label: 'max_turns', val: '10（可在 playbook 配置）' }, { label: 'Token 计数', val: 'Ollama tokenizer / tiktoken' }] },
-      en: { items: [{ label: 'Default model', val: 'claude-sonnet-4-6' }, { label: 'Provider abstraction', val: 'Custom, no LiteLLM dependency' }, { label: 'max_turns', val: '10 (configurable in playbook)' }, { label: 'Token counting', val: 'Ollama tokenizer / tiktoken' }] },
+      zh: { items: [{ label: '默认模型', val: 'claude-haiku-4-5（pb_ticket_summary_en）' }, { label: 'Provider 抽象', val: '自实现，不依赖 LiteLLM' }, { label: 'max_turns', val: '10（可在 playbook 配置）' }, { label: 'Token 计数', val: 'Ollama tokenizer / tiktoken' }] },
+      en: { items: [{ label: 'Default model', val: 'claude-haiku-4-5 (pb_ticket_summary_en)' }, { label: 'Provider abstraction', val: 'Custom, no LiteLLM dependency' }, { label: 'max_turns', val: '10 (configurable in playbook)' }, { label: 'Token counting', val: 'Ollama tokenizer / tiktoken' }] },
     },
     kb: {
       zh: { items: [{ label: '向量库', val: 'LanceDB (embedded)' }, { label: 'Embedding 模型', val: 'nomic-embed-text via Ollama' }, { label: '检索 top-k', val: '5（可配置）' }, { label: '文档格式', val: 'PDF / DOCX / MD / TXT via markitdown' }] },
@@ -609,7 +609,7 @@
     font-size: 0.82rem;
     font-weight: 700;
     color: var(--text);
-    font-family: 'Courier New', monospace;
+    font-family: var(--font-mono);
   }
 
   .arch-node-sub { font-size: 0.7rem; color: var(--text-muted); }
@@ -693,7 +693,7 @@
   .arch-detail-item-name {
     font-weight: 600;
     color: var(--text);
-    font-family: 'Courier New', monospace;
+    font-family: var(--font-mono);
     font-size: 0.77rem;
   }
 
@@ -746,7 +746,7 @@
   .wf-step-highlight .wf-num { background: var(--primary); color: var(--primary-contrast); }
   .wf-step-selected .wf-num  { background: var(--primary); color: var(--primary-contrast); }
 
-  .wf-name { font-size: 0.8rem; font-weight: 700; color: var(--text); font-family: 'Courier New', monospace; }
+  .wf-name { font-size: 0.8rem; font-weight: 700; color: var(--text); font-family: var(--font-mono); }
   .wf-desc { font-size: 0.69rem; color: var(--text-muted); }
   .wf-arr  { color: var(--text-faint); font-size: 0.9rem; flex-shrink: 0; }
 
@@ -775,7 +775,7 @@
   }
 
   .wf-detail-item:first-child { border-top: none; }
-  .wf-detail-item-name { font-weight: 600; color: var(--text); font-family: 'Courier New', monospace; font-size: 0.76rem; }
+  .wf-detail-item-name { font-weight: 600; color: var(--text); font-family: var(--font-mono); font-size: 0.76rem; }
   .wf-detail-item-desc { color: var(--text-muted); line-height: 1.45; }
 
   .wf-inner {
@@ -890,7 +890,7 @@
   .feat-spec-val {
     font-size: 0.72rem;
     color: var(--text);
-    font-family: 'Courier New', monospace;
+    font-family: var(--font-mono);
   }
 
   /* Animation (guide-only) */

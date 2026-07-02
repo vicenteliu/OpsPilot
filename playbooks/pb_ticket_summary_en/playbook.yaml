@@ -84,7 +84,7 @@ limits:
 defaults:
   retention_class: "medium"
   sensitivity: "internal"
-  kb_id: "opspilot:public-kb-en"
+  kb_id: "opspilot:public-kb"
 
 # Retrieval strategy.
 #   mode=tool     — model decides when to call kb_search (classic ReAct)
