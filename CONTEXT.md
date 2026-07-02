@@ -122,10 +122,10 @@ _Avoid_: security boundary, sandbox (the gate is not the sandbox)
 The ephemeral hardened Docker container an action runs inside: read-only rootfs, `cap-drop ALL`, no-new-privileges, seccomp, tmpfs workdir, no host mounts. This — not the **approval gate** — is what actually contains an action's blast radius.
 _Avoid_: container, jail, isolation layer
 
-### Channels (Roadmap)
+### Channels
 
 **Channel**:
-An external messaging surface (e.g. Telegram, WeCom) connected to OpsPilot, through which a user converses with the assistant; later phases may accept **Work items** through it. Gated on the remote-access foundation (see ADR-0010).
+An external messaging surface (e.g. Telegram, WeCom) connected to OpsPilot, through which a user converses with the assistant; later phases may accept **Work items** through it. First implementation: Telegram assist mode (ADR-0012).
 _Avoid_: integration, connector, bot (the bot is the Channel's client-side agent, not the concept)
 
 ## Relationships
@@ -140,7 +140,7 @@ _Avoid_: integration, connector, bot (the bot is the Channel's client-side agent
 - A **Harness** run takes a **Fixture** as input and scores the resulting **Artifact**
 - A **Chunk** is the unit of both storage (in KB) and citation (in Artifact)
 - A **Skill** is distilled from high-scoring **Sessions** and can be instantiated as a new **Playbook**
-- A **Channel** (roadmap) fronts the KB chat in assist mode; **Work item** intake through a Channel is a later phase
+- A **Channel** fronts the KB chat in assist mode; **Work item** intake through a Channel is a later phase
 
 ## Example dialogue
 

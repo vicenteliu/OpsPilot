@@ -47,8 +47,9 @@ practical work-assistance layer for IT support look like?**
   lifecycle-managed wiki pages on top of the long-term KB
 - **MCP client** — tools from any Model Context Protocol server (stdio/HTTP)
   injected into the ReAct loop, with per-server allow/denylists
-- **Four interfaces** — CLI, REPL terminal UI (Textual, slash commands),
-  tabbed web UI (Svelte 5) with KB-augmented chat, FastAPI backend
+- **Four interfaces + channels** — CLI, REPL terminal UI (Textual, slash
+  commands), tabbed web UI (Svelte 5) with KB-augmented chat, FastAPI
+  backend; Telegram channel brings the KB chat into your messenger
 - **Observability** — Prometheus `/metrics`, OTel-compatible JSON logs,
   `/health`
 - **Rust hot paths** — chunker (9.6×) and tokenizer (45×) compiled via
@@ -134,6 +135,7 @@ flow, the six-layer system design, provider routing, and retrieval modes.
 | [docs/architecture.md](docs/architecture.md) | Request flow, layer design, provider routing, retrieval modes |
 | [docs/cli.md](docs/cli.md) | TUI, harness, sandbox, MCP, and wiki command reference |
 | [docs/deployment.md](docs/deployment.md) | Docker Compose, systemd, observability, configuration |
+| [docs/channels.md](docs/channels.md) | Messaging channels — Telegram assist-mode setup |
 | [docs/specs/](docs/specs/) | Spec contracts: schemas + templates (loaded at runtime) |
 | [docs/adr/](docs/adr/) | Architecture decision records |
 | [ROADMAP.md](ROADMAP.md) | Direction: remote access foundation, Channels, mobile companion |
