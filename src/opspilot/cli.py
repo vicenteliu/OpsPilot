@@ -1893,32 +1893,86 @@ app.add_typer(source_app)
 
 @source_app.command("jsm")
 def source_jsm(
-    replay: Path = typer.Option(  # noqa: B008
-        ...,
+    replay: Path | None = typer.Option(  # noqa: B008
+        None,
         "--replay",
         exists=True,
         file_okay=False,
-        help="Replay recorded JSM API responses from this fixtures directory (live polling: #57).",
+        help="Replay recorded JSM API responses from this fixtures directory (one pass, offline).",
+    ),
+    base_url: str | None = typer.Option(
+        None, "--base-url", help="JSM site base URL, e.g. https://yoursite.atlassian.net."
+    ),
+    email: str | None = typer.Option(
+        None, "--email", help="Atlassian account email (basic-auth username for the API token)."
+    ),
+    jql: str | None = typer.Option(
+        None,
+        "--jql",
+        help="Explicit intake scope, e.g. 'project = IT AND status = \"Open\"'. "
+        "Only matching issues are ever fetched or run.",
+    ),
+    interval: int = typer.Option(60, "--interval", help="Poll interval in seconds (live mode)."),
+    once: bool = typer.Option(
+        False, "--once", help="Run a single intake pass and exit (cron-style)."
     ),
     out: Path = typer.Option(  # noqa: B008
         Path("intake_comments"),
         "--out",
-        help="Directory where suggestion comments are written in replay mode.",
+        help="Directory where suggestion comments are written (live posting lands with #59).",
     ),
     api_url: str = typer.Option(
         "http://127.0.0.1:8001", "--api-url", help="Base URL of the running OpsPilot API."
     ),
 ) -> None:
-    """Run one JSM intake pass in replay mode (see docs/adr/0013).
+    """Run the JSM intake adapter (polling, outbound-only; see docs/adr/0013).
 
-    Requires a running `opspilot serve`. The OpsPilot API token (if
+    Replay mode (--replay) runs one offline pass from fixtures. Live mode
+    needs --base-url, --email, --jql and JSM_API_TOKEN in the environment.
+    Requires a running `opspilot serve`; the OpsPilot API token (if
     configured) is picked up from OPSPILOT_API_TOKEN / config.yaml
     automatically.
     """
-    from .intake import IntakeLoop, OpsPilotRunClient, ReplayTransport
+    from .intake import IntakeLoop, JsmTransport, OpsPilotRunClient, ReplayTransport
 
     client = OpsPilotRunClient(api_url=api_url, api_token=load_config().api_token)
-    report = IntakeLoop(ReplayTransport(replay, out), client).run_once()
+
+    if replay is not None:
+        loop = IntakeLoop(ReplayTransport(replay, out), client)
+    else:
+        missing = [
+            name
+            for name, value in (("--base-url", base_url), ("--email", email), ("--jql", jql))
+            if not value
+        ]
+        if missing:
+            _err.print(f"[red]Live mode needs {', '.join(missing)} (or use --replay).[/red]")
+            raise typer.Exit(code=1)
+        jsm_token = os.environ.get("JSM_API_TOKEN")
+        if not jsm_token:
+            _err.print(
+                "[red]JSM_API_TOKEN is not set. Create an Atlassian API token and "
+                "export it (never pass it as a CLI argument).[/red]"
+            )
+            raise typer.Exit(code=1)
+        assert base_url and email and jql  # narrowed above
+        transport = JsmTransport(
+            base_url=base_url, email=email, api_token=jsm_token, jql=jql, out_dir=out
+        )
+        loop = IntakeLoop(transport, client)
+        if not once:
+            _console.print(f"JSM intake polling every {interval}s — scope: {jql} (Ctrl+C to stop)")
+            try:
+                loop.run_forever(interval)
+            except KeyboardInterrupt:
+                _console.print("\n[dim]source stopped[/dim]")
+            return
+
+    try:
+        report = loop.run_once()
+    except Exception as exc:  # noqa: BLE001 — single pass: report and exit non-zero
+        _err.print(f"[red]intake pass failed: {exc}[/red]")
+        raise typer.Exit(code=1) from exc
     _console.print(
         f"intake pass done — {len(report.commented)} commented, "
         f"{len(report.skipped)} skipped → {out}"

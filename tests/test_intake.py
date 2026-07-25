@@ -12,9 +12,11 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+import pytest
 
 from opspilot.intake import (
     IntakeLoop,
+    JsmTransport,
     OpsPilotRunClient,
     ReplayTransport,
     normalize_issue,
@@ -198,3 +200,102 @@ class TestRenderComment:
         assert "**Requested item:** VPN access for a new starter" in body
         assert "**Approval needed:** yes" in body
         assert "_[kb-1]_" in body
+
+
+# ── JsmTransport (live polling, #57) ───────────────────────────────────────
+
+
+class TestJsmTransport:
+    _JQL = 'project = IT AND status = "Open"'
+
+    def _transport(
+        self,
+        handler: Any,
+        tmp_path: Path,
+        page_size: int = 50,
+    ) -> JsmTransport:
+        return JsmTransport(
+            base_url="https://example.atlassian.net",
+            email="ops@example.com",
+            api_token="jsm-tok",
+            jql=self._JQL,
+            out_dir=tmp_path / "out",
+            http=httpx.Client(transport=httpx.MockTransport(handler)),
+            page_size=page_size,
+        )
+
+    def test_jql_scope_and_auth_sent(self, tmp_path: Path) -> None:
+        capture: dict[str, Any] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            capture["path"] = request.url.path
+            capture["params"] = dict(request.url.params)
+            capture["auth"] = request.headers.get("authorization", "")
+            return httpx.Response(
+                200, json={"issues": [_issue("IT-1", "[System] Incident")], "total": 1}
+            )
+
+        items = self._transport(handler, tmp_path).fetch_new()
+        assert capture["path"] == "/rest/api/2/search"
+        # The JQL filter is the scope: sent verbatim on every request.
+        assert capture["params"]["jql"] == self._JQL
+        assert capture["auth"].startswith("Basic ")
+        assert [i.key for i in items] == ["IT-1"]
+        assert items[0].work_item["work_item_type"] == "incident"
+
+    def test_paginates_past_one_page(self, tmp_path: Path) -> None:
+        starts: list[int] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            start = int(request.url.params["startAt"])
+            starts.append(start)
+            if start == 0:
+                issues = [_issue("IT-1", "Task"), _issue("IT-2", "Task")]
+            else:
+                issues = [_issue("IT-3", "Task")]
+            return httpx.Response(200, json={"issues": issues, "total": 3})
+
+        items = self._transport(handler, tmp_path, page_size=2).fetch_new()
+        assert [i.key for i in items] == ["IT-1", "IT-2", "IT-3"]
+        assert starts == [0, 2]
+
+    def test_http_error_raises(self, tmp_path: Path) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(401, json={"errorMessages": ["bad credentials"]})
+
+        with pytest.raises(httpx.HTTPStatusError):
+            self._transport(handler, tmp_path).fetch_new()
+
+    def test_comment_written_to_local_sink(self, tmp_path: Path) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"issues": [], "total": 0})
+
+        transport = self._transport(handler, tmp_path)
+        transport.post_comment("IT-9", "suggestion body")
+        assert (tmp_path / "out" / "IT-9.md").read_text(encoding="utf-8") == "suggestion body"
+
+
+# ── IntakeLoop.run_forever ─────────────────────────────────────────────────
+
+
+class TestRunForever:
+    def test_failed_pass_retries_instead_of_crashing(self) -> None:
+        class FlakyTransport:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def fetch_new(self) -> list[Any]:
+                self.calls += 1
+                if self.calls == 1:
+                    raise RuntimeError("JSM down")
+                raise KeyboardInterrupt
+
+            def post_comment(self, key: str, body: str) -> None:
+                raise AssertionError("nothing to comment")
+
+        transport = FlakyTransport()
+        loop = IntakeLoop(transport, FakeRunClient())  # type: ignore[arg-type]
+        with pytest.raises(KeyboardInterrupt):
+            loop.run_forever(0)
+        # First pass failed (outage) → logged and retried, not crashed.
+        assert transport.calls == 2

@@ -10,6 +10,7 @@ in-process.
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -147,3 +148,20 @@ class IntakeLoop:
             self._transport.post_comment(item.key, body)
             report.commented.append(item.key)
         return report
+
+    def run_forever(self, interval_s: float) -> None:
+        """Poll until interrupted; a failed pass (e.g. Source outage) backs
+        off one interval and retries instead of crash-looping."""
+        while True:
+            try:
+                report = self.run_once()
+                logger.info(
+                    "intake pass done — %d commented, %d skipped",
+                    len(report.commented),
+                    len(report.skipped),
+                )
+            except KeyboardInterrupt:
+                raise
+            except Exception as exc:  # noqa: BLE001 — keep the adapter alive
+                logger.error("intake pass failed, retrying in %ss: %s", interval_s, exc)
+            time.sleep(interval_s)
