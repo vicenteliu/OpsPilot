@@ -1,10 +1,11 @@
 """Jira Service Management Source adapter (ADR-0013).
 
-Two transports share one normalizer: ``ReplayTransport`` replays recorded
-JSM API responses from a fixtures directory, ``JsmTransport`` polls a live
-JSM site over REST (outbound-only — no webhooks, no inbound exposure).
-Both write suggestion comments to a local output directory; posting them
-back to the issue lands with #59.
+Two transports share one normalizer and one comment template:
+``ReplayTransport`` replays recorded JSM API responses from a fixtures
+directory and writes comments to a local sink; ``JsmTransport`` polls a
+live JSM site over REST (outbound-only — no webhooks, no inbound
+exposure) and posts the suggestion back to the issue as a comment.
+Comment-only write-back: no JSM field is ever mutated (ADR-0006).
 """
 
 from __future__ import annotations
@@ -58,7 +59,7 @@ class ReplayTransport:
         payload = json.loads((self._fixtures_dir / "search.json").read_text(encoding="utf-8"))
         return [normalize_issue(issue) for issue in payload.get("issues", [])]
 
-    def post_comment(self, key: str, body: str) -> None:
+    def post_comment(self, key: str, body: str, marker: str) -> None:
         self._out_dir.mkdir(parents=True, exist_ok=True)
         (self._out_dir / f"{key}.md").write_text(body, encoding="utf-8")
 
@@ -69,7 +70,10 @@ class JsmTransport:
     Only issues matching the configured JQL are ever fetched — the filter
     is the intake scope and the cost boundary (ADR-0013). Pages through
     the full result set so a backlog larger than one page is not silently
-    truncated.
+    truncated. Write-back (#59) posts the suggestion as a comment on the
+    issue and never touches any field; the run's session id doubles as an
+    idempotency marker against existing comments, so a retry after a lost
+    response cannot double-post.
     """
 
     def __init__(
@@ -78,13 +82,11 @@ class JsmTransport:
         email: str,
         api_token: str,
         jql: str,
-        out_dir: Path,
         http: httpx.Client | None = None,
         page_size: int = 50,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._jql = jql
-        self._out_dir = out_dir
         self._page_size = page_size
         self._auth = httpx.BasicAuth(email, api_token)
         self._http = http or httpx.Client(timeout=30.0)
@@ -111,8 +113,23 @@ class JsmTransport:
             if not issues or start_at >= int(payload.get("total", 0)):
                 return items
 
-    def post_comment(self, key: str, body: str) -> None:
-        # Local sink until live write-back lands (#59).
-        self._out_dir.mkdir(parents=True, exist_ok=True)
-        (self._out_dir / f"{key}.md").write_text(body, encoding="utf-8")
-        logger.info("comment for %s written locally (live write-back: #59)", key)
+    def post_comment(self, key: str, body: str, marker: str) -> None:
+        if marker and self._already_commented(key, marker):
+            logger.info("comment for %s already posted (marker found) — skipping", key)
+            return
+        res = self._http.post(
+            f"{self._base_url}/rest/api/2/issue/{key}/comment",
+            json={"body": body},
+            auth=self._auth,
+        )
+        res.raise_for_status()
+
+    def _already_commented(self, key: str, marker: str) -> bool:
+        """True when an existing comment carries this run's session marker."""
+        res = self._http.get(
+            f"{self._base_url}/rest/api/2/issue/{key}/comment",
+            params={"maxResults": 100},
+            auth=self._auth,
+        )
+        res.raise_for_status()
+        return any(marker in (c.get("body") or "") for c in res.json().get("comments", []))

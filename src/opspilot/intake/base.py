@@ -31,11 +31,17 @@ class SourceItem:
 
 
 class SourceTransport(Protocol):
-    """How one Source is fetched from and written back to."""
+    """How one Source is fetched from and written back to.
+
+    ``marker`` is the idempotency token for one run (the session id): a
+    transport that can inspect existing comments must skip the post when
+    the marker is already present, so a retry after a lost response never
+    duplicates a comment.
+    """
 
     def fetch_new(self) -> list[SourceItem]: ...
 
-    def post_comment(self, key: str, body: str) -> None: ...
+    def post_comment(self, key: str, body: str, marker: str) -> None: ...
 
 
 class OpsPilotRunClient:
@@ -110,9 +116,11 @@ class IntakeState:
     def __init__(self, path: Path | None = None) -> None:
         self._path = path
         self._processed: set[str] = set()
+        self._pending: dict[str, dict[str, str]] = {}  # key → {"body", "marker"}
         if path is not None and path.exists():
             data = json.loads(path.read_text(encoding="utf-8"))
             self._processed = set(data.get("processed", []))
+            self._pending = dict(data.get("pending_comments", {}))
 
     def has(self, key: str) -> bool:
         return key in self._processed
@@ -122,12 +130,29 @@ class IntakeState:
         self._save()
 
     def forget(self, key: str) -> bool:
-        """Drop a key so it runs again (--rerun). True if it was present."""
-        if key not in self._processed:
+        """Drop a key so it runs again (--rerun). True if it was present.
+
+        Any queued comment for the key is dropped too — the fresh run
+        produces a fresh suggestion.
+        """
+        if key not in self._processed and key not in self._pending:
             return False
         self._processed.discard(key)
+        self._pending.pop(key, None)
         self._save()
         return True
+
+    def pending_comments(self) -> dict[str, dict[str, str]]:
+        """Comments rendered but not yet delivered (post failed earlier)."""
+        return dict(self._pending)
+
+    def queue_comment(self, key: str, body: str, marker: str) -> None:
+        self._pending[key] = {"body": body, "marker": marker}
+        self._save()
+
+    def resolve_comment(self, key: str) -> None:
+        self._pending.pop(key, None)
+        self._save()
 
     def _save(self) -> None:
         if self._path is None:
@@ -135,7 +160,11 @@ class IntakeState:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self._path.with_suffix(".tmp")
         tmp.write_text(
-            json.dumps({"processed": sorted(self._processed)}, indent=2), encoding="utf-8"
+            json.dumps(
+                {"processed": sorted(self._processed), "pending_comments": self._pending},
+                indent=2,
+            ),
+            encoding="utf-8",
         )
         tmp.replace(self._path)
 
@@ -180,6 +209,7 @@ class IntakeLoop:
 
     def run_once(self) -> IntakeReport:
         report = IntakeReport()
+        self._flush_pending(report)
         for item in self._transport.fetch_new():
             if self._state.has(item.key):
                 report.skipped.append((item.key, "duplicate"))
@@ -196,10 +226,27 @@ class IntakeLoop:
                 logger.warning("no comment for %s: %s", item.key, reason)
                 report.skipped.append((item.key, reason))
                 continue
-            body = render_comment(res["result"], session_id=res.get("session_id", ""))
-            self._transport.post_comment(item.key, body)
-            report.commented.append(item.key)
+            session_id = str(res.get("session_id", ""))
+            body = render_comment(res["result"], session_id=session_id)
+            self._deliver(item.key, body, session_id, report)
         return report
+
+    def _deliver(self, key: str, body: str, marker: str, report: IntakeReport) -> None:
+        """Post one comment; a failed post is queued and retried next pass
+        without re-running the LLM."""
+        try:
+            self._transport.post_comment(key, body, marker)
+        except Exception as exc:  # noqa: BLE001 — queue, keep the pass alive
+            logger.error("comment post failed for %s (queued for retry): %s", key, exc)
+            self._state.queue_comment(key, body, marker)
+            report.skipped.append((key, f"comment post failed (queued): {exc}"))
+            return
+        self._state.resolve_comment(key)
+        report.commented.append(key)
+
+    def _flush_pending(self, report: IntakeReport) -> None:
+        for key, entry in self._state.pending_comments().items():
+            self._deliver(key, entry["body"], entry["marker"], report)
 
     def run_forever(self, interval_s: float) -> None:
         """Poll until interrupted; a failed pass (e.g. Source outage) backs
