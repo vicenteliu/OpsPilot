@@ -34,6 +34,99 @@ class ApiIntakeResponse(BaseModel):
     key: str
 
 
+class ApiAssetCreate(BaseModel):
+    """Request body for POST /api/inventory (ADR-0017)."""
+
+    asset_tag: str = ""
+    category: str = ""
+    brand_model: str = ""
+    serial_number: str = ""
+    specs: str = ""
+    notes: str = ""
+    work_item_ref: str = ""
+    pr_number: str = ""
+    order_number: str = ""
+    tracking_number: str = ""
+    vendor: str = ""
+    cost: str = ""
+    status: str = "requested"
+    handler: str = ""
+    assignee: str = ""
+    location: str = ""
+    warranty_until: str = ""
+    actor: str = ""  # who made this entry, recorded on the created event
+    note: str = ""
+
+
+class ApiAssetUpdate(BaseModel):
+    """Request body for PATCH /api/inventory/{asset_id}; None = unchanged."""
+
+    asset_tag: str | None = None
+    category: str | None = None
+    brand_model: str | None = None
+    serial_number: str | None = None
+    specs: str | None = None
+    notes: str | None = None
+    work_item_ref: str | None = None
+    pr_number: str | None = None
+    order_number: str | None = None
+    tracking_number: str | None = None
+    vendor: str | None = None
+    cost: str | None = None
+    status: str | None = None
+    handler: str | None = None
+    assignee: str | None = None
+    location: str | None = None
+    warranty_until: str | None = None
+    actor: str = ""
+    note: str = ""
+
+
+class ApiAsset(BaseModel):
+    """One Asset row (the projection; history lives in the events)."""
+
+    asset_id: str
+    asset_tag: str
+    category: str
+    brand_model: str
+    serial_number: str
+    specs: str
+    notes: str
+    work_item_ref: str
+    pr_number: str
+    order_number: str
+    tracking_number: str
+    vendor: str
+    cost: str
+    status: str
+    handler: str
+    assignee: str
+    location: str
+    warranty_until: str
+    created_at: str
+    updated_at: str
+
+
+class ApiAssetEvent(BaseModel):
+    event_id: int
+    ts: str
+    actor: str
+    change: str
+    note: str
+
+
+class ApiAssetDetail(ApiAsset):
+    """Response body for GET /api/inventory/{asset_id}."""
+
+    events: list[ApiAssetEvent]
+
+
+class ApiAssetListResponse(BaseModel):
+    """Response body for GET /api/inventory."""
+
+    assets: list[ApiAsset]
+
+
 class ApiModelOption(BaseModel):
     """One selectable model in GET /api/models."""
 

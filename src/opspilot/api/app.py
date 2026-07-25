@@ -4,6 +4,7 @@ Exposes:
   GET  /api/config              — active model ref and enabled UI modules
   POST /api/run                 — run ticket summary playbook
   POST /api/intake              — webhook intake: accept a pushed work item (ADR-0015)
+  *    /api/inventory           — Asset CRUD + event log (owned domain, ADR-0017)
   GET  /api/iteration/lineage   — skill lineage history (PR-28)
   GET  /api/kb/docs             — list ingested KB documents
   POST /api/kb/ingest           — ingest files into KB
@@ -30,6 +31,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from ..config import load_config
+from ..inventory import InventoryStore
 from ..mcp import McpRegistry, load_mcp_config
 from ..memory.lance_store import LanceStore
 from ..memory.sqlite_store import SqliteStore
@@ -45,6 +47,7 @@ from .routes.doc import router as doc_router
 from .routes.harness import router as harness_router
 from .routes.health import router as health_router
 from .routes.intake import router as intake_router
+from .routes.inventory import router as inventory_router
 from .routes.iteration import router as iteration_router
 from .routes.kb import router as kb_router
 from .routes.mcp import router as mcp_router
@@ -83,6 +86,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     sqlite_db_path = kb_dir / "sqlite.db"
     conn = init_sqlite(sqlite_db_path)
     sqlite = SqliteStore(conn)
+    inventory = InventoryStore(conn)  # idempotent schema; shares the KB db file
 
     lance = LanceStore.open_or_create(
         kb_dir / "lancedb",
@@ -129,6 +133,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.vendor_doc_provider = vendor_doc_provider
     app.state.active_model_ref = active_model_ref
     app.state.sqlite = sqlite
+    app.state.inventory = inventory
     app.state.lance = lance
     app.state.chat_provider = chat_provider
     app.state.embed_fn = embed_fn
@@ -168,6 +173,7 @@ app.include_router(chat_router, prefix="/api")
 app.include_router(models_router, prefix="/api")
 app.include_router(run_router, prefix="/api")
 app.include_router(intake_router, prefix="/api")
+app.include_router(inventory_router, prefix="/api")
 app.include_router(doc_router, prefix="/api")
 app.include_router(sessions_router, prefix="/api")
 app.include_router(iteration_router, prefix="/api")
