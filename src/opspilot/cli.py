@@ -1880,6 +1880,54 @@ def channel_telegram(
 
 
 # ──────────────────────────────────────────────────────────────────────────
+#  source adapters (ADR-0013)
+# ──────────────────────────────────────────────────────────────────────────
+
+source_app = typer.Typer(
+    name="source",
+    help="Source adapters — pull Work items from an external system of record.",
+    no_args_is_help=True,
+)
+app.add_typer(source_app)
+
+
+@source_app.command("jsm")
+def source_jsm(
+    replay: Path = typer.Option(  # noqa: B008
+        ...,
+        "--replay",
+        exists=True,
+        file_okay=False,
+        help="Replay recorded JSM API responses from this fixtures directory (live polling: #57).",
+    ),
+    out: Path = typer.Option(  # noqa: B008
+        Path("intake_comments"),
+        "--out",
+        help="Directory where suggestion comments are written in replay mode.",
+    ),
+    api_url: str = typer.Option(
+        "http://127.0.0.1:8001", "--api-url", help="Base URL of the running OpsPilot API."
+    ),
+) -> None:
+    """Run one JSM intake pass in replay mode (see docs/adr/0013).
+
+    Requires a running `opspilot serve`. The OpsPilot API token (if
+    configured) is picked up from OPSPILOT_API_TOKEN / config.yaml
+    automatically.
+    """
+    from .intake import IntakeLoop, OpsPilotRunClient, ReplayTransport
+
+    client = OpsPilotRunClient(api_url=api_url, api_token=load_config().api_token)
+    report = IntakeLoop(ReplayTransport(replay, out), client).run_once()
+    _console.print(
+        f"intake pass done — {len(report.commented)} commented, "
+        f"{len(report.skipped)} skipped → {out}"
+    )
+    for key, reason in report.skipped:
+        _console.print(f"  [yellow]skip[/yellow] {key}: {reason}")
+
+
+# ──────────────────────────────────────────────────────────────────────────
 #  serve (PR-32)
 # ──────────────────────────────────────────────────────────────────────────
 

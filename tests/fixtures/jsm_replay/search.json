@@ -1,0 +1,43 @@
+{
+  "startAt": 0,
+  "maxResults": 50,
+  "total": 4,
+  "issues": [
+    {
+      "key": "IT-101",
+      "self": "https://example.atlassian.net/rest/api/2/issue/10101",
+      "fields": {
+        "summary": "VPN authentication failures for multiple users",
+        "description": "Since 09:10 this morning at least six users across two offices report VPN authentication failures. Error shown: AUTH_TIMEOUT after entering credentials. Restarting the client was already tried and did not help.",
+        "issuetype": { "name": "[System] Incident" }
+      }
+    },
+    {
+      "key": "IT-102",
+      "self": "https://example.atlassian.net/rest/api/2/issue/10102",
+      "fields": {
+        "summary": "VPN access for new starter",
+        "description": "A new engineer joins the platform team next Monday and needs standard VPN access plus membership of the engineering mail group. Manager approval is attached to the ticket.",
+        "issuetype": { "name": "Service Request" }
+      }
+    },
+    {
+      "key": "IT-103",
+      "self": "https://example.atlassian.net/rest/api/2/issue/10103",
+      "fields": {
+        "summary": "Cannot access the shared finance drive",
+        "description": "Since this morning I cannot open the shared finance drive from my laptop. Not sure if my access expired or if the share is down.",
+        "issuetype": { "name": "Task" }
+      }
+    },
+    {
+      "key": "IT-101",
+      "self": "https://example.atlassian.net/rest/api/2/issue/10101",
+      "fields": {
+        "summary": "VPN authentication failures for multiple users (updated)",
+        "description": "Duplicate appearance of IT-101 in the same replay window — the intake loop must run this key exactly once.",
+        "issuetype": { "name": "[System] Incident" }
+      }
+    }
+  ]
+}
