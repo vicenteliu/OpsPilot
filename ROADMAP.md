@@ -29,9 +29,22 @@ A **Channel** is an external messaging surface connected to OpsPilot.
 - ✅ Telegram assist mode — long-polling adapter fronting the KB-augmented
   chat ([ADR-0012](docs/adr/0012-telegram-channel-long-polling.md),
   [docs/channels.md](docs/channels.md))
-- Next platform: WeCom (closest fit for IT ops teams)
-- Work-item intake through a Channel (message → Work item → pipeline) is a
+- Next platform: WeCom — deprioritized, now scheduled after work-item intake
+- A Channel acting as a **Source** (message → Work item → pipeline) is a
   later phase
+
+## Next — Work-item intake (Sources)
+
+A **Source** is an external system of record OpsPilot pulls Work items from;
+**Intake** is the poll → run → write-back loop
+([ADR-0013](docs/adr/0013-jsm-intake-polling-comment-writeback.md)):
+
+- Jira Service Management polling adapter (`opspilot source jsm`) — JQL-scoped
+  auto-run, dedupe by issue key, suggestion posted back as a structured
+  comment; comment-only, no field mutation
+- `--replay` fixture mode for offline demo and CI regression; docs guide for
+  connecting a free-tier JSM cloud site
+- Generic inbound webhook intake — later option for high-traffic deployments
 
 ## Later — mobile companion
 

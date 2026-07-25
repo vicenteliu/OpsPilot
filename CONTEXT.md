@@ -128,6 +128,16 @@ _Avoid_: container, jail, isolation layer
 An external messaging surface (e.g. Telegram, WeCom) connected to OpsPilot, through which a user converses with the assistant; later phases may accept **Work items** through it. First implementation: Telegram assist mode (ADR-0012).
 _Avoid_: integration, connector, bot (the bot is the Channel's client-side agent, not the concept)
 
+### Intake
+
+**Source**:
+An external system of record OpsPilot pulls **Work items** from — the authoritative owner of their lifecycle (ADR-0006). First Source: Jira Service Management, polled via REST (outbound-only, same deployment posture as ADR-0012). A **Channel** may later double as a Source (message → Work item), but the concepts stay distinct: a Channel is a conversational surface; a Source is where Work items live.
+_Avoid_: connector, integration, upstream system
+
+**Intake**:
+The loop that connects a **Source** to the pipeline: poll a configured scope (e.g. a JQL filter) → normalize into a **Work item** → dedupe (one run per source key; reruns are manual) → run the matching **Playbook** → write the suggestion back to the Source as a structured comment (summary, suggested Severity, Tasks with Tiers, KB citations). Comment-only write-back: OpsPilot never mutates Source fields — suggest, don't decide. Runs as a separate adapter process calling the HTTP API, like a Channel adapter (ADR-0012).
+_Avoid_: ingest (that is documents → KB; Intake is Work items → pipeline), sync, import
+
 ## Relationships
 
 - A **Work item** has exactly one **Work item type** — declared by the source, or assigned by **Classification** when absent
@@ -140,7 +150,8 @@ _Avoid_: integration, connector, bot (the bot is the Channel's client-side agent
 - A **Harness** run takes a **Fixture** as input and scores the resulting **Artifact**
 - A **Chunk** is the unit of both storage (in KB) and citation (in Artifact)
 - A **Skill** is distilled from high-scoring **Sessions** and can be instantiated as a new **Playbook**
-- A **Channel** fronts the KB chat in assist mode; **Work item** intake through a Channel is a later phase
+- A **Channel** fronts the KB chat in assist mode; a Channel acting as a **Source** (message → Work item) is a later phase
+- A **Source** owns the lifecycle of the **Work items** pulled from it; **Intake** turns each new Source item into one **Session** and posts the resulting suggestion back as a comment
 
 ## Example dialogue
 
@@ -160,4 +171,5 @@ _Avoid_: integration, connector, bot (the bot is the Channel's client-side agent
 - "session" in some LLM frameworks means a conversation window — in OpsPilot it means a single playbook run with its full audit trail, not a multi-turn conversation.
 - "ticket" was the catch-all for any inbound work — resolved: the umbrella is **Work item**, with subtypes **Incident** / **Service Request** / **Task**. "ticket" is colloquial and conflates them; avoid it in specs/schemas. The legacy code names `ticket_ref` / `ticket_summary_v1` are pre-Work-item and migrate toward `work_item_ref` / `incident_summary_*`.
 - "task" (lowercase: a step or next-action in prose) is **not** a **Task** work item. A **Task** is a first-class, assignable unit with a **Tier**; a summary's "next steps" only become **Tasks** once decomposed. (Note: a **Session** is also not a **Task** — see the Session entry's _Avoid_ list.)
+- "intake" vs "ingest" — near-homophones, never interchangeable: **Ingest** brings *documents* into the KB; **Intake** brings *Work items* from a **Source** into the pipeline.
 - "signed" was used (in older README copy) for the **trace** and **artifact** — resolved: nothing is cryptographically signed. Artifacts are *content-addressed* (`art_<sha256[:16]>`); traces are *append-only, seq-stamped*. Both give tamper-evidence against accidental corruption, not signatures. Say "content-addressed" / "append-only", never "signed".
