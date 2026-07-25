@@ -1,8 +1,16 @@
 <script lang="ts">
   // Login screen (ADR-0020). Shown until GET /api/auth/me resolves a user.
-  import { login, type Me } from '$lib/api';
+  import { login, oidcEnabled, type Me } from '$lib/api';
 
   let { onLogin }: { onLogin: (me: Me) => void } = $props();
+
+  let ssoEnabled = $state(false);
+  let _checked = false;
+  $effect(() => {
+    if (_checked) return;
+    _checked = true;
+    oidcEnabled().then((v) => { ssoEnabled = v; });
+  });
 
   let username = $state('');
   let password = $state('');
@@ -50,6 +58,9 @@
     <button class="login-btn" type="submit" disabled={busy || !username || !password}>
       {busy ? 'Signing in…' : 'Sign in'}
     </button>
+    {#if ssoEnabled}
+      <a class="login-sso" href="/api/auth/oidc/login">Sign in with SSO</a>
+    {/if}
   </form>
 </div>
 
@@ -140,4 +151,15 @@
     opacity: 0.6;
     cursor: not-allowed;
   }
+
+  .login-sso {
+    text-align: center;
+    font-size: 0.85rem;
+    color: var(--primary);
+    text-decoration: none;
+    padding: 0.4rem;
+    border: 1px solid var(--primary-border);
+    border-radius: 6px;
+  }
+  .login-sso:hover { background: var(--primary-bg); }
 </style>

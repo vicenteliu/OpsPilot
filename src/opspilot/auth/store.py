@@ -55,6 +55,12 @@ CREATE TABLE IF NOT EXISTS group_role_map (
     role       TEXT NOT NULL,
     PRIMARY KEY (source, group_name)
 );
+CREATE TABLE IF NOT EXISTS oidc_flows (
+    state         TEXT PRIMARY KEY,
+    code_verifier TEXT NOT NULL,
+    nonce         TEXT NOT NULL,
+    expires_at    REAL NOT NULL
+);
 """
 
 
@@ -223,6 +229,30 @@ class AuthStore:
     def revoke_session(self, token: str) -> None:
         self._conn.execute("DELETE FROM auth_sessions WHERE token_hash = ?", (_sha(token),))
         self._conn.commit()
+
+    # ── OIDC flow state (state/nonce/PKCE verifier, server-side) ───────
+
+    def save_oidc_flow(self, state: str, code_verifier: str, nonce: str, ttl_s: int = 600) -> None:
+        self._conn.execute(
+            "INSERT OR REPLACE INTO oidc_flows (state, code_verifier, nonce, expires_at) "
+            "VALUES (?,?,?,?)",
+            (state, code_verifier, nonce, _monotonic_plus(ttl_s)),
+        )
+        self._conn.commit()
+
+    def take_oidc_flow(self, state: str) -> dict[str, Any] | None:
+        """Consume a flow by state (single-use); None if unknown or expired."""
+        import time
+
+        cur = self._conn.execute(
+            "SELECT code_verifier, nonce, expires_at FROM oidc_flows WHERE state = ?", (state,)
+        )
+        row = cur.fetchone()
+        self._conn.execute("DELETE FROM oidc_flows WHERE state = ?", (state,))
+        self._conn.commit()
+        if row is None or row[2] < time.time():
+            return None
+        return {"code_verifier": row[0], "nonce": row[1]}
 
     # ── audit ──────────────────────────────────────────────────────────
 

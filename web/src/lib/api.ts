@@ -833,6 +833,15 @@ export async function logout(): Promise<void> {
   await apiFetch('/api/auth/logout', { method: 'POST' });
 }
 
+export async function oidcEnabled(): Promise<boolean> {
+  try {
+    const res = await apiFetch('/api/auth/oidc/enabled');
+    return res.ok ? (await res.json()).enabled === true : false;
+  } catch {
+    return false;
+  }
+}
+
 // ── Admin module (ADR-0020) ─────────────────────────────────────────────────
 
 export interface AdminUser {
