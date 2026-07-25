@@ -624,3 +624,96 @@ export async function listMCPServers(): Promise<MCPServer[]> {
   const data = await res.json();
   return data.servers;
 }
+
+// ── Inventory (ADR-0017) ───────────────────────────────────────────────────
+
+export const ASSET_STATUSES = [
+  'requested', 'ordered', 'shipped', 'received',
+  'in_stock', 'deployed', 'in_repair', 'retired',
+] as const;
+
+export interface Asset {
+  asset_id: string;
+  asset_tag: string;
+  category: string;
+  brand_model: string;
+  serial_number: string;
+  specs: string;
+  notes: string;
+  work_item_ref: string;
+  pr_number: string;
+  order_number: string;
+  tracking_number: string;
+  vendor: string;
+  cost: string;
+  status: string;
+  handler: string;
+  assignee: string;
+  location: string;
+  warranty_until: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AssetEvent {
+  event_id: number;
+  ts: string;
+  actor: string;
+  change: string;
+  note: string;
+}
+
+export interface AssetDetail extends Asset {
+  events: AssetEvent[];
+}
+
+// Editable fields only (no ids/timestamps).
+export type AssetFields = Omit<Asset, 'asset_id' | 'created_at' | 'updated_at'>;
+
+async function assetError(res: Response, verb: string): Promise<never> {
+  let detail = '';
+  try { detail = (await res.json()).detail ?? ''; } catch { /* non-JSON body */ }
+  throw new Error(detail || `${verb} failed: ${res.status}`);
+}
+
+export async function listAssets(status = '', assignee = '', q = ''): Promise<Asset[]> {
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  if (assignee) params.set('assignee', assignee);
+  if (q) params.set('q', q);
+  const qs = params.toString();
+  const res = await apiFetch(`/api/inventory${qs ? `?${qs}` : ''}`);
+  if (!res.ok) await assetError(res, 'Asset list');
+  return (await res.json()).assets;
+}
+
+export async function getAsset(assetId: string): Promise<AssetDetail> {
+  const res = await apiFetch(`/api/inventory/${encodeURIComponent(assetId)}`);
+  if (!res.ok) await assetError(res, 'Asset fetch');
+  return res.json();
+}
+
+export async function createAsset(fields: Partial<AssetFields>): Promise<Asset> {
+  const res = await apiFetch('/api/inventory', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...fields, actor: 'web-user' })
+  });
+  if (!res.ok) await assetError(res, 'Asset create');
+  return res.json();
+}
+
+export async function updateAsset(assetId: string, changes: Partial<AssetFields>): Promise<Asset> {
+  const res = await apiFetch(`/api/inventory/${encodeURIComponent(assetId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...changes, actor: 'web-user' })
+  });
+  if (!res.ok) await assetError(res, 'Asset update');
+  return res.json();
+}
+
+export async function deleteAsset(assetId: string): Promise<void> {
+  const res = await apiFetch(`/api/inventory/${encodeURIComponent(assetId)}`, { method: 'DELETE' });
+  if (!res.ok) await assetError(res, 'Asset delete');
+}
