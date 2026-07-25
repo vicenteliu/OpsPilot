@@ -138,6 +138,32 @@ _Avoid_: connector, integration, upstream system
 The loop that connects a **Source** to the pipeline: poll a configured scope (e.g. a JQL filter) → normalize into a **Work item** → dedupe (one run per source key; reruns are manual) → run the matching **Playbook** → write the suggestion back to the Source as a structured comment (summary, suggested Severity, Tasks with Tiers, KB citations). Comment-only write-back: OpsPilot never mutates Source fields — suggest, don't decide. Runs as a separate adapter process calling the HTTP API, like a Channel adapter (ADR-0012).
 _Avoid_: ingest (that is documents → KB; Intake is Work items → pipeline), sync, import
 
+### Inventory (owned domain)
+
+**Asset**:
+A physical IT device tracked by OpsPilot — one device, one Asset (a batch purchase of 5 laptops is 5 Assets sharing procurement fields). This is the one domain OpsPilot **owns** as system of record (ADR-0017, a scoped exception to ADR-0006): small teams have no CMDB, so the authoritative data lives here, with CSV import/export as the migration path in and out. Carries identity fields (asset tag, category, brand/model, serial number — unique when set), procurement fields (**PR number**, order number, tracking number, vendor, cost), lifecycle fields (status, **Handler**, **Assignee**, location, warranty), and an append-only event log.
+_Avoid_: device (colloquial — fine in prose, not in schemas), item, equipment
+
+**Asset status**:
+One of eight free-set values: `requested → ordered → shipped → received → in_stock → deployed → in_repair → retired`. A convention, not a state machine — any status can be set directly (corrections, back-filling, and mid-flow entry of existing stock are normal), and the event log records what actually happened. There is no separate "approved" status: a filled PR number is the approval evidence.
+_Avoid_: state, stage, phase
+
+**Asset event**:
+An append-only, timestamped entry recording one change to an **Asset** (status transition, field change, note) and who made it. The source of date/time tracking — never edited, never deleted.
+_Avoid_: history entry, audit row (it is both, but call it an event)
+
+**PR number**:
+Purchase Requisition number — the approval artifact for a procurement. In this repo "PR" otherwise means pull request; in Inventory context it is always Purchase Requisition, and schemas spell the field `pr_number`.
+_Avoid_: pull request (different domain), requisition id
+
+**Handler**:
+The IT staff member processing an **Asset** (free text in v1 — no user directory). The doer, not the owner of the device.
+_Avoid_: operator, processor, owner
+
+**Assignee**:
+The person an **Asset** is issued to — who uses the device (free text in v1). Distinct from **Handler**, and unrelated to Work item Task routing (Tasks get a **Tier**, not an assignee).
+_Avoid_: user (collides with system user), custodian, owner
+
 ## Relationships
 
 - A **Work item** has exactly one **Work item type** — declared by the source, or assigned by **Classification** when absent
@@ -152,6 +178,8 @@ _Avoid_: ingest (that is documents → KB; Intake is Work items → pipeline), s
 - A **Skill** is distilled from high-scoring **Sessions** and can be instantiated as a new **Playbook**
 - A **Channel** fronts the KB chat in assist mode; Telegram also acts as a **Source** (message → Work item → suggestion reply, ADR-0014)
 - A notify-mode **Channel** receives a courtesy copy of each delivered **Intake** suggestion — best-effort; the comment on the **Source** remains the durable record
+- An **Asset** may reference the **Work item** (Service Request) that initiated its procurement via `work_item_ref` — optional: existing stock enters with no Work item
+- Every change to an **Asset** appends one **Asset event**; the current row is a projection, the event log is the history
 - A **Source** owns the lifecycle of the **Work items** pulled from it; **Intake** turns each new Source item into one **Session** and posts the resulting suggestion back as a comment
 
 ## Example dialogue
@@ -173,4 +201,5 @@ _Avoid_: ingest (that is documents → KB; Intake is Work items → pipeline), s
 - "ticket" was the catch-all for any inbound work — resolved: the umbrella is **Work item**, with subtypes **Incident** / **Service Request** / **Task**. "ticket" is colloquial and conflates them; avoid it in specs/schemas. The legacy code names `ticket_ref` / `ticket_summary_v1` are pre-Work-item and migrate toward `work_item_ref` / `incident_summary_*`.
 - "task" (lowercase: a step or next-action in prose) is **not** a **Task** work item. A **Task** is a first-class, assignable unit with a **Tier**; a summary's "next steps" only become **Tasks** once decomposed. (Note: a **Session** is also not a **Task** — see the Session entry's _Avoid_ list.)
 - "intake" vs "ingest" — near-homophones, never interchangeable: **Ingest** brings *documents* into the KB; **Intake** brings *Work items* from a **Source** into the pipeline.
+- "PR" — in Inventory context always Purchase Requisition (`pr_number`), never pull request.
 - "signed" was used (in older README copy) for the **trace** and **artifact** — resolved: nothing is cryptographically signed. Artifacts are *content-addressed* (`art_<sha256[:16]>`); traces are *append-only, seq-stamped*. Both give tamper-evidence against accidental corruption, not signatures. Say "content-addressed" / "append-only", never "signed".
