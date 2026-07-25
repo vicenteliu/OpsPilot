@@ -31,6 +31,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from ..auth import AuthStore
 from ..config import load_config
 from ..inventory import InventoryStore
 from ..mcp import McpRegistry, load_mcp_config
@@ -42,6 +43,7 @@ from ..providers.registry import make_provider
 from ..redaction import Redactor
 from ..session.manager import SessionManager
 from .middleware import AuthMiddleware, ObservabilityMiddleware
+from .routes.auth import router as auth_router
 from .routes.chat import router as chat_router
 from .routes.config import router as config_router
 from .routes.doc import router as doc_router
@@ -89,6 +91,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     conn = init_sqlite(sqlite_db_path)
     sqlite = SqliteStore(conn)
     inventory = InventoryStore(conn)  # idempotent schema; shares the KB db file
+    auth = AuthStore(conn)  # multi-user identity (ADR-0020)
+    bootstrap_admin = os.environ.get("OPSPILOT_BOOTSTRAP_ADMIN")
+    bootstrap_pw = os.environ.get("OPSPILOT_BOOTSTRAP_PASSWORD")
+    if bootstrap_admin and bootstrap_pw:
+        auth.bootstrap_admin(bootstrap_admin, bootstrap_pw)
 
     lance = LanceStore.open_or_create(
         kb_dir / "lancedb",
@@ -136,6 +143,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.active_model_ref = active_model_ref
     app.state.sqlite = sqlite
     app.state.inventory = inventory
+    app.state.auth = auth
+    app.state.service_token = cfg.api_token  # ADR-0011 bearer → Service token (ADR-0020)
     app.state.lance = lance
     app.state.chat_provider = chat_provider
     app.state.embed_fn = embed_fn
@@ -170,6 +179,7 @@ app.add_middleware(ObservabilityMiddleware)
 
 app.include_router(health_router)  # /health  (no /api prefix — ops endpoints)
 app.include_router(metrics_router)  # /metrics
+app.include_router(auth_router, prefix="/api")
 app.include_router(config_router, prefix="/api")
 app.include_router(chat_router, prefix="/api")
 app.include_router(models_router, prefix="/api")

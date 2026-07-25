@@ -13,6 +13,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from opspilot.api.routes.inventory import router as inventory_router
+from opspilot.auth import AuthStore
 from opspilot.inventory import InventoryStore
 
 
@@ -21,6 +22,10 @@ def _client() -> TestClient:
     app.include_router(inventory_router, prefix="/api")
     conn = sqlite3.connect(":memory:", check_same_thread=False)
     app.state.inventory = InventoryStore(conn)
+    # No users + no service token → deps fall back to local-dev operator,
+    # so these inventory tests exercise CRUD without managing sessions.
+    app.state.auth = AuthStore(conn)
+    app.state.service_token = None
     return TestClient(app)
 
 
