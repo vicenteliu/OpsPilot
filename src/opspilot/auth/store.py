@@ -210,8 +210,7 @@ class AuthStore:
 
     def recent_logins(self, limit: int = 50) -> list[dict[str, Any]]:
         cur = self._conn.execute(
-            "SELECT ts, username, source, outcome FROM login_events "
-            "ORDER BY event_id DESC LIMIT ?",
+            "SELECT ts, username, source, outcome FROM login_events ORDER BY event_id DESC LIMIT ?",
             (limit,),
         )
         cols = [d[0] for d in cur.description]
