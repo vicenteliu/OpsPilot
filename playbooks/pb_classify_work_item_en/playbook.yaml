@@ -1,0 +1,32 @@
+# Playbook: pb_classify_work_item_en
+# Work-item type classification (Incident vs Service Request); artifact schema = work_item_classification_v1
+# Called by the orchestrator only when the input does not declare work_item_type (declared-first policy).
+
+id: "pb_classify_work_item_en"
+version: "1.0.0"
+
+description: |
+  Classify a redacted IT work item (JSON) as incident vs service_request.
+  Lightweight single-shot call — no KB retrieval, no tools. Output conforms
+  to work_item_classification_v1 {work_item_type, confidence, rationale}.
+  Low confidence routes to a human-confirm step (declared-first policy).
+
+  v1.0.0: English mirror of pb_classify_work_item_zh@1.0.0.
+
+system_prompt: "prompt.md"
+output_schema: "work_item_classification_v1"
+
+model:
+  provider_id: "anthropic"
+  kind: "anthropic"
+  name: "claude-haiku-4-5-20251001"
+  version: "2025-01"
+  params:
+    temperature: 0.0
+    top_p: 0.9
+    max_tokens: 512
+
+defaults:
+  retention_class: "low"
+  sensitivity: "internal"
+  kb_id: "opspilot:public-kb"
