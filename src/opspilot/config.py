@@ -30,7 +30,9 @@ class Config:
     api_token: str | None = None  # bearer token gating the API (ADR-0011)
     embed_model: str = "nomic-embed-text-v2-moe"
     playbooks_dir: Path | None = None  # defaults to ./playbooks at runtime
-    ui_modules: dict[str, bool] = field(default_factory=lambda: {"run": True, "history": True})
+    ui_modules: dict[str, bool] = field(
+        default_factory=lambda: {"run": True, "history": True, "inventory": True}
+    )
 
 
 def load_config() -> Config:

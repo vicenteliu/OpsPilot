@@ -7,6 +7,7 @@
   import WikiTab from '$lib/components/WikiTab.svelte';
   import VendorDocTab from '$lib/components/VendorDocTab.svelte';
   import ChatTab from '$lib/components/ChatTab.svelte';
+  import InventoryTab from '$lib/components/InventoryTab.svelte';
   import KBTab from '$lib/components/KBTab.svelte';
   import RunTab from '$lib/components/RunTab.svelte';
 
@@ -31,13 +32,14 @@
   $effect(() => setApiToken(apiToken));
 
   // --- Active Tab ---
-  type Tab = 'run' | 'kb' | 'wiki' | 'vendordoc' | 'mcp' | 'iteration' | 'chat' | 'guide';
+  type Tab = 'run' | 'inventory' | 'kb' | 'wiki' | 'vendordoc' | 'mcp' | 'iteration' | 'chat' | 'guide';
   let activeTab = $state<Tab>('run');
 
   // Nav indices mirror the TUI's 1-8 module keys.
   const NAV_ITEMS = [
     { id: 'run', label: 'Run' },
     { id: 'chat', label: 'Chat' },
+    { id: 'inventory', label: 'Inventory' },
     { id: 'kb', label: 'Knowledge Base' },
     { id: 'wiki', label: 'Wiki' },
     { id: 'vendordoc', label: 'Vendor Docs' },
@@ -89,7 +91,7 @@
     <div class="brand-sub">AI ops workbench</div>
 
     <nav class="side-nav">
-      {#each NAV_ITEMS as tab, i}
+      {#each NAV_ITEMS.filter((t) => modules[t.id] !== false) as tab, i}
         <button
           class="nav-item {activeTab === tab.id ? 'active' : ''}"
           onclick={() => activeTab = tab.id}
@@ -137,6 +139,11 @@
     <!-- ══════════════════════════════ CHAT TAB ══════════════════════════════ -->
     {#if activeTab === 'chat'}
       <ChatTab {selectedModelId} />
+    {/if}
+
+    <!-- ══════════════════════════ INVENTORY TAB ══════════════════════════ -->
+    {#if activeTab === 'inventory' && modules.inventory !== false}
+      <InventoryTab />
     {/if}
 
     <!-- ══════════════════════════════ KB TAB ══════════════════════════════ -->
