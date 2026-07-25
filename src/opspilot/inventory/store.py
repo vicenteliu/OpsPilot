@@ -133,6 +133,7 @@ class InventoryStore:
         status: str | None = None,
         assignee: str | None = None,
         q: str | None = None,
+        work_item_ref: str | None = None,
     ) -> list[dict[str, Any]]:
         clauses, params = ["1=1"], []
         if status:
@@ -141,6 +142,9 @@ class InventoryStore:
         if assignee:
             clauses.append("assignee = ?")
             params.append(assignee)
+        if work_item_ref:
+            clauses.append("work_item_ref = ?")
+            params.append(work_item_ref)
         if q:
             like = f"%{q}%"
             clauses.append("(" + " OR ".join(f"{f} LIKE ?" for f in _SEARCH_FIELDS) + ")")

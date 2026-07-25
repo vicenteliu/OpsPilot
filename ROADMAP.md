@@ -65,9 +65,11 @@ retirement tracking for the devices an IT support team manages.
 - Eight free-set statuses, no state machine; existing stock enters mid-flow
 - v1 surface: REST CRUD + event query, an `inventory` web UI module
   (`ui.modules` toggle), CSV import/export as the spreadsheet migration path
-- Extension directions (not v1): request-fulfillment playbook drafting an
-  Asset from a Service Request; warranty-expiry reminders; a normalized
-  Procurement entity
+- ✅ Fulfillment drafts Assets: a physical-device Service Request auto-drafts
+  requested-status Assets with a session-stamped event, idempotent per Work
+  item ([ADR-0018](docs/adr/0018-fulfillment-drafts-assets.md))
+- Extension directions: warranty-expiry reminders; a normalized Procurement
+  entity
 
 ## Later — mobile companion
 

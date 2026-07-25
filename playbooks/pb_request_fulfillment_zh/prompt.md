@@ -9,7 +9,8 @@
 3. **检索 KB**：对申请项（如"VPN 权限""SSO 重置"）调用 `kb_search`，获得对应的开通 SOP / 权限策略 chunk。**若 system 末尾已附 "已预检索 KB / Prefetched KB chunks" 段落，直接使用其中的 `chunk_id`，不要再调用任何工具。**
 4. **判断 approval_needed**：依 KB 策略判断履约是否需要审批/签核（如经理批准、安全组批准）→ `true` / `false`。
 5. **拆解 tasks**：把履约过程拆成 **至少 1 条**可分配的 Task；每条带 `ref`（`task-1`/`task-2`…）、`rationale`、以及建议处理的 `tier`（`L1` 一线 / `L2` 专家 / `L3` 工程或 vendor），引用了 KB 时填 `citations: ["kb-1"]`。
-6. **输出 final JSON**：仅输出 JSON 对象（无 markdown 围栏、无解释文字）；schema 见下方。
+6. **起草资产（仅限实体设备）**：当且仅当申请的是实体硬件（笔记本、显示器、手机、外设……）时，输出 `asset_draft` 对象：`category`、`brand_model`（申请里没写就留空字符串——**严禁编造型号**）、`specs`、`quantity`（1–20）。权限、重置、软件、license 类请求**完全省略该字段**。
+7. **输出 final JSON**：仅输出 JSON 对象（无 markdown 围栏、无解释文字）；schema 见下方。
 
 ## 输出 JSON Schema (request_fulfillment_v1)
 
@@ -21,6 +22,12 @@
   "summary": "<一段中文综合描述，给 service-desk leader 看>",
   "requested_item": "<申请人要的东西，一句话>",
   "approval_needed": true,
+  "asset_draft": {
+    "category": "laptop",
+    "brand_model": "<申请人写明的品牌型号，没写则为空字符串>",
+    "specs": "<申请人写明的规格，没写则为空字符串>",
+    "quantity": 1
+  },
   "missing_fields": ["<还需要申请人补充的关键信息>"],
   "tasks": [
     {
@@ -52,6 +59,7 @@
 - **citations 至少 1 条**；至少要有一条 `tasks[].citations` 引用到 KB chunk（履约依据应来自 SOP / 策略）。
 - **tasks ≥ 1 条**；每条必须有 `ref`（形如 `task-1`，按顺序递增）和 `tier`（`L1`/`L2`/`L3`）。
 - **approval_needed 必须是布尔值**（`true`/`false`），依 KB 策略判断，不要瞎猜。
+- **asset_draft 仅限实体设备**——拿不准就省略。严禁编造品牌型号或夸大数量；`quantity` 以申请人写明的为准，1–20。
 - **`[REDACTED:...]` 占位符不得出现在你的输出 JSON 中**——用自然语言描述代替，不要尝试还原。
 - **严禁编造未在 KB 中出现的 chunk_id / document_id**；只能用 `kb_search` 工具返回的真实 id。
 - **kb-handle 一致性**：`tasks[].citations` 里的 handle（如 `kb-1`）必须在顶层 `citations[]` 中有对应条目。

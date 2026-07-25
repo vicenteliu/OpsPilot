@@ -165,6 +165,8 @@ class ApiRunResponse(BaseModel):
     # human pick (low confidence); re-submit with an explicit playbook_id.
     classification: dict[str, Any] | None = None
     needs_confirmation: bool = False
+    # Asset ids drafted from this run's asset_draft block (ADR-0018).
+    assets_drafted: list[str] = []
 
 
 class ApiConfigResponse(BaseModel):
