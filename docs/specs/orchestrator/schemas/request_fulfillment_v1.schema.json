@@ -46,6 +46,34 @@
       "type": "boolean",
       "description": "Whether fulfilling the request requires sign-off."
     },
+    "asset_draft": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["category", "brand_model", "quantity"],
+      "description": "Present ONLY when the request asks for physical devices; drives automatic Asset drafting in the inventory (ADR-0018). Omit for access/reset/software requests.",
+      "properties": {
+        "category": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Device category, e.g. laptop / monitor / phone / peripheral."
+        },
+        "brand_model": {
+          "type": "string",
+          "description": "Requested brand/model if stated; empty string when unspecified."
+        },
+        "specs": {
+          "type": "string",
+          "default": "",
+          "description": "Requested specs if stated (RAM, size, ...)."
+        },
+        "quantity": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20,
+          "description": "Number of devices requested; one Asset is drafted per unit."
+        }
+      }
+    },
     "missing_fields": {
       "type": "array",
       "items": { "type": "string", "minLength": 1 }

@@ -3,7 +3,7 @@
 # 路径约定：playbooks/<id>/{playbook.yaml, prompt.md}
 
 id: "pb_request_fulfillment_zh"
-version: "1.0.0"
+version: "1.1.0"
 
 description: |
   Given a redacted IT service request (JSON), produce a structured
@@ -13,6 +13,9 @@ description: |
 
   Work item model (ADR-0006): OpsPilot is a processing layer — every
   field is advisory; the external system of record owns final state.
+
+  v1.1.0: optional asset_draft block for physical-device requests —
+  drives automatic Asset drafting in the inventory (ADR-0018).
 
 # Path is resolved relative to this file.
 system_prompt: "prompt.md"

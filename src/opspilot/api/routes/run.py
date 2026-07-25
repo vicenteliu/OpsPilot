@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import json
+import logging
 import tempfile
 from collections.abc import AsyncGenerator
 from pathlib import Path
@@ -20,6 +21,25 @@ from ...providers.registry import make_provider
 from ..types import ApiRunRequest, ApiRunResponse, ApiTokenUsage
 
 router = APIRouter()
+
+logger = logging.getLogger("opspilot.api.run")
+
+
+def _draft_assets(state: Any, res: Any) -> list[str]:
+    """Auto-draft inventory Assets from a fulfillment artifact (ADR-0018).
+
+    Runs after the artifact is validated and archived; must never fail
+    the run response."""
+    store = getattr(state, "inventory", None)
+    if store is None or not res.schema_valid or res.error:
+        return []
+    try:
+        from ...inventory import draft_assets_from_result
+
+        return draft_assets_from_result(store, res.summary, res.session_id)
+    except Exception:  # noqa: BLE001 — drafting is best-effort
+        logger.exception("asset drafting failed")
+        return []
 
 
 def _sse(event: str, data: dict[str, Any]) -> str:
@@ -176,6 +196,7 @@ async def run_ticket(body: ApiRunRequest, request: Request) -> ApiRunResponse:
         ),
         classification=classification,
         needs_confirmation=False,
+        assets_drafted=_draft_assets(state, result),
     )
 
 
@@ -250,6 +271,7 @@ async def run_ticket_stream(body: ApiRunRequest, request: Request) -> StreamingR
                     else None,
                     "classification": classification,
                     "needs_confirmation": False,
+                    "assets_drafted": _draft_assets(state, result),
                 }
             await queue.put({"type": "result", "data": payload})
         except Exception as exc:  # noqa: BLE001

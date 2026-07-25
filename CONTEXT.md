@@ -179,6 +179,7 @@ _Avoid_: user (collides with system user), custodian, owner
 - A **Channel** fronts the KB chat in assist mode; Telegram also acts as a **Source** (message → Work item → suggestion reply, ADR-0014)
 - A notify-mode **Channel** receives a courtesy copy of each delivered **Intake** suggestion — best-effort; the comment on the **Source** remains the durable record
 - An **Asset** may reference the **Work item** (Service Request) that initiated its procurement via `work_item_ref` — optional: existing stock enters with no Work item
+- A schema-valid fulfillment **Artifact** with an `asset_draft` block auto-drafts requested-status **Assets** for its Work item — once per Work item, event-stamped with the **Session** (ADR-0018)
 - Every change to an **Asset** appends one **Asset event**; the current row is a projection, the event log is the history
 - A **Source** owns the lifecycle of the **Work items** pulled from it; **Intake** turns each new Source item into one **Session** and posts the resulting suggestion back as a comment
 

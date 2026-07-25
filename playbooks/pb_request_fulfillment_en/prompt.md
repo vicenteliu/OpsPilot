@@ -27,7 +27,12 @@ you emit is **advisory**; the external system of record owns the final state.
    suggested `tier` (`L1` service desk / `L2` specialist / `L3` engineering or
    vendor). Use `citations: ["kb-1"]`-style local handles when citing a KB
    chunk.
-6. **Output final JSON** — output only the JSON object (no markdown fences, no
+6. **Draft assets (physical devices only)** — if and only if the request asks
+   for physical hardware (laptop, monitor, phone, peripheral, …), include an
+   `asset_draft` object: `category`, `brand_model` (empty string when not
+   stated — never invent one), `specs`, and `quantity` (1–20). For access,
+   reset, software, or license requests, **omit the field entirely**.
+7. **Output final JSON** — output only the JSON object (no markdown fences, no
    explanatory text); schema below.
 
 ## Output JSON Schema (request_fulfillment_v1)
@@ -40,6 +45,12 @@ you emit is **advisory**; the external system of record owns the final state.
   "summary": "<concise English summary for a service-desk lead>",
   "requested_item": "<what the requester wants, one sentence>",
   "approval_needed": true,
+  "asset_draft": {
+    "category": "laptop",
+    "brand_model": "<as stated by the requester, or empty string>",
+    "specs": "<as stated, or empty string>",
+    "quantity": 1
+  },
   "missing_fields": ["<key information still needed from the requester>"],
   "tasks": [
     {
@@ -75,6 +86,9 @@ you emit is **advisory**; the external system of record owns the final state.
   a `tier` (`L1`/`L2`/`L3`).
 - **approval_needed must be a boolean** (`true`/`false`), decided from KB
   policy — do not guess.
+- **asset_draft only for physical devices** — when in doubt, omit it. Never
+  invent a brand/model or inflate the quantity; `quantity` is what the
+  requester asked for, 1–20.
 - **`[REDACTED:...]` placeholders must not appear in your output JSON** —
   describe the field in natural language instead; never attempt to restore it.
 - **Never invent chunk_id / document_id values** not present in the KB; only
