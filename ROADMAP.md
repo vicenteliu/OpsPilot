@@ -35,8 +35,10 @@ A **Channel** is an external messaging surface connected to OpsPilot.
 - ✅ WeCom notify mode — group-robot webhook pushes intake suggestions
   into an ops group
   ([ADR-0016](docs/adr/0016-wecom-notify-mode-group-robot.md))
-- WeCom assist mode — needs an inbound callback (public HTTPS + AES
-  handshake); remains open
+- ✅ WeCom assist mode — self-built-app callback riding the API server,
+  answers via active send; offline-verified crypto, live check is a
+  post-deployment step
+  ([ADR-0019](docs/adr/0019-wecom-assist-callback-on-server.md))
 
 ## Shipped — Work-item intake (Sources)
 

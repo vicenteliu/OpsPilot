@@ -161,7 +161,7 @@ cat intake_comments/IT-101.md             # 真实工单会收到的那条建议
 | [docs/specs/](docs/specs/) | 规格契约：schema + 模板（运行时加载） |
 | [docs/adr/](docs/adr/) | 架构决策记录 |
 | [docs/zh/design/](docs/zh/design/) | 历史设计文档（中文，不再维护） |
-| [ROADMAP.md](ROADMAP.md) | 方向：企微对话模式、移动伴侣 |
+| [ROADMAP.md](ROADMAP.md) | 方向：移动伴侣、语音输入 |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 开发环境、质量门、PR 约定 |
 | [SECURITY.md](SECURITY.md) | 部署模型、威胁模型、漏洞报告 |
 

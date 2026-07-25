@@ -4,6 +4,7 @@ Exposes:
   GET  /api/config              — active model ref and enabled UI modules
   POST /api/run                 — run ticket summary playbook
   POST /api/intake              — webhook intake: accept a pushed work item (ADR-0015)
+  *    /api/channels/wecom/callback — WeCom assist callback (ADR-0019; 404 when unconfigured)
   *    /api/inventory           — Asset CRUD + event log (owned domain, ADR-0017)
   GET  /api/iteration/lineage   — skill lineage history (PR-28)
   GET  /api/kb/docs             — list ingested KB documents
@@ -56,6 +57,7 @@ from .routes.models import router as models_router
 from .routes.run import router as run_router
 from .routes.sandbox import router as sandbox_router
 from .routes.sessions import router as sessions_router
+from .routes.wecom import router as wecom_router
 from .routes.wiki import router as wiki_router
 
 
@@ -182,3 +184,4 @@ app.include_router(wiki_router, prefix="/api")
 app.include_router(harness_router, prefix="/api")
 app.include_router(mcp_router, prefix="/api")
 app.include_router(sandbox_router, prefix="/api")
+app.include_router(wecom_router, prefix="/api")
