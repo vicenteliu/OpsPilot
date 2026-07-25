@@ -73,3 +73,36 @@ filing is a full LLM run — the chat-id allowlist is also the cost boundary.
 - Conversation history is kept in memory per chat (last 20 turns) and
   vanishes when the adapter stops. Answers may quote redacted KB content —
   treat the Telegram chat with the same sensitivity as the web UI.
+
+## WeCom (notify mode)
+
+Push-only: intake suggestions land in a WeCom group through the
+group-robot webhook
+([ADR-0016](adr/0016-wecom-notify-mode-group-robot.md)). There is no
+assist mode yet — WeCom has no long-polling API, so receiving messages
+would require a public HTTPS callback with an AES handshake; the group
+robot is outbound-only and preserves the local-first posture.
+
+### 1. Create a group robot
+
+In the WeCom group: 右键群 → 添加群机器人 → copy the webhook URL.
+
+### 2. Run
+
+```bash
+export WECOM_WEBHOOK_URL="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=…"
+opspilot source jsm --base-url … --email … --jql '…'
+```
+
+Notifications enable automatically when the variable is set: every
+delivered suggestion (JSM comment or replay sink) is also posted to the
+group as a markdown message, truncated to WeCom's 4096-byte limit.
+
+### Notes
+
+- **The webhook URL is a secret** — it embeds the robot key; anyone
+  holding it can post into the group. Environment only, never a CLI
+  argument.
+- Notifications are **best-effort**: a WeCom outage logs a warning and
+  never fails the intake pass or touches intake state — the comment on
+  the work item is the durable record.
