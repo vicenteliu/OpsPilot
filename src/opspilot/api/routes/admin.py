@@ -204,13 +204,19 @@ def test_connection(source: str) -> TestConnectionResult:
             return TestConnectionResult(source=source, ok=False, detail=str(exc))
         return TestConnectionResult(source=source, ok=True, detail="service-account bind ok")
     if source == "oidc":
-        ok = _oidc_configured()
+        from ...auth.oidc import OidcConfig, OidcConnector, OidcError
+
+        oidc_cfg = OidcConfig.from_env()
+        if oidc_cfg is None:
+            return TestConnectionResult(
+                source=source, ok=False, detail="OPSPILOT_OIDC_ISSUER / _CLIENT_ID not set"
+            )
+        try:
+            disc = OidcConnector(oidc_cfg).discover()
+        except OidcError as exc:
+            return TestConnectionResult(source=source, ok=False, detail=str(exc))
         return TestConnectionResult(
-            source=source,
-            ok=ok,
-            detail="OIDC configured (discovery probe lands with the OIDC slice)"
-            if ok
-            else "OPSPILOT_OIDC_ISSUER not set",
+            source=source, ok=True, detail=f"discovery ok: {disc.get('issuer', oidc_cfg.issuer)}"
         )
     raise HTTPException(status_code=422, detail="source must be ldap or oidc")
 

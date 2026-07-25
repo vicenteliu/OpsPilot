@@ -42,6 +42,7 @@ dependencies = [
     "prometheus-client >= 0.20",      # Stage 5: metrics (ADR-0007)
     "cryptography >= 42",             # WeCom callback AES envelope (ADR-0019)
     "ldap3 >= 2.9",                   # LDAP / AD auth connector (ADR-0020)
+    "pyjwt[crypto] >= 2.8",           # OIDC id_token JWKS verification (ADR-0020)
 ]
 
 [project.optional-dependencies]
@@ -116,6 +117,8 @@ module = [
     "uvicorn.*",
     "ldap3",
     "ldap3.*",
+    "jwt",
+    "jwt.*",
 ]
 ignore_missing_imports = true
 
