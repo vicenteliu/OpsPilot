@@ -3,7 +3,8 @@
   // forms (ADR-0017). The row is a projection; the event log is the history.
   import {
     ASSET_STATUSES, listAssets, getAsset, createAsset, updateAsset, deleteAsset,
-    type Asset, type AssetDetail, type AssetFields,
+    createProcurement, getProcurement, updateProcurement, deleteProcurement,
+    type Asset, type AssetDetail, type AssetFields, type ProcurementDetail, type ProcurementFields,
   } from '$lib/api';
 
   const EMPTY_FORM: AssetFields = {
@@ -29,6 +30,55 @@
   let detail = $state<AssetDetail | null>(null);
   let detailError = $state<string | null>(null);
 
+  // Batch selection → procurement grouping (#87)
+  let selected = $state<Record<string, boolean>>({});
+  let proc = $state<ProcurementDetail | null>(null);
+  let procForm = $state<ProcurementFields>({
+    pr_number: '', order_number: '', tracking_number: '', vendor: '', cost: '',
+  });
+  let procSaving = $state<boolean>(false);
+  let procError = $state<string | null>(null);
+  const selectedIds = $derived(Object.keys(selected).filter((k) => selected[k]));
+
+  async function groupSelected() {
+    procError = null;
+    try {
+      await createProcurement(selectedIds);
+      selected = {};
+      await loadList();
+    } catch (e) { listError = e instanceof Error ? e.message : String(e); }
+  }
+
+  async function loadProcurement(procurementId: string) {
+    try {
+      proc = await getProcurement(procurementId);
+      procForm = {
+        pr_number: proc.pr_number, order_number: proc.order_number,
+        tracking_number: proc.tracking_number, vendor: proc.vendor, cost: proc.cost,
+      };
+    } catch { proc = null; }
+  }
+
+  async function saveProcurement() {
+    if (!proc || !detail) return;
+    procSaving = true;
+    procError = null;
+    try {
+      await updateProcurement(proc.procurement_id, procForm);
+      await openDetail(detail.asset_id);  // re-reads asset + refreshed events
+    } catch (e) { procError = e instanceof Error ? e.message : String(e); }
+    finally { procSaving = false; }
+  }
+
+  async function ungroupProcurement() {
+    if (!proc || !detail) return;
+    if (!confirm(`Ungroup ${proc.member_count} asset(s)? Their fields are kept.`)) return;
+    try {
+      await deleteProcurement(proc.procurement_id);
+      await openDetail(detail.asset_id);
+    } catch (e) { procError = e instanceof Error ? e.message : String(e); }
+  }
+
   let editing = $state<boolean>(false);
   let form = $state<AssetFields>({ ...EMPTY_FORM });
   let formError = $state<string | null>(null);
@@ -45,9 +95,11 @@
   async function openDetail(assetId: string) {
     detailError = null;
     editing = false;
+    proc = null;
     try {
       detail = await getAsset(assetId);
       view = 'detail';
+      if (detail.procurement_id) await loadProcurement(detail.procurement_id);
     } catch (e) { detailError = e instanceof Error ? e.message : String(e); }
   }
 
@@ -59,7 +111,7 @@
 
   function startEdit() {
     if (!detail) return;
-    const { asset_id: _id, created_at: _c, updated_at: _u, events: _e, ...fields } = detail;
+    const { asset_id: _id, procurement_id: _p, created_at: _c, updated_at: _u, events: _e, ...fields } = detail;
     form = { ...fields };
     formError = null;
     editing = true;
@@ -193,6 +245,11 @@
       <button class="btn-action" onclick={loadList} disabled={listLoading}>
         {listLoading ? '…' : 'Search'}
       </button>
+      {#if selectedIds.length >= 2}
+        <button class="btn-action" onclick={groupSelected}>
+          Group {selectedIds.length} as procurement
+        </button>
+      {/if}
     </div>
     {#if listError}
       <p class="section-error">{listError}</p>
@@ -203,11 +260,14 @@
     {:else}
       <table class="data-table">
         <thead>
-          <tr><th>Tag</th><th>Category</th><th>Brand / model</th><th>Serial</th><th>Status</th><th>Assignee</th><th>Warranty</th><th>Updated</th></tr>
+          <tr><th></th><th>Tag</th><th>Category</th><th>Brand / model</th><th>Serial</th><th>Status</th><th>Assignee</th><th>Warranty</th><th>Updated</th></tr>
         </thead>
         <tbody>
           {#each assets as a}
             <tr class="inv-row" onclick={() => openDetail(a.asset_id)}>
+              <td onclick={(e) => e.stopPropagation()}>
+                <input type="checkbox" bind:checked={selected[a.asset_id]} />
+              </td>
               <td class="mono">{a.asset_tag || '—'}</td>
               <td>{a.category || '—'}</td>
               <td>{a.brand_model || '—'}</td>
@@ -263,6 +323,33 @@
         {/each}
       </div>
 
+      {#if proc}
+        <div class="inv-form-group inv-proc-panel">
+          <div class="inv-group-title">
+            Procurement {proc.procurement_id} · {proc.member_count} asset(s) — edits sync to all members
+          </div>
+          <div class="inv-grid">
+            <label class="inv-field"><span class="inv-field-label">PR number</span>
+              <input class="inv-input" bind:value={procForm.pr_number} /></label>
+            <label class="inv-field"><span class="inv-field-label">Order number</span>
+              <input class="inv-input" bind:value={procForm.order_number} /></label>
+            <label class="inv-field"><span class="inv-field-label">Tracking number</span>
+              <input class="inv-input" bind:value={procForm.tracking_number} /></label>
+            <label class="inv-field"><span class="inv-field-label">Vendor</span>
+              <input class="inv-input" bind:value={procForm.vendor} /></label>
+            <label class="inv-field"><span class="inv-field-label">Cost</span>
+              <input class="inv-input" bind:value={procForm.cost} /></label>
+          </div>
+          {#if procError}<p class="section-error">{procError}</p>{/if}
+          <div class="inv-form-actions">
+            <button class="btn-action" onclick={saveProcurement} disabled={procSaving}>
+              {procSaving ? '…' : `Save & sync ${proc.member_count} asset(s)`}
+            </button>
+            <button class="btn-secondary" onclick={ungroupProcurement}>Ungroup</button>
+          </div>
+        </div>
+      {/if}
+
       <h4 class="inv-events-title">Events</h4>
       <table class="data-table">
         <thead><tr><th>When</th><th>Actor</th><th>Change</th><th>Note</th></tr></thead>
@@ -310,6 +397,13 @@
 
   .inv-status-deployed { color: var(--primary); border-color: var(--primary-border); background: var(--primary-bg); }
   .inv-warranty-warn { color: #d97706; font-weight: 600; }
+
+  .inv-proc-panel {
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    padding: 0.8rem;
+    margin-bottom: 1.2rem;
+  }
   .inv-status-in_repair { color: #d97706; }
   .inv-status-retired { opacity: 0.6; }
 

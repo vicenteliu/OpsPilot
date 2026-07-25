@@ -51,6 +51,10 @@ FIELDS = (
 # Columns the free-text search (?q=) matches against.
 _SEARCH_FIELDS = ("asset_tag", "brand_model", "serial_number", "assignee", "handler", "vendor")
 
+# Procurement fields shared by a batch; a Procurement PATCH syncs them to
+# every member Asset (#87). A subset of FIELDS.
+PROCUREMENT_FIELDS = ("pr_number", "order_number", "tracking_number", "vendor", "cost")
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS assets (
     asset_id        TEXT PRIMARY KEY,
@@ -85,11 +89,31 @@ CREATE TABLE IF NOT EXISTS asset_events (
     note     TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_asset_events_asset ON asset_events(asset_id, event_id);
+CREATE TABLE IF NOT EXISTS procurements (
+    procurement_id  TEXT PRIMARY KEY,
+    pr_number       TEXT NOT NULL DEFAULT '',
+    order_number    TEXT NOT NULL DEFAULT '',
+    tracking_number TEXT NOT NULL DEFAULT '',
+    vendor          TEXT NOT NULL DEFAULT '',
+    cost            TEXT NOT NULL DEFAULT '',
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL
+);
 """
+
+
+# ``InventoryStore.list`` shadows the builtin inside the class body, so
+# methods defined after it use these module-level aliases in annotations.
+_Rows = list[dict[str, Any]]
+_Ids = list[str]
 
 
 class AssetNotFoundError(Exception):
     """No Asset with the given id."""
+
+
+class ProcurementNotFoundError(Exception):
+    """No Procurement with the given id."""
 
 
 class DuplicateSerialError(Exception):
@@ -111,6 +135,11 @@ class InventoryStore:
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn
         conn.executescript(_SCHEMA)
+        # Idempotent column migration (#87): CREATE TABLE IF NOT EXISTS
+        # cannot add columns to an existing table.
+        asset_cols = {r[1] for r in conn.execute("PRAGMA table_info(assets)")}
+        if "procurement_id" not in asset_cols:
+            conn.execute("ALTER TABLE assets ADD COLUMN procurement_id TEXT NOT NULL DEFAULT ''")
         conn.commit()
 
     # ── reads ──────────────────────────────────────────────────────────
@@ -246,6 +275,116 @@ class InventoryStore:
         """Hard delete, for data-entry mistakes — retirement is a status."""
         cur = self._conn.execute("DELETE FROM assets WHERE asset_id = ?", (asset_id,))
         self._conn.execute("DELETE FROM asset_events WHERE asset_id = ?", (asset_id,))
+        self._conn.commit()
+        return cur.rowcount > 0
+
+    # ── procurements: optional grouping with batch field sync (#87) ────
+
+    def get_procurement(self, procurement_id: str) -> dict[str, Any] | None:
+        cur = self._conn.execute(
+            "SELECT p.*, (SELECT COUNT(*) FROM assets a WHERE a.procurement_id = p.procurement_id)"
+            " AS member_count FROM procurements p WHERE p.procurement_id = ?",
+            (procurement_id,),
+        )
+        row = cur.fetchone()
+        return dict(zip((d[0] for d in cur.description), row, strict=True)) if row else None
+
+    def list_procurements(self) -> _Rows:
+        cur = self._conn.execute(
+            "SELECT p.*, (SELECT COUNT(*) FROM assets a WHERE a.procurement_id = p.procurement_id)"
+            " AS member_count FROM procurements p ORDER BY p.created_at DESC"
+        )
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row, strict=True)) for row in cur.fetchall()]
+
+    def procurement_members(self, procurement_id: str) -> _Rows:
+        cur = self._conn.execute(
+            "SELECT * FROM assets WHERE procurement_id = ? ORDER BY created_at",
+            (procurement_id,),
+        )
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row, strict=True)) for row in cur.fetchall()]
+
+    def create_procurement(self, asset_ids: _Ids, actor: str = "") -> dict[str, Any]:
+        """Group existing Assets; the Procurement adopts their common fields.
+
+        A field where members disagree starts empty — the next PATCH
+        settles it and syncs everyone.
+        """
+        if not asset_ids:
+            raise AssetNotFoundError("no asset ids given")
+        members: _Rows = []
+        for aid in asset_ids:
+            row = self.get(aid)
+            if row is None:
+                raise AssetNotFoundError(aid)
+            members.append(row)
+        adopted = {}
+        for f in PROCUREMENT_FIELDS:
+            values = {m[f] for m in members}
+            adopted[f] = next(iter(values)) if len(values) == 1 else ""
+        pid = new_ulid_id("prc")
+        now = now_rfc3339()
+        self._conn.execute(
+            "INSERT INTO procurements (procurement_id, pr_number, order_number, "
+            "tracking_number, vendor, cost, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
+            (pid, *(adopted[f] for f in PROCUREMENT_FIELDS), now, now),
+        )
+        for m in members:
+            self._conn.execute(
+                "UPDATE assets SET procurement_id = ?, updated_at = ? WHERE asset_id = ?",
+                (pid, now, m["asset_id"]),
+            )
+            self._append_event(m["asset_id"], actor, f"grouped into {pid}", "")
+        self._conn.commit()
+        result = self.get_procurement(pid)
+        assert result is not None
+        return result
+
+    def update_procurement(
+        self, procurement_id: str, changes: dict[str, Any], actor: str = ""
+    ) -> dict[str, Any]:
+        """Update procurement fields and sync them to every member Asset.
+
+        Each member goes through :meth:`update`, so every touched Asset
+        gets its own diff event."""
+        current = self.get_procurement(procurement_id)
+        if current is None:
+            raise ProcurementNotFoundError(procurement_id)
+        applied = {
+            k: "" if v is None else str(v)
+            for k, v in changes.items()
+            if k in PROCUREMENT_FIELDS and ("" if v is None else str(v)) != current[k]
+        }
+        if not applied:
+            return current
+        sets = ", ".join(f"{k} = ?" for k in applied)
+        self._conn.execute(
+            f"UPDATE procurements SET {sets}, updated_at = ? WHERE procurement_id = ?",  # noqa: S608 — keys validated against PROCUREMENT_FIELDS
+            [*applied.values(), now_rfc3339(), procurement_id],
+        )
+        self._conn.commit()
+        for member in self.procurement_members(procurement_id):
+            self.update(
+                member["asset_id"], applied, actor=actor, note=f"synced from {procurement_id}"
+            )
+        result = self.get_procurement(procurement_id)
+        assert result is not None
+        return result
+
+    def delete_procurement(self, procurement_id: str, actor: str = "") -> bool:
+        """Ungroup members (fields untouched) and delete the Procurement."""
+        members = self.procurement_members(procurement_id)
+        now = now_rfc3339()
+        for m in members:
+            self._conn.execute(
+                "UPDATE assets SET procurement_id = '', updated_at = ? WHERE asset_id = ?",
+                (now, m["asset_id"]),
+            )
+            self._append_event(m["asset_id"], actor, f"ungrouped from {procurement_id}", "")
+        cur = self._conn.execute(
+            "DELETE FROM procurements WHERE procurement_id = ?", (procurement_id,)
+        )
         self._conn.commit()
         return cur.rowcount > 0
 

@@ -651,6 +651,7 @@ export interface Asset {
   assignee: string;
   location: string;
   warranty_until: string;
+  procurement_id: string;
   created_at: string;
   updated_at: string;
 }
@@ -668,7 +669,7 @@ export interface AssetDetail extends Asset {
 }
 
 // Editable fields only (no ids/timestamps).
-export type AssetFields = Omit<Asset, 'asset_id' | 'created_at' | 'updated_at'>;
+export type AssetFields = Omit<Asset, 'asset_id' | 'procurement_id' | 'created_at' | 'updated_at'>;
 
 async function assetError(res: Response, verb: string): Promise<never> {
   let detail = '';
@@ -722,4 +723,62 @@ export async function updateAsset(assetId: string, changes: Partial<AssetFields>
 export async function deleteAsset(assetId: string): Promise<void> {
   const res = await apiFetch(`/api/inventory/${encodeURIComponent(assetId)}`, { method: 'DELETE' });
   if (!res.ok) await assetError(res, 'Asset delete');
+}
+
+// ── Procurements (#87) ─────────────────────────────────────────────────────
+
+export interface Procurement {
+  procurement_id: string;
+  pr_number: string;
+  order_number: string;
+  tracking_number: string;
+  vendor: string;
+  cost: string;
+  created_at: string;
+  updated_at: string;
+  member_count: number;
+}
+
+export interface ProcurementDetail extends Procurement {
+  members: Asset[];
+}
+
+export type ProcurementFields = Pick<
+  Procurement, 'pr_number' | 'order_number' | 'tracking_number' | 'vendor' | 'cost'
+>;
+
+export async function createProcurement(assetIds: string[]): Promise<Procurement> {
+  const res = await apiFetch('/api/inventory/procurements', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ asset_ids: assetIds, actor: 'web-user' })
+  });
+  if (!res.ok) await assetError(res, 'Procurement create');
+  return res.json();
+}
+
+export async function getProcurement(procurementId: string): Promise<ProcurementDetail> {
+  const res = await apiFetch(`/api/inventory/procurements/${encodeURIComponent(procurementId)}`);
+  if (!res.ok) await assetError(res, 'Procurement fetch');
+  return res.json();
+}
+
+export async function updateProcurement(
+  procurementId: string,
+  changes: Partial<ProcurementFields>
+): Promise<Procurement> {
+  const res = await apiFetch(`/api/inventory/procurements/${encodeURIComponent(procurementId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...changes, actor: 'web-user' })
+  });
+  if (!res.ok) await assetError(res, 'Procurement update');
+  return res.json();
+}
+
+export async function deleteProcurement(procurementId: string): Promise<void> {
+  const res = await apiFetch(`/api/inventory/procurements/${encodeURIComponent(procurementId)}`, {
+    method: 'DELETE'
+  });
+  if (!res.ok) await assetError(res, 'Procurement delete');
 }

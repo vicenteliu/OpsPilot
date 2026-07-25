@@ -103,8 +103,47 @@ class ApiAsset(BaseModel):
     assignee: str
     location: str
     warranty_until: str
+    procurement_id: str = ""  # set via the grouping endpoints, not PATCH (#87)
     created_at: str
     updated_at: str
+
+
+class ApiProcurementCreate(BaseModel):
+    """Request body for POST /api/inventory/procurements — group existing Assets."""
+
+    asset_ids: list[str]
+    actor: str = ""
+
+
+class ApiProcurementUpdate(BaseModel):
+    """PATCH body; a change syncs to every member Asset. None = unchanged."""
+
+    pr_number: str | None = None
+    order_number: str | None = None
+    tracking_number: str | None = None
+    vendor: str | None = None
+    cost: str | None = None
+    actor: str = ""
+
+
+class ApiProcurement(BaseModel):
+    procurement_id: str
+    pr_number: str
+    order_number: str
+    tracking_number: str
+    vendor: str
+    cost: str
+    created_at: str
+    updated_at: str
+    member_count: int
+
+
+class ApiProcurementDetail(ApiProcurement):
+    members: list[ApiAsset]
+
+
+class ApiProcurementListResponse(BaseModel):
+    procurements: list[ApiProcurement]
 
 
 class ApiAssetEvent(BaseModel):
