@@ -2071,6 +2071,47 @@ def inventory_export(
     _console.print(f"[green]{count}[/green] asset(s) exported to {file}")
 
 
+@inventory_app.command("warranty-check")
+def inventory_warranty_check(
+    days: int = typer.Option(
+        30, "--days", help="Flag warranties ending within this many days (or already ended)."
+    ),
+) -> None:
+    """List expiring warranties; push a WeCom summary when WECOM_WEBHOOK_URL is set.
+
+    Cron-friendly: exits 0 either way; scheduling stays outside the server
+    (ADR-0012 posture — no resident scheduler).
+    """
+    from .inventory import InventoryStore
+
+    cfg = load_config()
+    conn = init_sqlite(cfg.home / "kb" / "sqlite.db")
+    store = InventoryStore(conn)
+    rows = store.expiring_warranties(days)
+    if not rows:
+        _console.print(f"[green]No warranties ending within {days} day(s).[/green]")
+        return
+    for r in rows:
+        _console.print(
+            f"  [yellow]{r['warranty_until'][:10]}[/yellow] {r['asset_tag'] or r['asset_id']} "
+            f"— {r['brand_model'] or r['category'] or '?'} ({r['assignee'] or 'unassigned'})"
+        )
+    _console.print(f"[yellow]{len(rows)}[/yellow] warrant(ies) ending within {days} day(s)")
+    wecom_url = os.environ.get("WECOM_WEBHOOK_URL")
+    if wecom_url:
+        from .channels import WeComNotifier
+
+        lines = [
+            f"- {r['warranty_until'][:10]} — {r['asset_tag'] or r['asset_id']} "
+            f"{r['brand_model'] or r['category']} ({r['assignee'] or 'unassigned'})"
+            for r in rows
+        ]
+        WeComNotifier(wecom_url).notify(
+            f"Warranty check: {len(rows)} ending within {days}d", "\n".join(lines)
+        )
+        _console.print("WeCom summary pushed (group-robot webhook)")
+
+
 # ──────────────────────────────────────────────────────────────────────────
 #  serve (PR-32)
 # ──────────────────────────────────────────────────────────────────────────

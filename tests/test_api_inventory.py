@@ -131,6 +131,44 @@ class TestListAndFilters:
         assert [a["asset_tag"] for a in hits] == ["NB-002"]
 
 
+class TestWarrantyExpiry:
+    @staticmethod
+    def _days_from_now(days: int) -> str:
+        from datetime import UTC, datetime, timedelta
+
+        return (datetime.now(UTC) + timedelta(days=days)).strftime("%Y-%m-%d")
+
+    def test_expiring_filter_includes_soon_and_past_excludes_far_empty_retired(self) -> None:
+        c = _client()
+        soon = self._days_from_now(10)
+        far = self._days_from_now(100)
+        past = self._days_from_now(-5)
+        c.post("/api/inventory", json=_laptop(warranty_until=soon))
+        c.post(
+            "/api/inventory",
+            json=_laptop(asset_tag="NB-002", serial_number="SN-B2", warranty_until=far),
+        )
+        c.post(
+            "/api/inventory",
+            json=_laptop(asset_tag="NB-003", serial_number="SN-C3", warranty_until=past),
+        )
+        c.post(
+            "/api/inventory",
+            json=_laptop(asset_tag="NB-004", serial_number="SN-D4"),  # no warranty
+        )
+        c.post(
+            "/api/inventory",
+            json=_laptop(
+                asset_tag="NB-005", serial_number="SN-E5", warranty_until=soon, status="retired"
+            ),
+        )
+        hits = c.get("/api/inventory", params={"expiring_days": 30}).json()["assets"]
+        assert sorted(a["asset_tag"] for a in hits) == ["NB-001", "NB-003"]
+        # Tighter window drops the 10-days-out one but keeps the already-past one.
+        week = c.get("/api/inventory", params={"expiring_days": 7}).json()["assets"]
+        assert [a["asset_tag"] for a in week] == ["NB-003"]
+
+
 class TestDelete:
     def test_delete_then_404(self) -> None:
         c = _client()

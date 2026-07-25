@@ -41,8 +41,13 @@ def list_assets(
     status: str | None = None,
     assignee: str | None = None,
     q: str | None = None,
+    expiring_days: int | None = None,
 ) -> ApiAssetListResponse:
-    rows = request.app.state.inventory.list(status=status, assignee=assignee, q=q)
+    store = request.app.state.inventory
+    if expiring_days is not None:
+        rows = store.expiring_warranties(expiring_days)
+    else:
+        rows = store.list(status=status, assignee=assignee, q=q)
     return ApiAssetListResponse(assets=[ApiAsset(**r) for r in rows])
 
 

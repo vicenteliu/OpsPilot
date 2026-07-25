@@ -9,10 +9,11 @@ matching :mod:`opspilot.memory.storage_init`.
 from __future__ import annotations
 
 import sqlite3
+from datetime import datetime, timedelta
 from typing import Any
 
 from ..ids import new_ulid_id
-from ..timeutil import now_rfc3339
+from ..timeutil import UTC, now_rfc3339
 
 # Eight free-set statuses — a convention, not a state machine (ADR-0017).
 VALID_STATUSES = (
@@ -124,6 +125,22 @@ class InventoryStore:
             "SELECT event_id, ts, actor, change, note FROM asset_events "
             "WHERE asset_id = ? ORDER BY event_id",
             (asset_id,),
+        )
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row, strict=True)) for row in cur.fetchall()]
+
+    def expiring_warranties(self, days: int) -> list[dict[str, Any]]:
+        """Assets whose warranty ends within *days* (or already ended).
+
+        ISO date strings compare lexicographically, so a plain string
+        comparison against the cutoff date is correct for both date-only
+        and RFC3339 values. Empty warranties and retired assets are out.
+        """
+        cutoff = (datetime.now(UTC) + timedelta(days=days)).strftime("%Y-%m-%d")
+        cur = self._conn.execute(
+            "SELECT * FROM assets WHERE warranty_until != '' AND status != 'retired' "
+            "AND substr(warranty_until, 1, 10) <= ? ORDER BY warranty_until",
+            (cutoff,),
         )
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row, strict=True)) for row in cur.fetchall()]

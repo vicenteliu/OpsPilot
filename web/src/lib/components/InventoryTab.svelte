@@ -17,7 +17,14 @@
   let listLoading = $state<boolean>(false);
   let listError = $state<string | null>(null);
   let statusFilter = $state<string>('');
+  let warrantyFilter = $state<string>('');
   let query = $state<string>('');
+
+  // Warranty ending within 30 days (or already ended) gets the warn style.
+  const WARN_CUTOFF = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
+  function warrantyWarn(until: string): boolean {
+    return !!until && until.slice(0, 10) <= WARN_CUTOFF;
+  }
 
   let detail = $state<AssetDetail | null>(null);
   let detailError = $state<string | null>(null);
@@ -30,7 +37,7 @@
   async function loadList() {
     listLoading = true;
     listError = null;
-    try { assets = await listAssets(statusFilter, '', query.trim()); }
+    try { assets = await listAssets(statusFilter, '', query.trim(), warrantyFilter); }
     catch (e) { listError = e instanceof Error ? e.message : String(e); assets = []; }
     finally { listLoading = false; }
   }
@@ -176,6 +183,11 @@
         <option value="">all statuses</option>
         {#each ASSET_STATUSES as s}<option value={s}>{s}</option>{/each}
       </select>
+      <select class="inv-input inv-status-filter" bind:value={warrantyFilter} onchange={loadList}>
+        <option value="">warranty: all</option>
+        <option value="30">ending ≤ 30d</option>
+        <option value="7">ending ≤ 7d</option>
+      </select>
       <input class="search-input" bind:value={query} placeholder="Search tag / model / serial / people / vendor…"
         onkeydown={(e) => e.key === 'Enter' && loadList()} />
       <button class="btn-action" onclick={loadList} disabled={listLoading}>
@@ -191,7 +203,7 @@
     {:else}
       <table class="data-table">
         <thead>
-          <tr><th>Tag</th><th>Category</th><th>Brand / model</th><th>Serial</th><th>Status</th><th>Assignee</th><th>Updated</th></tr>
+          <tr><th>Tag</th><th>Category</th><th>Brand / model</th><th>Serial</th><th>Status</th><th>Assignee</th><th>Warranty</th><th>Updated</th></tr>
         </thead>
         <tbody>
           {#each assets as a}
@@ -202,6 +214,9 @@
               <td class="mono">{a.serial_number || '—'}</td>
               <td><span class="inv-status inv-status-{a.status}">{a.status}</span></td>
               <td>{a.assignee || '—'}</td>
+              <td class="dim {warrantyWarn(a.warranty_until) ? 'inv-warranty-warn' : ''}">
+                {a.warranty_until ? a.warranty_until.slice(0, 10) : '—'}
+              </td>
               <td class="dim">{a.updated_at.slice(0, 10)}</td>
             </tr>
           {/each}
@@ -294,6 +309,7 @@
   }
 
   .inv-status-deployed { color: var(--primary); border-color: var(--primary-border); background: var(--primary-bg); }
+  .inv-warranty-warn { color: #d97706; font-weight: 600; }
   .inv-status-in_repair { color: #d97706; }
   .inv-status-retired { opacity: 0.6; }
 
