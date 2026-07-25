@@ -45,7 +45,13 @@ class SourceTransport(Protocol):
 
 
 class OpsPilotRunClient:
-    """Calls ``POST /api/run`` and returns the parsed response body."""
+    """Calls ``POST /api/run`` and returns the parsed response body.
+
+    ``playbook_id`` pins every run to one server-side playbook (the API
+    then skips Classification); ``model_id`` overrides the model per run
+    and must be the effective playbook's primary or one of its
+    ``extra_models``. Both default to the server's own defaults.
+    """
 
     def __init__(
         self,
@@ -53,18 +59,25 @@ class OpsPilotRunClient:
         api_token: str | None = None,
         http: httpx.Client | None = None,
         timeout_s: float = 300.0,
+        playbook_id: str | None = None,
+        model_id: str | None = None,
     ) -> None:
         self._api_url = api_url.rstrip("/")
         self._api_token = api_token
         self._http = http or httpx.Client(timeout=timeout_s)
+        self._playbook_id = playbook_id
+        self._model_id = model_id
 
     def run(self, work_item: dict[str, Any]) -> dict[str, Any]:
         headers = {"Content-Type": "application/json"}
         if self._api_token:
             headers["Authorization"] = f"Bearer {self._api_token}"
-        res = self._http.post(
-            f"{self._api_url}/api/run", json={"input": work_item}, headers=headers
-        )
+        payload: dict[str, Any] = {"input": work_item}
+        if self._playbook_id:
+            payload["playbook_id"] = self._playbook_id
+        if self._model_id:
+            payload["model_id"] = self._model_id
+        res = self._http.post(f"{self._api_url}/api/run", json=payload, headers=headers)
         res.raise_for_status()
         return dict(res.json())
 

@@ -76,6 +76,8 @@ suggestion appears as a comment on the ticket.
 | `--replay DIR` | One offline pass from recorded fixtures; comments go to `--out` |
 | `--rerun IT-123` | Forget a key so it runs again this pass (repeatable) |
 | `--state PATH` | Where processed keys live (default `intake_state.json`) |
+| `--playbook pb_…` | Pin every run to one server-side playbook (skips Classification) |
+| `--model provider/name` | Model override per run (the playbook's primary or one of its extras) |
 
 ### State and reruns
 
