@@ -17,6 +17,23 @@ class ApiRunRequest(BaseModel):
     )
 
 
+class ApiIntakeRequest(BaseModel):
+    """Request body for POST /api/intake (webhook intake, ADR-0015)."""
+
+    key: str  # source-unique id used for dedupe, e.g. "MON-1042"
+    input: dict[str, Any]  # raw work item JSON, same shape as ApiRunRequest.input
+    playbook_id: str | None = None
+    model_id: str | None = None
+
+
+class ApiIntakeResponse(BaseModel):
+    """Response body for POST /api/intake."""
+
+    accepted: bool
+    duplicate: bool
+    key: str
+
+
 class ApiModelOption(BaseModel):
     """One selectable model in GET /api/models."""
 

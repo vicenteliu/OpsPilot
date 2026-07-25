@@ -118,6 +118,30 @@ and commands live in [docs/channels.md](channels.md);
 it rides the channel adapter instead of a separate `opspilot source
 telegram` process (Telegram allows one `getUpdates` poller per bot token).
 
+## Webhook intake (push)
+
+For deployments that already run remote-exposed (ADR-0011) and want push
+instead of polling, `POST /api/intake` accepts a normalized Work item from
+any system that can send an HTTP request
+([ADR-0015](adr/0015-webhook-intake-accept-async.md)):
+
+```bash
+curl -sS -X POST "$OPSPILOT_URL/api/intake" \
+  -H "Authorization: Bearer $OPSPILOT_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"key": "MON-1042", "input": {"ticket_id": "MON-1042",
+       "subject": "disk full on db-3", "body": "…"}}'
+```
+
+The endpoint answers `202` immediately and runs the pipeline in the
+background — webhook senders time out long before an LLM run finishes.
+Results land as normal Sessions (browsable in the UI and API); there is no
+write-back — a pusher has no comment destination, so the closed loop stays
+with the polling adapters. Redelivered keys are acknowledged as duplicates
+and not re-run; a run that failed on a transient outage is retried by the
+next redelivery. `playbook_id` / `model_id` are accepted with the same
+contract as `POST /api/run`.
+
 ## Docker Compose
 
 `docker-compose.prod.yml` ships a `jsm-source` service behind the `jsm`

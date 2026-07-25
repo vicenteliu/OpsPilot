@@ -40,7 +40,8 @@ AI 正在重塑整个 IT Support 行业。OpsPilot 是对一个具体问题的�
 - **工单接入（Intake）** —— 按 JQL 范围直接从 Jira Service Management 拉取
   工单，AI 建议以评论形式发回工单本身：纯轮询（无需公网入口）、只发评论
   （绝不改动字段）、状态可跨重启保留，还有 `--replay` 模式离线演示完整闭环；
-  接入管道可以指定比交互使用更便宜的模型
+  接入管道可以指定比交互使用更便宜的模型，远程部署也可改用
+  `POST /api/intake` 推送接入
 - **带引用的知识库检索** —— 向量（LanceDB）+ 全文（SQLite FTS5）混合搜索，
   RRF 融合；强模型走 `tool` 模式（ReAct），弱本地模型走 `prefetch` 注入
 - **脱敏优先** —— 任何内容进入模型或知识库之前先剥离 PII
@@ -159,7 +160,7 @@ cat intake_comments/IT-101.md             # 真实工单会收到的那条建议
 | [docs/specs/](docs/specs/) | 规格契约：schema + 模板（运行时加载） |
 | [docs/adr/](docs/adr/) | 架构决策记录 |
 | [docs/zh/design/](docs/zh/design/) | 历史设计文档（中文，不再维护） |
-| [ROADMAP.md](ROADMAP.md) | 方向：更多渠道（企微）、移动伴侣、webhook 接单 |
+| [ROADMAP.md](ROADMAP.md) | 方向：更多渠道（企微）、移动伴侣 |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 开发环境、质量门、PR 约定 |
 | [SECURITY.md](SECURITY.md) | 部署模型、威胁模型、漏洞报告 |
 

@@ -45,7 +45,8 @@ practical work-assistance layer for IT support look like?**
   on a JQL scope and post the AI suggestion back as a comment on the ticket:
   polling-only (no public endpoint), comment-only (no field is ever touched),
   restart-safe state, and a `--replay` mode that demos the whole loop
-  offline; intake can run on a cheaper model than interactive use
+  offline; intake can run on a cheaper model than interactive use, and
+  remote deployments can push instead via `POST /api/intake`
 - **KB retrieval with citations** — hybrid vector (LanceDB) + full-text
   (SQLite FTS5) search fused with RRF; `tool` mode (ReAct) for strong models,
   `prefetch` injection for weak local ones
@@ -169,7 +170,7 @@ flow, the six-layer system design, provider routing, and retrieval modes.
 | [docs/sources.md](docs/sources.md) | Work-item intake — JSM setup, replay mode, state and reruns |
 | [docs/specs/](docs/specs/) | Spec contracts: schemas + templates (loaded at runtime) |
 | [docs/adr/](docs/adr/) | Architecture decision records |
-| [ROADMAP.md](ROADMAP.md) | Direction: more channels (WeCom), mobile companion, webhook intake |
+| [ROADMAP.md](ROADMAP.md) | Direction: more channels (WeCom), mobile companion |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Dev setup, quality gates, PR conventions |
 | [SECURITY.md](SECURITY.md) | Deployment model, threat model, reporting vulnerabilities |
 
