@@ -197,3 +197,24 @@ app.include_router(harness_router, prefix="/api")
 app.include_router(mcp_router, prefix="/api")
 app.include_router(sandbox_router, prefix="/api")
 app.include_router(wecom_router, prefix="/api")
+
+
+def _mount_ui(fastapi_app: FastAPI) -> None:
+    """Serve the pre-built web UI as static files (all-in-one image, ADR-0020).
+
+    Mounted last so /api, /health and /metrics always win. The directory is
+    ``OPSPILOT_UI_DIR`` (set in the Docker image) or ``web/build`` from a
+    local ``pnpm build``; absent (dev with the Vite server) it is skipped.
+    """
+    from starlette.staticfiles import StaticFiles
+
+    ui_env = os.environ.get("OPSPILOT_UI_DIR")
+    ui_dir = Path(ui_env) if ui_env else Path(__file__).resolve().parents[3] / "web" / "build"
+    if not (ui_dir / "index.html").is_file():
+        return
+    # html=True serves index.html for "/"; the app is a single client page,
+    # so no deep-route SPA fallback is needed.
+    fastapi_app.mount("/", StaticFiles(directory=str(ui_dir), html=True), name="ui")
+
+
+_mount_ui(app)

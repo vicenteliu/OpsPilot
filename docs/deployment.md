@@ -53,10 +53,35 @@ without a proxy, uvicorn's TLS flags are passed through:
 opspilot serve --host 0.0.0.0 --ssl-certfile cert.pem --ssl-keyfile key.pem
 ```
 
-## Docker Compose
+## All-in-one Docker image
+
+The image bundles the built web UI (login + admin + workbench), served by
+FastAPI — one container is a complete, login-gated deployment (ADR-0020):
 
 ```bash
-cp .env.example .env   # add API keys
+docker build -t opspilot:latest .
+docker run -p 8000:8000 \
+  -e OPSPILOT_API_TOKEN="$(openssl rand -hex 32)" \
+  -e OPSPILOT_BOOTSTRAP_ADMIN=admin \
+  -e OPSPILOT_BOOTSTRAP_PASSWORD='<a-strong-password>' \
+  -e ANTHROPIC_API_KEY=sk-ant-... \
+  -v opspilot-data:/home/opspilot/.opspilot \
+  opspilot:latest serve --host 0.0.0.0 --port 8000
+# open http://localhost:8000 → sign in as the bootstrap admin
+```
+
+Binding beyond loopback stays **fail-closed** (ADR-0011): `--host 0.0.0.0`
+refuses to start without `OPSPILOT_API_TOKEN` (which doubles as the Service
+token for channel/source adapters). Put TLS in front with a reverse proxy,
+or use `--ssl-certfile`/`--ssl-keyfile`. Remove the bootstrap-admin vars
+once the account exists.
+
+## Docker Compose
+
+For a multi-service setup (dedicated Ollama, nginx TLS termination):
+
+```bash
+cp .env.example .env   # add API keys + auth env (see .env.example)
 docker compose -f docker-compose.prod.yml up -d
 curl http://localhost:8000/health
 ```
