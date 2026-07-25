@@ -41,6 +41,7 @@ dependencies = [
     "textual >= 8.0",                 # PR-20: TUI shell
     "prometheus-client >= 0.20",      # Stage 5: metrics (ADR-0007)
     "cryptography >= 42",             # WeCom callback AES envelope (ADR-0019)
+    "ldap3 >= 2.9",                   # LDAP / AD auth connector (ADR-0020)
 ]
 
 [project.optional-dependencies]
@@ -113,6 +114,8 @@ module = [
     "anthropic.*",
     "uvicorn",
     "uvicorn.*",
+    "ldap3",
+    "ldap3.*",
 ]
 ignore_missing_imports = true
 

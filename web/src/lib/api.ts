@@ -818,11 +818,11 @@ export async function getMe(): Promise<Me | null> {
   return res.json();
 }
 
-export async function login(username: string, password: string): Promise<Me> {
+export async function login(username: string, password: string, source = 'local'): Promise<Me> {
   const res = await apiFetch('/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password })
+    body: JSON.stringify({ username, password, source })
   });
   if (res.status === 401) throw new Error('Invalid username or password');
   if (!res.ok) throw new Error(`login failed: ${res.status}`);
