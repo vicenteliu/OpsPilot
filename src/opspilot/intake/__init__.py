@@ -8,11 +8,12 @@ from .base import (
     SourceTransport,
     render_comment,
 )
-from .jsm import ReplayTransport, normalize_issue
+from .jsm import JsmTransport, ReplayTransport, normalize_issue
 
 __all__ = [
     "IntakeLoop",
     "IntakeReport",
+    "JsmTransport",
     "OpsPilotRunClient",
     "ReplayTransport",
     "SourceItem",
