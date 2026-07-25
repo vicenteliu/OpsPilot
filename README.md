@@ -64,7 +64,8 @@ practical work-assistance layer for IT support look like?**
 - **Interfaces & channels** — CLI, REPL terminal UI (Textual, slash
   commands), tabbed web UI (Svelte 5) with KB-augmented chat, FastAPI
   backend; a Telegram channel brings the KB chat into your messenger and
-  files work items with `/intake`
+  files work items with `/intake`; a WeCom group robot receives every
+  intake suggestion (notify mode)
 - **Observability** — Prometheus `/metrics`, OTel-compatible JSON logs,
   `/health`
 - **Rust hot paths** — chunker (~10×) and tokenizer (~45×) compiled via
@@ -170,7 +171,7 @@ flow, the six-layer system design, provider routing, and retrieval modes.
 | [docs/sources.md](docs/sources.md) | Work-item intake — JSM setup, replay mode, state and reruns |
 | [docs/specs/](docs/specs/) | Spec contracts: schemas + templates (loaded at runtime) |
 | [docs/adr/](docs/adr/) | Architecture decision records |
-| [ROADMAP.md](ROADMAP.md) | Direction: more channels (WeCom), mobile companion |
+| [ROADMAP.md](ROADMAP.md) | Direction: WeCom assist mode, mobile companion |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Dev setup, quality gates, PR conventions |
 | [SECURITY.md](SECURITY.md) | Deployment model, threat model, reporting vulnerabilities |
 

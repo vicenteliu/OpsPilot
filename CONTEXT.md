@@ -125,7 +125,7 @@ _Avoid_: container, jail, isolation layer
 ### Channels
 
 **Channel**:
-An external messaging surface (e.g. Telegram, WeCom) connected to OpsPilot, through which a user converses with the assistant. First implementation: Telegram assist mode (ADR-0012); Telegram also accepts **Work items** via explicit commands (`/intake`, `/incident`, `/request`) — the Channel doubles as a **Source** (ADR-0014).
+An external messaging surface (e.g. Telegram, WeCom) connected to OpsPilot. Three modes: **assist** (conversational KB chat), **intake** (explicit commands file **Work items** — the Channel doubles as a **Source**), and **notify** (push-only delivery of intake suggestions; nobody replies). Implementations: Telegram assist + intake (ADR-0012, ADR-0014); WeCom notify via group-robot webhook (ADR-0016).
 _Avoid_: integration, connector, bot (the bot is the Channel's client-side agent, not the concept)
 
 ### Intake
@@ -151,6 +151,7 @@ _Avoid_: ingest (that is documents → KB; Intake is Work items → pipeline), s
 - A **Chunk** is the unit of both storage (in KB) and citation (in Artifact)
 - A **Skill** is distilled from high-scoring **Sessions** and can be instantiated as a new **Playbook**
 - A **Channel** fronts the KB chat in assist mode; Telegram also acts as a **Source** (message → Work item → suggestion reply, ADR-0014)
+- A notify-mode **Channel** receives a courtesy copy of each delivered **Intake** suggestion — best-effort; the comment on the **Source** remains the durable record
 - A **Source** owns the lifecycle of the **Work items** pulled from it; **Intake** turns each new Source item into one **Session** and posts the resulting suggestion back as a comment
 
 ## Example dialogue

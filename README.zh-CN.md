@@ -55,7 +55,8 @@ AI 正在重塑整个 IT Support 行业。OpsPilot 是对一个具体问题的�
   注入 ReAct 循环，按服务器配置允许/拒绝列表
 - **界面与渠道** —— CLI、REPL 终端 UI（Textual，斜杠命令）、多标签
   Web UI（Svelte 5，含知识库增强聊天）、FastAPI 后端；Telegram 渠道把知识库
-  问答带进你的聊天软件，还能用 `/intake` 直接立工作项
+  问答带进你的聊天软件，还能用 `/intake` 直接立工作项；企业微信群机器人
+  自动收到每条收单建议（通知模式）
 - **可观测性** —— Prometheus `/metrics`、OTel 兼容 JSON 日志、`/health`
 - **Rust 热路径** —— 分块器（~10×）和分词器（~45×）经 PyO3/maturin 编译，
   纯 Python 透明降级；CI 门槛 ≥5×
@@ -160,7 +161,7 @@ cat intake_comments/IT-101.md             # 真实工单会收到的那条建议
 | [docs/specs/](docs/specs/) | 规格契约：schema + 模板（运行时加载） |
 | [docs/adr/](docs/adr/) | 架构决策记录 |
 | [docs/zh/design/](docs/zh/design/) | 历史设计文档（中文，不再维护） |
-| [ROADMAP.md](ROADMAP.md) | 方向：更多渠道（企微）、移动伴侣 |
+| [ROADMAP.md](ROADMAP.md) | 方向：企微对话模式、移动伴侣 |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 开发环境、质量门、PR 约定 |
 | [SECURITY.md](SECURITY.md) | 部署模型、威胁模型、漏洞报告 |
 

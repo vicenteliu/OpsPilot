@@ -32,7 +32,11 @@ A **Channel** is an external messaging surface connected to OpsPilot.
 - ✅ Telegram intake — `/intake`, `/incident`, `/request` file a message as
   a Work item and reply with the suggestion
   ([ADR-0014](docs/adr/0014-telegram-intake-rides-channel-adapter.md))
-- Next platform: WeCom — deprioritized
+- ✅ WeCom notify mode — group-robot webhook pushes intake suggestions
+  into an ops group
+  ([ADR-0016](docs/adr/0016-wecom-notify-mode-group-robot.md))
+- WeCom assist mode — needs an inbound callback (public HTTPS + AES
+  handshake); remains open
 
 ## Shipped — Work-item intake (Sources)
 

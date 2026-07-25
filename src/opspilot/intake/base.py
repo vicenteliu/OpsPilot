@@ -30,6 +30,16 @@ class SourceItem:
     url: str | None = None  # deep link back to the Source, if any
 
 
+class Notifier(Protocol):
+    """Best-effort push of a delivered suggestion to a notify-mode Channel.
+
+    Called after the comment reaches the Source; a raise is logged and
+    never fails the pass — the durable record is the comment itself.
+    """
+
+    def notify(self, key: str, body: str) -> None: ...
+
+
 class SourceTransport(Protocol):
     """How one Source is fetched from and written back to.
 
@@ -215,10 +225,12 @@ class IntakeLoop:
         transport: SourceTransport,
         client: OpsPilotRunClient,
         state: IntakeState | None = None,
+        notifier: Notifier | None = None,
     ) -> None:
         self._transport = transport
         self._client = client
         self._state = state or IntakeState()
+        self._notifier = notifier
 
     def run_once(self) -> IntakeReport:
         report = IntakeReport()
@@ -256,6 +268,11 @@ class IntakeLoop:
             return
         self._state.resolve_comment(key)
         report.commented.append(key)
+        if self._notifier is not None:
+            try:
+                self._notifier.notify(key, body)
+            except Exception as exc:  # noqa: BLE001 — courtesy copy only, never fail the pass
+                logger.warning("notify failed for %s: %s", key, exc)
 
     def _flush_pending(self, report: IntakeReport) -> None:
         for key, entry in self._state.pending_comments().items():

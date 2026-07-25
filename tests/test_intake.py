@@ -438,6 +438,30 @@ class TestIntakeLoopPersistence:
         assert (out / "IT-101.md").exists()
         assert IntakeState(path).pending_comments() == {}
 
+    def test_notifier_called_per_comment_and_failure_never_breaks_pass(
+        self, tmp_path: Path
+    ) -> None:
+        class FlakyNotifier:
+            def __init__(self) -> None:
+                self.calls: list[str] = []
+
+            def notify(self, key: str, body: str) -> None:
+                self.calls.append(key)
+                if key == "IT-102":
+                    raise RuntimeError("WeCom down")
+
+        out = tmp_path / "out"
+        notifier = FlakyNotifier()
+        report = IntakeLoop(
+            ReplayTransport(FIXTURES, out),
+            FakeRunClient(),  # type: ignore[arg-type]
+            state=IntakeState(tmp_path / "state.json"),
+            notifier=notifier,
+        ).run_once()
+        # One notification per delivered comment; the raise is swallowed.
+        assert notifier.calls == ["IT-101", "IT-102", "IT-103"]
+        assert report.commented == ["IT-101", "IT-102", "IT-103"]
+
     def test_forget_drops_queued_comment_too(self, tmp_path: Path) -> None:
         path = tmp_path / "state.json"
         st = IntakeState(path)

@@ -1958,6 +1958,7 @@ def source_jsm(
     configured) is picked up from OPSPILOT_API_TOKEN / config.yaml
     automatically.
     """
+    from .channels import WeComNotifier
     from .intake import IntakeLoop, IntakeState, JsmTransport, OpsPilotRunClient, ReplayTransport
 
     client = OpsPilotRunClient(
@@ -1966,6 +1967,10 @@ def source_jsm(
         playbook_id=playbook_id,
         model_id=model_id,
     )
+    wecom_url = os.environ.get("WECOM_WEBHOOK_URL")
+    notifier = WeComNotifier(wecom_url) if wecom_url else None
+    if notifier is not None:
+        _console.print("WeCom notifications enabled (group-robot webhook)")
     intake_state = IntakeState(state)
     for key in rerun:
         if intake_state.forget(key):
@@ -1974,7 +1979,9 @@ def source_jsm(
             _console.print(f"[yellow]rerun: {key} was not in state — nothing to forget[/yellow]")
 
     if replay is not None:
-        loop = IntakeLoop(ReplayTransport(replay, out), client, state=intake_state)
+        loop = IntakeLoop(
+            ReplayTransport(replay, out), client, state=intake_state, notifier=notifier
+        )
     else:
         missing = [
             name
@@ -1993,7 +2000,7 @@ def source_jsm(
             raise typer.Exit(code=1)
         assert base_url and email and jql  # narrowed above
         transport = JsmTransport(base_url=base_url, email=email, api_token=jsm_token, jql=jql)
-        loop = IntakeLoop(transport, client, state=intake_state)
+        loop = IntakeLoop(transport, client, state=intake_state, notifier=notifier)
         if not once:
             _console.print(f"JSM intake polling every {interval}s — scope: {jql} (Ctrl+C to stop)")
             try:
