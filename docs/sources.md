@@ -106,6 +106,16 @@ it before posting.
 - Ticket text is redacted before it reaches any model, same as every other
   input path.
 
+## Telegram (Channel as Source)
+
+The Telegram channel doubles as a Source: `/intake <text>` — or
+`/incident <text>` / `/request <text>` with the type declared — files the
+message as a Work item and replies with the suggestion in the chat. Setup
+and commands live in [docs/channels.md](channels.md);
+[ADR-0014](adr/0014-telegram-intake-rides-channel-adapter.md) records why
+it rides the channel adapter instead of a separate `opspilot source
+telegram` process (Telegram allows one `getUpdates` poller per bot token).
+
 ## Docker Compose
 
 `docker-compose.prod.yml` ships a `jsm-source` service behind the `jsm`
