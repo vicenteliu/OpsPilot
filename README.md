@@ -66,6 +66,11 @@ practical work-assistance layer for IT support look like?**
   backend; a Telegram channel brings the KB chat into your messenger and
   files work items with `/intake`; a WeCom group robot receives every
   intake suggestion (notify mode)
+- **Multi-user & SSO** — login-gated web UI with three roles
+  (viewer / operator / admin); authenticate against local accounts,
+  LDAP / Active Directory, or OIDC SSO; an admin module for users and
+  group→role mapping. Ships as an all-in-one Docker image — one
+  `docker run` is a complete workbench
 - **Observability** — Prometheus `/metrics`, OTel-compatible JSON logs,
   `/health`
 - **Rust hot paths** — chunker (~10×) and tokenizer (~45×) compiled via
