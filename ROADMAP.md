@@ -73,6 +73,22 @@ retirement tracking for the devices an IT support team manages.
 - Extension directions: warranty-expiry reminders; a normalized Procurement
   entity
 
+## Next — multi-user auth (ADR-0020)
+
+OpsPilot stops being single-user: the IT team logs in, three fixed roles
+(viewer / operator / admin), audit carries real identity. Machine callers
+keep working via the **Service token** (the ADR-0011 bearer, renamed).
+
+- Slice 1: local accounts (bootstrap admin + break-glass), server-side
+  cookie sessions, role enforcement across API + UI, admin module (users,
+  role overrides, audit)
+- Slice 2: LDAP — one connector for OpenLDAP and Active Directory (bind
+  auth, group→role mapping, status + test-connection in the admin module)
+- Slice 3: SSO via OIDC (authorization code + PKCE; Entra/Keycloak/etc.);
+  SAML rejected
+- Slice 4: all-in-one Docker image — web UI (login + admin) built into the
+  api image, served by FastAPI; one `docker run` = complete workbench
+
 ## Later — mobile companion
 
 - PWA-first: the SvelteKit web UI evolves toward installable/responsive; no

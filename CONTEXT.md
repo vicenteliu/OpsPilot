@@ -109,8 +109,26 @@ _Avoid_: model name, model string
 ### UI / API (Stage 2+)
 
 **Module**:
-A discrete UI feature (e.g. `run`, `ingest`, `harness`) that can be toggled on/off via `ui.modules` in config. Not an auth concept — single-user local deployment only.
+A discrete UI feature (e.g. `run`, `ingest`, `harness`) that can be toggled on/off via `ui.modules` in config, and — since the multi-user pivot (ADR-0020) — visible only to **Roles** that include it.
 _Avoid_: feature, page, view
+
+### Identity & access (ADR-0020)
+
+**User**:
+An authenticated member of the IT support team operating OpsPilot — runs work items, manages the inventory, asks the KB. End employees are *not* Users: they reach OpsPilot through Channels and the ITSM. Identified by a stable username; carries exactly one **Role** and an **Auth source**.
+_Avoid_: account, operator (that is a Role), member
+
+**Role**:
+One of three fixed access levels: `viewer` (read: history, inventory, KB search) → `operator` (act: run work items, KB chat, edit inventory, rerun intake) → `admin` (govern: user management, group→role mapping, module toggles, MCP, sandbox execution). Assigned by directory-group / OIDC-claim mapping, overridable per User in the admin module. Deliberately not custom-editable (ADR-0020).
+_Avoid_: permission (a Role implies permissions; it is not one), group (that is the directory side)
+
+**Auth source**:
+Where a **User**'s identity is verified: `local` (bootstrap admin + break-glass accounts), `ldap` (one connector covering OpenLDAP and Active Directory), or `oidc` (SSO via OpenID Connect — the only SSO protocol, SAML rejected). Connection parameters and secrets live in environment variables only; the admin module shows status and tests connectivity but never stores secrets.
+_Avoid_: provider (taken by LLM providers), IdP (that is the remote end, not the concept)
+
+**Service token**:
+A machine credential — the continuation of the ADR-0011 bearer token — used by Channel adapters and Source adapters (Telegram, JSM polling, webhook callers). Authenticates as a synthetic `svc:` identity with operator rights; never tied to a human User and unaffected by directory outages.
+_Avoid_: API key (colloquial), bot account
 
 ### Action execution (Stage 4+)
 
@@ -203,4 +221,5 @@ _Avoid_: user (collides with system user), custodian, owner
 - "task" (lowercase: a step or next-action in prose) is **not** a **Task** work item. A **Task** is a first-class, assignable unit with a **Tier**; a summary's "next steps" only become **Tasks** once decomposed. (Note: a **Session** is also not a **Task** — see the Session entry's _Avoid_ list.)
 - "intake" vs "ingest" — near-homophones, never interchangeable: **Ingest** brings *documents* into the KB; **Intake** brings *Work items* from a **Source** into the pipeline.
 - "PR" — in Inventory context always Purchase Requisition (`pr_number`), never pull request.
+- "user" — three different people: a **User** is an authenticated IT team member; an **Assignee** is whoever holds a device (often not a User); an end employee is neither — they reach OpsPilot through Channels/ITSM. Never interchange.
 - "signed" was used (in older README copy) for the **trace** and **artifact** — resolved: nothing is cryptographically signed. Artifacts are *content-addressed* (`art_<sha256[:16]>`); traces are *append-only, seq-stamped*. Both give tamper-evidence against accidental corruption, not signatures. Say "content-addressed" / "append-only", never "signed".
