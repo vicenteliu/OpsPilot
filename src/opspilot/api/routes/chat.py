@@ -36,6 +36,46 @@ def _sse(event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
+def answer_chat(state: Any, messages: list[dict[str, str]]) -> str:
+    """KB-augmented chat, blocking — the non-SSE core for channel callbacks.
+
+    Mirrors ``chat_stream``'s retrieval + prompt assembly without the SSE
+    plumbing; callers run it in an executor (WeCom callback, ADR-0019).
+    """
+    user_msgs = [m for m in messages if m.get("role") == "user"]
+    query = user_msgs[-1]["content"] if user_msgs else ""
+    context_chunks: list[str] = []
+    if query:
+        try:
+            from ...memory.retrieval import kb_search
+
+            hits = kb_search(
+                query,
+                sqlite=state.sqlite,
+                lance=state.lance,
+                embed_fn=state.embed_fn,
+                top_k=4,
+            )
+            context_chunks = [h.content for h in hits[:4] if h.content]
+        except Exception:  # noqa: BLE001 — retrieval is best-effort, chat still answers
+            pass
+    context_block = ""
+    if context_chunks:
+        context_block = "\n\n## Relevant KB context\n\n" + "\n\n---\n\n".join(context_chunks)
+    provider_msgs: list[Message] = [Message(role="system", content=_SYSTEM_PROMPT + context_block)]
+    for m in messages:
+        if m.get("role") in ("user", "assistant"):
+            provider_msgs.append(
+                Message(role=cast('Literal["user", "assistant"]', m["role"]), content=m["content"])
+            )
+    resp = state.chat_provider.chat(
+        provider_msgs,
+        model=state.playbook.model.name,
+        params=SamplingParams(temperature=0.5, max_tokens=1024),
+    )
+    return str(resp.content)
+
+
 @router.post("/chat/stream")
 async def chat_stream(body: ChatRequest, request: Request) -> StreamingResponse:
     state = request.app.state

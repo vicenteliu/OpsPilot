@@ -106,3 +106,51 @@ group as a markdown message, truncated to WeCom's 4096-byte limit.
 - Notifications are **best-effort**: a WeCom outage logs a warning and
   never fails the intake pass or touches intake state — the comment on
   the work item is the durable record.
+
+## WeCom (assist mode)
+
+Conversational KB chat via a **self-built app**
+([ADR-0019](adr/0019-wecom-assist-callback-on-server.md)). Unlike every
+other channel this one requires **inbound exposure**: WeCom has no
+long-polling API, so its servers must reach your callback URL over public
+HTTPS — deploy through the remote-access path (ADR-0011, reverse-proxy
+TLS) first.
+
+### 1. Create a self-built app (enterprise admin)
+
+企业微信管理后台 → 应用管理 → 自建 → 创建应用 → note the **AgentId** and
+**Secret**; the **corp id** is under 我的企业.
+
+### 2. Configure the callback
+
+In the app's 接收消息 settings: callback URL =
+`https://your-host/api/channels/wecom/callback`, generate a **Token** and
+**EncodingAESKey**. Add your server's egress IP to the app's 企业可信IP
+list (required for the active send API).
+
+### 3. Run
+
+```bash
+export WECOM_CORP_ID="ww…"
+export WECOM_AGENT_ID="1000002"
+export WECOM_APP_SECRET="…"
+export WECOM_CALLBACK_TOKEN="…"
+export WECOM_ENCODING_AES_KEY="…"   # 43 chars
+opspilot serve --host 0.0.0.0 …      # behind the ADR-0011 proxy
+```
+
+Save the callback config in the admin console — WeCom fires the URL
+verification handshake and the endpoint echoes it. From then on, members
+message the app and get KB-grounded answers back; long answers arrive via
+the active send API a few seconds later (the callback acknowledges
+immediately — an LLM answer does not fit WeCom's passive-reply window).
+
+### Notes
+
+- All five variables are required; with any missing the callback routes
+  answer **404** and the server is otherwise unchanged (fail-closed).
+- The callback authenticates itself with WeCom's signature + AES
+  envelope, not the bearer token — WeCom's servers cannot send one.
+- The crypto layer is verified offline (round-trip + independent
+  signature recomputation); **live end-to-end verification is a manual
+  post-deployment step** — send the app a message and expect a reply.

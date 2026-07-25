@@ -40,6 +40,7 @@ dependencies = [
     "uvicorn[standard] >= 0.30",      # Stage 2: ASGI server
     "textual >= 8.0",                 # PR-20: TUI shell
     "prometheus-client >= 0.20",      # Stage 5: metrics (ADR-0007)
+    "cryptography >= 42",             # WeCom callback AES envelope (ADR-0019)
 ]
 
 [project.optional-dependencies]

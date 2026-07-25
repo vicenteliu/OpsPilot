@@ -171,7 +171,7 @@ flow, the six-layer system design, provider routing, and retrieval modes.
 | [docs/sources.md](docs/sources.md) | Work-item intake — JSM setup, replay mode, state and reruns |
 | [docs/specs/](docs/specs/) | Spec contracts: schemas + templates (loaded at runtime) |
 | [docs/adr/](docs/adr/) | Architecture decision records |
-| [ROADMAP.md](ROADMAP.md) | Direction: WeCom assist mode, mobile companion |
+| [ROADMAP.md](ROADMAP.md) | Direction: mobile companion, voice input |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Dev setup, quality gates, PR conventions |
 | [SECURITY.md](SECURITY.md) | Deployment model, threat model, reporting vulnerabilities |
 

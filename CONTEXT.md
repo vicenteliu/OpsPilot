@@ -125,7 +125,7 @@ _Avoid_: container, jail, isolation layer
 ### Channels
 
 **Channel**:
-An external messaging surface (e.g. Telegram, WeCom) connected to OpsPilot. Three modes: **assist** (conversational KB chat), **intake** (explicit commands file **Work items** — the Channel doubles as a **Source**), and **notify** (push-only delivery of intake suggestions; nobody replies). Implementations: Telegram assist + intake (ADR-0012, ADR-0014); WeCom notify via group-robot webhook (ADR-0016).
+An external messaging surface (e.g. Telegram, WeCom) connected to OpsPilot. Three modes: **assist** (conversational KB chat), **intake** (explicit commands file **Work items** — the Channel doubles as a **Source**), and **notify** (push-only delivery of intake suggestions; nobody replies). Implementations: Telegram assist + intake (ADR-0012, ADR-0014); WeCom notify via group-robot webhook (ADR-0016) and WeCom assist via self-built-app callback (ADR-0019 — the one Channel requiring inbound exposure, WeCom has no long polling).
 _Avoid_: integration, connector, bot (the bot is the Channel's client-side agent, not the concept)
 
 ### Intake
