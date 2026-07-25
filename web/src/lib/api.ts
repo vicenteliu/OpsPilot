@@ -676,11 +676,17 @@ async function assetError(res: Response, verb: string): Promise<never> {
   throw new Error(detail || `${verb} failed: ${res.status}`);
 }
 
-export async function listAssets(status = '', assignee = '', q = ''): Promise<Asset[]> {
+export async function listAssets(
+  status = '',
+  assignee = '',
+  q = '',
+  expiringDays = ''
+): Promise<Asset[]> {
   const params = new URLSearchParams();
   if (status) params.set('status', status);
   if (assignee) params.set('assignee', assignee);
   if (q) params.set('q', q);
+  if (expiringDays) params.set('expiring_days', expiringDays);
   const qs = params.toString();
   const res = await apiFetch(`/api/inventory${qs ? `?${qs}` : ''}`);
   if (!res.ok) await assetError(res, 'Asset list');
