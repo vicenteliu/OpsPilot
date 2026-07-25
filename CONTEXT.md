@@ -125,13 +125,13 @@ _Avoid_: container, jail, isolation layer
 ### Channels
 
 **Channel**:
-An external messaging surface (e.g. Telegram, WeCom) connected to OpsPilot, through which a user converses with the assistant; later phases may accept **Work items** through it. First implementation: Telegram assist mode (ADR-0012).
+An external messaging surface (e.g. Telegram, WeCom) connected to OpsPilot, through which a user converses with the assistant. First implementation: Telegram assist mode (ADR-0012); Telegram also accepts **Work items** via explicit commands (`/intake`, `/incident`, `/request`) — the Channel doubles as a **Source** (ADR-0014).
 _Avoid_: integration, connector, bot (the bot is the Channel's client-side agent, not the concept)
 
 ### Intake
 
 **Source**:
-An external system of record OpsPilot pulls **Work items** from — the authoritative owner of their lifecycle (ADR-0006). First Source: Jira Service Management, polled via REST (outbound-only, same deployment posture as ADR-0012). A **Channel** may later double as a Source (message → Work item), but the concepts stay distinct: a Channel is a conversational surface; a Source is where Work items live.
+An external system of record OpsPilot pulls **Work items** from — the authoritative owner of their lifecycle (ADR-0006). First Source: Jira Service Management, polled via REST (outbound-only, same deployment posture as ADR-0012). A **Channel** may double as a Source (first: Telegram via intake commands, ADR-0014), but the concepts stay distinct: a Channel is a conversational surface; a Source is where Work items live.
 _Avoid_: connector, integration, upstream system
 
 **Intake**:
@@ -150,7 +150,7 @@ _Avoid_: ingest (that is documents → KB; Intake is Work items → pipeline), s
 - A **Harness** run takes a **Fixture** as input and scores the resulting **Artifact**
 - A **Chunk** is the unit of both storage (in KB) and citation (in Artifact)
 - A **Skill** is distilled from high-scoring **Sessions** and can be instantiated as a new **Playbook**
-- A **Channel** fronts the KB chat in assist mode; a Channel acting as a **Source** (message → Work item) is a later phase
+- A **Channel** fronts the KB chat in assist mode; Telegram also acts as a **Source** (message → Work item → suggestion reply, ADR-0014)
 - A **Source** owns the lifecycle of the **Work items** pulled from it; **Intake** turns each new Source item into one **Session** and posts the resulting suggestion back as a comment
 
 ## Example dialogue

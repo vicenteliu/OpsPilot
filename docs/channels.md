@@ -2,8 +2,10 @@
 
 A **Channel** is an external messaging surface connected to OpsPilot. In
 assist mode a channel fronts the KB-augmented chat — ask a question in your
-messenger, get a KB-grounded answer back. Work-item intake through channels
-is a later phase (see [ROADMAP.md](../ROADMAP.md)).
+messenger, get a KB-grounded answer back. The Telegram channel also doubles
+as a **Source**: explicit commands file a message as a Work item
+([ADR-0014](adr/0014-telegram-intake-rides-channel-adapter.md), concepts in
+[docs/sources.md](sources.md)).
 
 Channels run as separate processes and talk to a running `opspilot serve`
 over HTTP, so they honor the API token (ADR-0011) and can live on a
@@ -47,7 +49,20 @@ elsewhere.
 |---|---|
 | `/start` | Greeting + usage hint |
 | `/reset` | Clear the rolling conversation history |
+| `/intake <text>` | File as a Work item (type decided by Classification), reply with the suggestion |
+| `/incident <text>` | Same, with the type declared as incident |
+| `/request <text>` | Same, with the type declared as service request |
 | anything else | Answered via KB-augmented chat |
+
+### Work-item intake from the chat
+
+An intake command runs the full pipeline on the message text (redact →
+classify → summarise/fulfill → validate) and replies with the same
+structured suggestion the JSM adapter posts as a comment: summary, suggested
+Severity, Tasks with Tiers, KB citations. The `work_item_ref` is
+`TG-<chat id>-<message id>`. When Classification is not confident, the bot
+asks you to resend with `/incident` or `/request` instead of guessing. Each
+filing is a full LLM run — the chat-id allowlist is also the cost boundary.
 
 ### Security notes
 

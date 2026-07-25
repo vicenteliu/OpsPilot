@@ -29,9 +29,10 @@ A **Channel** is an external messaging surface connected to OpsPilot.
 - ✅ Telegram assist mode — long-polling adapter fronting the KB-augmented
   chat ([ADR-0012](docs/adr/0012-telegram-channel-long-polling.md),
   [docs/channels.md](docs/channels.md))
-- Next platform: WeCom — deprioritized, now scheduled after work-item intake
-- A Channel acting as a **Source** (message → Work item → pipeline) is a
-  later phase
+- ✅ Telegram intake — `/intake`, `/incident`, `/request` file a message as
+  a Work item and reply with the suggestion
+  ([ADR-0014](docs/adr/0014-telegram-intake-rides-channel-adapter.md))
+- Next platform: WeCom — deprioritized
 
 ## Shipped — Work-item intake (Sources)
 
