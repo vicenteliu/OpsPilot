@@ -1909,12 +1909,10 @@ def source_jsm(
     jql: str | None = typer.Option(
         None,
         "--jql",
-        help='Explicit intake scope, e.g. \'project = IT AND status = "Open"\'. '
+        help="Explicit intake scope, e.g. 'project = IT AND status = \"Open\"'. "
         "Only matching issues are ever fetched or run.",
     ),
-    interval: int = typer.Option(
-        60, "--interval", help="Poll interval in seconds (live mode)."
-    ),
+    interval: int = typer.Option(60, "--interval", help="Poll interval in seconds (live mode)."),
     once: bool = typer.Option(
         False, "--once", help="Run a single intake pass and exit (cron-style)."
     ),
@@ -1963,9 +1961,7 @@ def source_jsm(
         )
         loop = IntakeLoop(transport, client)
         if not once:
-            _console.print(
-                f"JSM intake polling every {interval}s — scope: {jql} (Ctrl+C to stop)"
-            )
+            _console.print(f"JSM intake polling every {interval}s — scope: {jql} (Ctrl+C to stop)")
             try:
                 loop.run_forever(interval)
             except KeyboardInterrupt:
