@@ -48,6 +48,9 @@ practical work-assistance layer for IT support look like?**
 - **Sandboxed actions** — AI-proposed shell actions run in hardened Docker
   (L2) or gVisor (L3, fail-closed) containers; an approval gate flags risky
   patterns for human sign-off
+- **Work-item intake** — pull tickets straight from Jira Service Management
+  on a JQL scope and post the AI suggestion back as a comment on the ticket;
+  polling-only (no public endpoint), comment-only (no field is ever touched)
 - **Compounding wiki** — session insights distilled into lint-checked,
   lifecycle-managed wiki pages on top of the long-term KB
 - **MCP client** — tools from any Model Context Protocol server (stdio/HTTP)
@@ -126,8 +129,10 @@ opspilot serve --reload --with-ui         # API + web UI → http://localhost:51
 ```
 
 From here: submit a work item on the **Run** tab, ask the KB a question on
-the **Chat** tab, or connect a [Telegram channel](docs/channels.md) to chat
-with your KB from your phone.
+the **Chat** tab, connect a [Telegram channel](docs/channels.md) to chat
+with your KB from your phone, or point intake at your
+[Jira Service Management project](docs/sources.md) so new tickets get
+summarised and commented automatically.
 
 ## Architecture
 
@@ -147,9 +152,10 @@ flow, the six-layer system design, provider routing, and retrieval modes.
 | [docs/cli.md](docs/cli.md) | TUI, harness, sandbox, MCP, and wiki command reference |
 | [docs/deployment.md](docs/deployment.md) | Docker Compose, systemd, observability, configuration |
 | [docs/channels.md](docs/channels.md) | Messaging channels — Telegram assist-mode setup |
+| [docs/sources.md](docs/sources.md) | Work-item intake — JSM setup, replay mode, state and reruns |
 | [docs/specs/](docs/specs/) | Spec contracts: schemas + templates (loaded at runtime) |
 | [docs/adr/](docs/adr/) | Architecture decision records |
-| [ROADMAP.md](ROADMAP.md) | Direction: more channels (WeCom), mobile companion, work-item intake |
+| [ROADMAP.md](ROADMAP.md) | Direction: more channels (WeCom), mobile companion, webhook intake |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Dev setup, quality gates, PR conventions |
 | [SECURITY.md](SECURITY.md) | Deployment model, threat model, reporting vulnerabilities |
 

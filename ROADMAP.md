@@ -33,17 +33,18 @@ A **Channel** is an external messaging surface connected to OpsPilot.
 - A Channel acting as a **Source** (message → Work item → pipeline) is a
   later phase
 
-## Next — Work-item intake (Sources)
+## Shipped — Work-item intake (Sources)
 
 A **Source** is an external system of record OpsPilot pulls Work items from;
 **Intake** is the poll → run → write-back loop
-([ADR-0013](docs/adr/0013-jsm-intake-polling-comment-writeback.md)):
+([ADR-0013](docs/adr/0013-jsm-intake-polling-comment-writeback.md),
+[docs/sources.md](docs/sources.md)):
 
-- Jira Service Management polling adapter (`opspilot source jsm`) — JQL-scoped
-  auto-run, dedupe by issue key, suggestion posted back as a structured
-  comment; comment-only, no field mutation
-- `--replay` fixture mode for offline demo and CI regression; docs guide for
-  connecting a free-tier JSM cloud site
+- ✅ Jira Service Management polling adapter (`opspilot source jsm`) —
+  JQL-scoped auto-run, dedupe by issue key, suggestion posted back as a
+  structured comment; comment-only, no field mutation
+- ✅ Persistent state (`--state`), manual reruns (`--rerun`), cron-style
+  `--once`, and `--replay` fixture mode for offline demo and CI regression
 - Generic inbound webhook intake — later option for high-traffic deployments
 
 ## Later — mobile companion
