@@ -39,4 +39,5 @@ in the target deployments); a normalized Procurement entity in v1 (a
 second table and association UI for no v1 gain); enforced status
 transitions (fights how inventory work actually happens); sequential
 human-readable ids as primary keys (the asset tag field carries the
-human name; the id stays an opaque `ast_<hex8>`).
+human name; the id stays an opaque `ast_<ULID>` — the house convention
+for mutable entities).

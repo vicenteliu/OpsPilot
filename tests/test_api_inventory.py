@@ -1,0 +1,140 @@
+"""Inventory — Asset CRUD, event log, serial uniqueness (ADR-0017).
+
+Real InventoryStore over an in-memory SQLite; only the FastAPI app is
+test-built. No LLM, no network.
+"""
+
+from __future__ import annotations
+
+import sqlite3
+from typing import Any
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from opspilot.api.routes.inventory import router as inventory_router
+from opspilot.inventory import InventoryStore
+
+
+def _client() -> TestClient:
+    app = FastAPI()
+    app.include_router(inventory_router, prefix="/api")
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    app.state.inventory = InventoryStore(conn)
+    return TestClient(app)
+
+
+def _laptop(**over: Any) -> dict[str, Any]:
+    return {
+        "asset_tag": "NB-001",
+        "category": "laptop",
+        "brand_model": "ThinkPad T14 Gen 5",
+        "serial_number": "SN-A1",
+        "work_item_ref": "REQ-42",
+        "pr_number": "PR-2026-007",
+        "handler": "vicente",
+        **over,
+    }
+
+
+class TestCreate:
+    def test_create_defaults_to_requested_with_created_event(self) -> None:
+        c = _client()
+        res = c.post("/api/inventory", json=_laptop())
+        assert res.status_code == 201
+        body = res.json()
+        assert body["asset_id"].startswith("ast_")
+        assert body["status"] == "requested"
+        detail = c.get(f"/api/inventory/{body['asset_id']}").json()
+        assert [e["change"] for e in detail["events"]] == ["created"]
+
+    def test_existing_stock_enters_mid_flow(self) -> None:
+        c = _client()
+        res = c.post(
+            "/api/inventory",
+            json={"brand_model": "Dell U2723QE", "category": "monitor", "status": "deployed"},
+        )
+        assert res.status_code == 201
+        assert res.json()["status"] == "deployed"
+        assert res.json()["pr_number"] == ""  # no procurement trail is fine
+
+    def test_unknown_status_rejected_422(self) -> None:
+        c = _client()
+        res = c.post("/api/inventory", json=_laptop(status="lost"))
+        assert res.status_code == 422
+
+    def test_duplicate_serial_409(self) -> None:
+        c = _client()
+        assert c.post("/api/inventory", json=_laptop()).status_code == 201
+        res = c.post("/api/inventory", json=_laptop(asset_tag="NB-002"))
+        assert res.status_code == 409
+
+    def test_empty_serials_do_not_conflict(self) -> None:
+        c = _client()
+        assert c.post("/api/inventory", json={"category": "mouse"}).status_code == 201
+        assert c.post("/api/inventory", json={"category": "keyboard"}).status_code == 201
+
+
+class TestUpdate:
+    def test_patch_appends_one_diff_event(self) -> None:
+        c = _client()
+        aid = c.post("/api/inventory", json=_laptop()).json()["asset_id"]
+        res = c.patch(
+            f"/api/inventory/{aid}",
+            json={"status": "deployed", "assignee": "Alice", "actor": "vicente"},
+        )
+        assert res.status_code == 200
+        assert res.json()["status"] == "deployed"
+        events = c.get(f"/api/inventory/{aid}").json()["events"]
+        assert len(events) == 2  # created + one combined diff
+        assert "status: 'requested' → 'deployed'" in events[-1]["change"]
+        assert "assignee: '' → 'Alice'" in events[-1]["change"]
+        assert events[-1]["actor"] == "vicente"
+
+    def test_status_freely_settable_backwards(self) -> None:
+        c = _client()
+        aid = c.post("/api/inventory", json=_laptop(status="deployed")).json()["asset_id"]
+        # No state machine: corrections go backwards without complaint.
+        assert c.patch(f"/api/inventory/{aid}", json={"status": "received"}).status_code == 200
+
+    def test_noop_patch_appends_no_event(self) -> None:
+        c = _client()
+        aid = c.post("/api/inventory", json=_laptop()).json()["asset_id"]
+        c.patch(f"/api/inventory/{aid}", json={"handler": "vicente"})  # same value
+        assert len(c.get(f"/api/inventory/{aid}").json()["events"]) == 1
+
+    def test_patch_to_taken_serial_409(self) -> None:
+        c = _client()
+        c.post("/api/inventory", json=_laptop())
+        other = c.post("/api/inventory", json=_laptop(serial_number="SN-B2")).json()
+        res = c.patch(f"/api/inventory/{other['asset_id']}", json={"serial_number": "SN-A1"})
+        assert res.status_code == 409
+
+    def test_patch_missing_404(self) -> None:
+        assert _client().patch("/api/inventory/ast_missing", json={"notes": "x"}).status_code == 404
+
+
+class TestListAndFilters:
+    def test_filters_and_search(self) -> None:
+        c = _client()
+        c.post("/api/inventory", json=_laptop(status="deployed", assignee="Alice"))
+        c.post(
+            "/api/inventory",
+            json=_laptop(asset_tag="NB-002", serial_number="SN-B2", status="in_stock", assignee=""),
+        )
+        assert len(c.get("/api/inventory").json()["assets"]) == 2
+        deployed = c.get("/api/inventory", params={"status": "deployed"}).json()["assets"]
+        assert [a["assignee"] for a in deployed] == ["Alice"]
+        by_person = c.get("/api/inventory", params={"assignee": "Alice"}).json()["assets"]
+        assert len(by_person) == 1
+        hits = c.get("/api/inventory", params={"q": "SN-B2"}).json()["assets"]
+        assert [a["asset_tag"] for a in hits] == ["NB-002"]
+
+
+class TestDelete:
+    def test_delete_then_404(self) -> None:
+        c = _client()
+        aid = c.post("/api/inventory", json=_laptop()).json()["asset_id"]
+        assert c.delete(f"/api/inventory/{aid}").status_code == 204
+        assert c.get(f"/api/inventory/{aid}").status_code == 404
+        assert c.delete(f"/api/inventory/{aid}").status_code == 404

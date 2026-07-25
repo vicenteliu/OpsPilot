@@ -4,7 +4,7 @@ Two ID flavors live across the 7 spec dirs:
 
 * **ULID-prefixed** (time-ordered, 26-char Crockford body)::
 
-    sess_  run_  itr_  fb_  q_  act_
+    sess_  run_  itr_  fb_  q_  act_  ast_
 
 * **Content-addressed** (sha256 prefix, 8 or 16 hex chars)::
 
@@ -26,7 +26,9 @@ from ulid import ULID
 # Pattern aligning with every *.schema.json that constrains ULID-shaped ids.
 ULID_BODY_PATTERN: Final[str] = r"[0-9A-HJKMNP-TV-Z]{26}"
 
-ULID_PREFIXES: Final[frozenset[str]] = frozenset({"sess", "run", "itr", "fb", "q", "act"})
+ULID_PREFIXES: Final[frozenset[str]] = frozenset(
+    {"sess", "run", "itr", "fb", "q", "act", "ast"}  # ast_ = inventory Asset (ADR-0017)
+)
 
 # Hex length per content-id prefix. Wiki adds wpg_ and wlk_, skills add var_/lnt_, etc.
 PREFIX_HEX_LEN: Final[dict[str, int]] = {
