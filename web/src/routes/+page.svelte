@@ -5,6 +5,7 @@
     MODULE_MIN_ROLE, roleAtLeast, type ModelOption, type Me,
   } from '$lib/api';
   import LoginView from '$lib/components/LoginView.svelte';
+  import AdminTab from '$lib/components/AdminTab.svelte';
   import GuideTab from '$lib/components/GuideTab.svelte';
   import MCPTab from '$lib/components/MCPTab.svelte';
   import IterationTab from '$lib/components/IterationTab.svelte';
@@ -50,7 +51,7 @@
   }
 
   // --- Active Tab ---
-  type Tab = 'run' | 'inventory' | 'kb' | 'wiki' | 'vendordoc' | 'mcp' | 'iteration' | 'chat' | 'guide';
+  type Tab = 'run' | 'inventory' | 'kb' | 'wiki' | 'vendordoc' | 'mcp' | 'iteration' | 'chat' | 'admin' | 'guide';
   let activeTab = $state<Tab>('run');
 
   // Nav indices mirror the TUI's 1-8 module keys.
@@ -63,6 +64,7 @@
     { id: 'vendordoc', label: 'Vendor Docs' },
     { id: 'mcp', label: 'MCP' },
     { id: 'iteration', label: 'Iteration' },
+    { id: 'admin', label: 'Admin' },
     { id: 'guide', label: 'Guide' },
   ] as const;
 
@@ -215,6 +217,10 @@
     <!-- ══════════════════════════ ITERATION TAB ══════════════════════════ -->
     {#if activeTab === 'iteration' && modules.iteration !== false}
       <IterationTab />
+    {/if}
+
+    {#if activeTab === 'admin' && me?.role === 'admin'}
+      <AdminTab />
     {/if}
 
     {#if activeTab === 'guide'}

@@ -43,6 +43,7 @@ from ..providers.registry import make_provider
 from ..redaction import Redactor
 from ..session.manager import SessionManager
 from .middleware import AuthMiddleware, ObservabilityMiddleware
+from .routes.admin import router as admin_router
 from .routes.auth import router as auth_router
 from .routes.chat import router as chat_router
 from .routes.config import router as config_router
@@ -180,6 +181,7 @@ app.add_middleware(ObservabilityMiddleware)
 app.include_router(health_router)  # /health  (no /api prefix — ops endpoints)
 app.include_router(metrics_router)  # /metrics
 app.include_router(auth_router, prefix="/api")
+app.include_router(admin_router, prefix="/api")
 app.include_router(config_router, prefix="/api")
 app.include_router(chat_router, prefix="/api")
 app.include_router(models_router, prefix="/api")

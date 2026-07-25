@@ -801,6 +801,7 @@ export const MODULE_MIN_ROLE: Record<string, Me['role']> = {
   vendordoc: 'operator',
   mcp: 'admin',
   iteration: 'operator',
+  admin: 'admin',
   guide: 'viewer',
 };
 
@@ -830,4 +831,106 @@ export async function login(username: string, password: string): Promise<Me> {
 
 export async function logout(): Promise<void> {
   await apiFetch('/api/auth/logout', { method: 'POST' });
+}
+
+// ── Admin module (ADR-0020) ─────────────────────────────────────────────────
+
+export interface AdminUser {
+  username: string;
+  role: 'viewer' | 'operator' | 'admin';
+  auth_source: string;
+  enabled: boolean;
+}
+
+export interface GroupRoleMapping {
+  source: string;
+  group_name: string;
+  role: 'viewer' | 'operator' | 'admin';
+}
+
+export interface AuthSourceStatus {
+  source: string;
+  configured: boolean;
+}
+
+export interface LoginEvent {
+  ts: string;
+  username: string;
+  source: string;
+  outcome: string;
+}
+
+async function adminError(res: Response, verb: string): Promise<never> {
+  let detail = '';
+  try { detail = (await res.json()).detail ?? ''; } catch { /* non-JSON */ }
+  throw new Error(detail || `${verb} failed: ${res.status}`);
+}
+
+export async function adminListUsers(): Promise<AdminUser[]> {
+  const res = await apiFetch('/api/admin/users');
+  if (!res.ok) await adminError(res, 'List users');
+  return (await res.json()).users;
+}
+
+export async function adminCreateUser(username: string, password: string, role: string): Promise<AdminUser> {
+  const res = await apiFetch('/api/admin/users', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password, role })
+  });
+  if (!res.ok) await adminError(res, 'Create user');
+  return res.json();
+}
+
+export async function adminSetRole(username: string, role: string): Promise<AdminUser> {
+  const res = await apiFetch(`/api/admin/users/${encodeURIComponent(username)}/role`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role })
+  });
+  if (!res.ok) await adminError(res, 'Set role');
+  return res.json();
+}
+
+export async function adminSetEnabled(username: string, enabled: boolean): Promise<AdminUser> {
+  const res = await apiFetch(`/api/admin/users/${encodeURIComponent(username)}/enabled`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled })
+  });
+  if (!res.ok) await adminError(res, 'Set enabled');
+  return res.json();
+}
+
+export async function adminListGroupRoles(): Promise<GroupRoleMapping[]> {
+  const res = await apiFetch('/api/admin/group-roles');
+  if (!res.ok) await adminError(res, 'List mappings');
+  return (await res.json()).mappings;
+}
+
+export async function adminSetGroupRole(m: GroupRoleMapping): Promise<void> {
+  const res = await apiFetch('/api/admin/group-roles', {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(m)
+  });
+  if (!res.ok) await adminError(res, 'Set mapping');
+}
+
+export async function adminDeleteGroupRole(source: string, group: string): Promise<void> {
+  const res = await apiFetch(`/api/admin/group-roles/${encodeURIComponent(source)}/${encodeURIComponent(group)}`, { method: 'DELETE' });
+  if (!res.ok) await adminError(res, 'Delete mapping');
+}
+
+export async function adminAuthStatus(): Promise<AuthSourceStatus[]> {
+  const res = await apiFetch('/api/admin/auth-status');
+  if (!res.ok) await adminError(res, 'Auth status');
+  return (await res.json()).sources;
+}
+
+export async function adminTestConnection(source: string): Promise<{ ok: boolean; detail: string }> {
+  const res = await apiFetch(`/api/admin/auth-status/${encodeURIComponent(source)}/test`, { method: 'POST' });
+  if (!res.ok) await adminError(res, 'Test connection');
+  return res.json();
+}
+
+export async function adminLoginAudit(): Promise<LoginEvent[]> {
+  const res = await apiFetch('/api/admin/login-audit');
+  if (!res.ok) await adminError(res, 'Login audit');
+  return (await res.json()).events;
 }
