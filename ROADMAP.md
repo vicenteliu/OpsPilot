@@ -46,7 +46,9 @@ A **Source** is an external system of record OpsPilot pulls Work items from;
   structured comment; comment-only, no field mutation
 - ✅ Persistent state (`--state`), manual reruns (`--rerun`), cron-style
   `--once`, and `--replay` fixture mode for offline demo and CI regression
-- Generic inbound webhook intake — later option for high-traffic deployments
+- ✅ Generic inbound webhook intake — `POST /api/intake`, accept-async with
+  key dedupe, for remote-exposed deployments that want push
+  ([ADR-0015](docs/adr/0015-webhook-intake-accept-async.md))
 
 ## Later — mobile companion
 

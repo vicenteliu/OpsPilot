@@ -3,6 +3,7 @@
 Exposes:
   GET  /api/config              — active model ref and enabled UI modules
   POST /api/run                 — run ticket summary playbook
+  POST /api/intake              — webhook intake: accept a pushed work item (ADR-0015)
   GET  /api/iteration/lineage   — skill lineage history (PR-28)
   GET  /api/kb/docs             — list ingested KB documents
   POST /api/kb/ingest           — ingest files into KB
@@ -43,6 +44,7 @@ from .routes.config import router as config_router
 from .routes.doc import router as doc_router
 from .routes.harness import router as harness_router
 from .routes.health import router as health_router
+from .routes.intake import router as intake_router
 from .routes.iteration import router as iteration_router
 from .routes.kb import router as kb_router
 from .routes.mcp import router as mcp_router
@@ -165,6 +167,7 @@ app.include_router(config_router, prefix="/api")
 app.include_router(chat_router, prefix="/api")
 app.include_router(models_router, prefix="/api")
 app.include_router(run_router, prefix="/api")
+app.include_router(intake_router, prefix="/api")
 app.include_router(doc_router, prefix="/api")
 app.include_router(sessions_router, prefix="/api")
 app.include_router(iteration_router, prefix="/api")
