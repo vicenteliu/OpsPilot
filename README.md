@@ -9,10 +9,13 @@
 > 中文版：[README.zh-CN.md](./README.zh-CN.md)
 
 OpsPilot turns raw IT work items — incidents, service requests, tasks — into
-structured, KB-cited summaries through a playbook-driven AI pipeline. It runs
-fully local with Ollama or against any major cloud provider, and every run
-leaves an auditable trail: PII is redacted before anything reaches a model,
-output is validated against a strict JSON Schema, and each session archives a
+structured, KB-cited suggestions through a playbook-driven AI pipeline, and
+closes the loop with the tools you already use: it polls new tickets straight
+from Jira Service Management and posts the suggestion back as a comment, and
+files a Telegram message as a work item with a single command. It runs fully
+local with Ollama or against any major cloud provider, and every run leaves
+an auditable trail: PII is redacted before anything reaches a model, output
+is validated against a strict JSON Schema, and each session archives a
 content-addressed artifact plus an append-only trace.
 
 ## Why this project
@@ -34,10 +37,15 @@ practical work-assistance layer for IT support look like?**
 
 ## Highlights
 
-- **Multi-provider** — Anthropic Claude, OpenAI, OpenRouter, Gemini, or local
-  Ollama; playbooks declare a primary model plus selectable alternates (down
-  to a local Gemma), switchable per-run from the UI, with automatic fallback
-  when a provider errors
+- **Multi-provider** — Anthropic Claude, OpenAI, OpenRouter, Gemini, xAI
+  Grok, or local Ollama; playbooks declare a primary model plus selectable
+  alternates (down to a local Gemma), switchable per-run from the UI, with
+  automatic fallback when a provider errors
+- **Work-item intake** — pull tickets straight from Jira Service Management
+  on a JQL scope and post the AI suggestion back as a comment on the ticket:
+  polling-only (no public endpoint), comment-only (no field is ever touched),
+  restart-safe state, and a `--replay` mode that demos the whole loop
+  offline; intake can run on a cheaper model than interactive use
 - **KB retrieval with citations** — hybrid vector (LanceDB) + full-text
   (SQLite FTS5) search fused with RRF; `tool` mode (ReAct) for strong models,
   `prefetch` injection for weak local ones
@@ -48,16 +56,14 @@ practical work-assistance layer for IT support look like?**
 - **Sandboxed actions** — AI-proposed shell actions run in hardened Docker
   (L2) or gVisor (L3, fail-closed) containers; an approval gate flags risky
   patterns for human sign-off
-- **Work-item intake** — pull tickets straight from Jira Service Management
-  on a JQL scope and post the AI suggestion back as a comment on the ticket;
-  polling-only (no public endpoint), comment-only (no field is ever touched)
 - **Compounding wiki** — session insights distilled into lint-checked,
   lifecycle-managed wiki pages on top of the long-term KB
 - **MCP client** — tools from any Model Context Protocol server (stdio/HTTP)
   injected into the ReAct loop, with per-server allow/denylists
 - **Interfaces & channels** — CLI, REPL terminal UI (Textual, slash
   commands), tabbed web UI (Svelte 5) with KB-augmented chat, FastAPI
-  backend; a Telegram channel brings the KB chat into your messenger
+  backend; a Telegram channel brings the KB chat into your messenger and
+  files work items with `/intake`
 - **Observability** — Prometheus `/metrics`, OTel-compatible JSON logs,
   `/health`
 - **Rust hot paths** — chunker (~10×) and tokenizer (~45×) compiled via
@@ -128,11 +134,19 @@ opspilot tui                              # terminal UI workbench
 opspilot serve --reload --with-ui         # API + web UI → http://localhost:5173
 ```
 
+Then see the whole intake loop offline — no ticket system needed:
+
+```bash
+opspilot source jsm --replay tests/fixtures/jsm_replay/
+cat intake_comments/IT-101.md             # the suggestion a real ticket would get
+```
+
 From here: submit a work item on the **Run** tab, ask the KB a question on
 the **Chat** tab, connect a [Telegram channel](docs/channels.md) to chat
-with your KB from your phone, or point intake at your
-[Jira Service Management project](docs/sources.md) so new tickets get
-summarised and commented automatically.
+with your KB (or file a work item with `/intake`) from your phone, or point
+intake at your [Jira Service Management project](docs/sources.md) — a
+free-tier site connects in about ten minutes — so new tickets get summarised
+and commented automatically.
 
 ## Architecture
 
@@ -151,7 +165,7 @@ flow, the six-layer system design, provider routing, and retrieval modes.
 | [docs/architecture.md](docs/architecture.md) | Request flow, layer design, provider routing, retrieval modes |
 | [docs/cli.md](docs/cli.md) | TUI, harness, sandbox, MCP, and wiki command reference |
 | [docs/deployment.md](docs/deployment.md) | Docker Compose, systemd, observability, configuration |
-| [docs/channels.md](docs/channels.md) | Messaging channels — Telegram assist-mode setup |
+| [docs/channels.md](docs/channels.md) | Messaging channels — Telegram setup: KB chat + `/intake` |
 | [docs/sources.md](docs/sources.md) | Work-item intake — JSM setup, replay mode, state and reruns |
 | [docs/specs/](docs/specs/) | Spec contracts: schemas + templates (loaded at runtime) |
 | [docs/adr/](docs/adr/) | Architecture decision records |
