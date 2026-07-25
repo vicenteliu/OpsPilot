@@ -72,7 +72,7 @@ def configure_json_logging(level: int = logging.INFO) -> None:
 
 # Probe endpoints stay reachable without a token (load balancers, uptime
 # checks). /metrics is deliberately NOT exempt — it leaks usage patterns.
-_AUTH_EXEMPT_PATHS = frozenset({"/health"})
+_AUTH_EXEMPT_PATHS = frozenset({"/health", "/api/auth/login"})
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -91,6 +91,13 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         if request.url.path in _AUTH_EXEMPT_PATHS:
+            return await call_next(request)
+
+        # A logged-in browser carries a session cookie, not a bearer token
+        # (ADR-0020) — let it through here; per-route role deps do the rest.
+        auth_store = getattr(request.app.state, "auth", None)
+        cookie = request.cookies.get("opspilot_session")
+        if auth_store is not None and cookie and auth_store.resolve_session(cookie) is not None:
             return await call_next(request)
 
         header = request.headers.get("authorization", "")

@@ -782,3 +782,52 @@ export async function deleteProcurement(procurementId: string): Promise<void> {
   });
   if (!res.ok) await assetError(res, 'Procurement delete');
 }
+
+// ── Auth (ADR-0020) ─────────────────────────────────────────────────────────
+
+export interface Me {
+  name: string;
+  role: 'viewer' | 'operator' | 'admin';
+  is_service: boolean;
+}
+
+// Nav item → minimum role required to see it. Absent = viewer.
+export const MODULE_MIN_ROLE: Record<string, Me['role']> = {
+  run: 'operator',
+  chat: 'operator',
+  inventory: 'viewer',
+  kb: 'viewer',
+  wiki: 'viewer',
+  vendordoc: 'operator',
+  mcp: 'admin',
+  iteration: 'operator',
+  guide: 'viewer',
+};
+
+const ROLE_RANK: Record<Me['role'], number> = { viewer: 0, operator: 1, admin: 2 };
+
+export function roleAtLeast(role: Me['role'], required: Me['role']): boolean {
+  return ROLE_RANK[role] >= ROLE_RANK[required];
+}
+
+export async function getMe(): Promise<Me | null> {
+  const res = await apiFetch('/api/auth/me');
+  if (res.status === 401) return null;
+  if (!res.ok) throw new Error(`auth check failed: ${res.status}`);
+  return res.json();
+}
+
+export async function login(username: string, password: string): Promise<Me> {
+  const res = await apiFetch('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password })
+  });
+  if (res.status === 401) throw new Error('Invalid username or password');
+  if (!res.ok) throw new Error(`login failed: ${res.status}`);
+  return res.json();
+}
+
+export async function logout(): Promise<void> {
+  await apiFetch('/api/auth/logout', { method: 'POST' });
+}

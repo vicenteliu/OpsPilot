@@ -1,6 +1,10 @@
 <script lang="ts">
   import '../app.css';
-  import { getApiToken, getConfig, getModels, setApiToken, type ModelOption } from '$lib/api';
+  import {
+    getApiToken, getConfig, getModels, setApiToken, getMe, logout,
+    MODULE_MIN_ROLE, roleAtLeast, type ModelOption, type Me,
+  } from '$lib/api';
+  import LoginView from '$lib/components/LoginView.svelte';
   import GuideTab from '$lib/components/GuideTab.svelte';
   import MCPTab from '$lib/components/MCPTab.svelte';
   import IterationTab from '$lib/components/IterationTab.svelte';
@@ -31,6 +35,20 @@
   let apiToken = $state<string>(typeof localStorage !== 'undefined' ? getApiToken() : '');
   $effect(() => setApiToken(apiToken));
 
+  // --- Authenticated user (ADR-0020) ---
+  let me = $state<Me | null>(null);
+  let authResolved = $state<boolean>(false);
+
+  async function refreshMe() {
+    try { me = await getMe(); } catch { me = null; }
+    finally { authResolved = true; }
+  }
+
+  async function handleLogout() {
+    await logout();
+    me = null;
+  }
+
   // --- Active Tab ---
   type Tab = 'run' | 'inventory' | 'kb' | 'wiki' | 'vendordoc' | 'mcp' | 'iteration' | 'chat' | 'guide';
   let activeTab = $state<Tab>('run');
@@ -55,12 +73,29 @@
   let selectedModelId = $state<string>('');
   let modelsLoaded = $state<boolean>(false);
 
+  // Nav items visible to this user: enabled module AND role high enough.
+  const visibleNav = $derived(
+    NAV_ITEMS.filter(
+      (t) =>
+        modules[t.id] !== false &&
+        (!me || roleAtLeast(me.role, MODULE_MIN_ROLE[t.id] ?? 'viewer'))
+    )
+  );
+
+  // If the active tab is not visible to this user, fall back to the first one.
+  $effect(() => {
+    if (me && visibleNav.length && !visibleNav.some((t) => t.id === activeTab)) {
+      activeTab = visibleNav[0].id;
+    }
+  });
+
   // --- Init ---
   let _initialized = false;
   $effect(() => {
     if (_initialized) return;
     _initialized = true;
     (async () => {
+      await refreshMe();
       try {
         const cfg = await getConfig();
         modelRef = cfg.active_model_ref;
@@ -82,6 +117,9 @@
 
 </script>
 
+{#if authResolved && !me}
+  <LoginView onLogin={(u) => { me = u; }} />
+{:else}
 <div class="app">
   <aside class="sidebar">
     <div class="brand">
@@ -91,7 +129,7 @@
     <div class="brand-sub">AI ops workbench</div>
 
     <nav class="side-nav">
-      {#each NAV_ITEMS.filter((t) => modules[t.id] !== false) as tab, i}
+      {#each visibleNav as tab, i}
         <button
           class="nav-item {activeTab === tab.id ? 'active' : ''}"
           onclick={() => activeTab = tab.id}
@@ -103,6 +141,14 @@
     </nav>
 
     <div class="sidebar-foot">
+      {#if me}
+        <div class="foot-label">Signed in</div>
+        <div class="user-row">
+          <span class="user-name" title={me.role}>{me.name}</span>
+          <span class="user-role">{me.role}</span>
+        </div>
+        <button class="theme-toggle" onclick={handleLogout}>Sign out</button>
+      {/if}
       <div class="foot-label">Model</div>
       {#if !modelsLoaded}
         <span class="model-ref">loading…</span>
@@ -177,8 +223,30 @@
 
   </main>
 </div>
+{/if}
 
 <style>
+  .user-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.4rem;
+  }
+  .user-name {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .user-role {
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--primary);
+  }
   .app {
     display: flex;
     min-height: 100vh;
