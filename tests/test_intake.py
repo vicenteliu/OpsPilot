@@ -87,6 +87,23 @@ class TestRunClient:
         assert capture["headers"]["authorization"] == "Bearer tok-123"
         assert capture["body"] == {"input": {"ticket_id": "IT-1", "subject": "s", "body": "b"}}
 
+    def test_playbook_and_model_passthrough(self) -> None:
+        capture: dict[str, Any] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            capture["body"] = json.loads(request.content)
+            return httpx.Response(200, json={"session_id": "ses_1", "schema_valid": True})
+
+        client = OpsPilotRunClient(
+            api_url="http://api.test",
+            http=httpx.Client(transport=httpx.MockTransport(handler)),
+            playbook_id="pb_ticket_summary_en",
+            model_id="anthropic/claude-haiku-4-5-20251001",
+        )
+        client.run({"ticket_id": "IT-1", "subject": "s", "body": "b"})
+        assert capture["body"]["playbook_id"] == "pb_ticket_summary_en"
+        assert capture["body"]["model_id"] == "anthropic/claude-haiku-4-5-20251001"
+
 
 # ── IntakeLoop over the replay transport ───────────────────────────────────
 

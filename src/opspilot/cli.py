@@ -1930,6 +1930,19 @@ def source_jsm(
         "--state",
         help="Persistent intake state file (processed keys) — survives restarts.",
     ),
+    playbook_id: str | None = typer.Option(
+        None,
+        "--playbook",
+        help="Pin every intake run to this server-side playbook id "
+        "(skips Classification; must be loaded by the server).",
+    ),
+    model_id: str | None = typer.Option(
+        None,
+        "--model",
+        help="Model override for every intake run, e.g. "
+        "anthropic/claude-haiku-4-5-20251001 (must be the playbook's "
+        "primary or one of its extra_models).",
+    ),
     rerun: list[str] = typer.Option(  # noqa: B008
         [],
         "--rerun",
@@ -1947,7 +1960,12 @@ def source_jsm(
     """
     from .intake import IntakeLoop, IntakeState, JsmTransport, OpsPilotRunClient, ReplayTransport
 
-    client = OpsPilotRunClient(api_url=api_url, api_token=load_config().api_token)
+    client = OpsPilotRunClient(
+        api_url=api_url,
+        api_token=load_config().api_token,
+        playbook_id=playbook_id,
+        model_id=model_id,
+    )
     intake_state = IntakeState(state)
     for key in rerun:
         if intake_state.forget(key):
