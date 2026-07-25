@@ -209,23 +209,17 @@ class TestRenderComment:
 class TestJsmTransport:
     _JQL = 'project = IT AND status = "Open"'
 
-    def _transport(
-        self,
-        handler: Any,
-        tmp_path: Path,
-        page_size: int = 50,
-    ) -> JsmTransport:
+    def _transport(self, handler: Any, page_size: int = 50) -> JsmTransport:
         return JsmTransport(
             base_url="https://example.atlassian.net",
             email="ops@example.com",
             api_token="jsm-tok",
             jql=self._JQL,
-            out_dir=tmp_path / "out",
             http=httpx.Client(transport=httpx.MockTransport(handler)),
             page_size=page_size,
         )
 
-    def test_jql_scope_and_auth_sent(self, tmp_path: Path) -> None:
+    def test_jql_scope_and_auth_sent(self) -> None:
         capture: dict[str, Any] = {}
 
         def handler(request: httpx.Request) -> httpx.Response:
@@ -236,7 +230,7 @@ class TestJsmTransport:
                 200, json={"issues": [_issue("IT-1", "[System] Incident")], "total": 1}
             )
 
-        items = self._transport(handler, tmp_path).fetch_new()
+        items = self._transport(handler).fetch_new()
         assert capture["path"] == "/rest/api/2/search"
         # The JQL filter is the scope: sent verbatim on every request.
         assert capture["params"]["jql"] == self._JQL
@@ -244,7 +238,7 @@ class TestJsmTransport:
         assert [i.key for i in items] == ["IT-1"]
         assert items[0].work_item["work_item_type"] == "incident"
 
-    def test_paginates_past_one_page(self, tmp_path: Path) -> None:
+    def test_paginates_past_one_page(self) -> None:
         starts: list[int] = []
 
         def handler(request: httpx.Request) -> httpx.Response:
@@ -256,24 +250,54 @@ class TestJsmTransport:
                 issues = [_issue("IT-3", "Task")]
             return httpx.Response(200, json={"issues": issues, "total": 3})
 
-        items = self._transport(handler, tmp_path, page_size=2).fetch_new()
+        items = self._transport(handler, page_size=2).fetch_new()
         assert [i.key for i in items] == ["IT-1", "IT-2", "IT-3"]
         assert starts == [0, 2]
 
-    def test_http_error_raises(self, tmp_path: Path) -> None:
+    def test_http_error_raises(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(401, json={"errorMessages": ["bad credentials"]})
 
         with pytest.raises(httpx.HTTPStatusError):
-            self._transport(handler, tmp_path).fetch_new()
+            self._transport(handler).fetch_new()
 
-    def test_comment_written_to_local_sink(self, tmp_path: Path) -> None:
+    def test_comment_posted_to_issue(self) -> None:
+        posted: list[dict[str, Any]] = []
+
         def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json={"issues": [], "total": 0})
+            if request.method == "GET":
+                return httpx.Response(200, json={"comments": []})
+            posted.append(json.loads(request.content))
+            assert request.url.path == "/rest/api/2/issue/IT-9/comment"
+            return httpx.Response(201, json={"id": "10001"})
 
-        transport = self._transport(handler, tmp_path)
-        transport.post_comment("IT-9", "suggestion body")
-        assert (tmp_path / "out" / "IT-9.md").read_text(encoding="utf-8") == "suggestion body"
+        self._transport(handler).post_comment("IT-9", "suggestion body", "ses_abc")
+        assert posted == [{"body": "suggestion body"}]
+
+    def test_existing_marker_skips_post(self) -> None:
+        posted: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.method == "GET":
+                return httpx.Response(
+                    200,
+                    json={"comments": [{"body": "old text … (session `ses_abc`) …"}]},
+                )
+            posted.append(request.url.path)
+            return httpx.Response(201, json={})
+
+        self._transport(handler).post_comment("IT-9", "suggestion body", "ses_abc")
+        # Marker already on the issue → no POST issued, no duplicate comment.
+        assert posted == []
+
+    def test_post_error_raises_for_retry_queue(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.method == "GET":
+                return httpx.Response(200, json={"comments": []})
+            return httpx.Response(502, json={})
+
+        with pytest.raises(httpx.HTTPStatusError):
+            self._transport(handler).post_comment("IT-9", "body", "ses_abc")
 
 
 # ── IntakeLoop.run_forever ─────────────────────────────────────────────────
@@ -291,7 +315,7 @@ class TestRunForever:
                     raise RuntimeError("JSM down")
                 raise KeyboardInterrupt
 
-            def post_comment(self, key: str, body: str) -> None:
+            def post_comment(self, key: str, body: str, marker: str) -> None:
                 raise AssertionError("nothing to comment")
 
         transport = FlakyTransport()
@@ -359,6 +383,50 @@ class TestIntakeLoopPersistence:
         IntakeLoop(ReplayTransport(FIXTURES, out), retry, state=IntakeState(path)).run_once()  # type: ignore[arg-type]
         assert retry.calls == ["IT-101"]
         assert (out / "IT-101.md").exists()
+
+    def test_failed_post_queued_and_flushed_without_rerunning_llm(self, tmp_path: Path) -> None:
+        path, out = tmp_path / "state.json", tmp_path / "out"
+
+        class FailOncePostTransport:
+            """Fetches from replay fixtures; the first post attempt fails."""
+
+            def __init__(self) -> None:
+                self._inner = ReplayTransport(FIXTURES, out)
+                self._failures = 1
+                self.markers: list[str] = []
+
+            def fetch_new(self) -> list[Any]:
+                return self._inner.fetch_new()
+
+            def post_comment(self, key: str, body: str, marker: str) -> None:
+                if self._failures > 0:
+                    self._failures -= 1
+                    raise RuntimeError("JSM 502")
+                self.markers.append(marker)
+                self._inner.post_comment(key, body, marker)
+
+        transport = FailOncePostTransport()
+        first = FakeRunClient()
+        r1 = IntakeLoop(transport, first, state=IntakeState(path)).run_once()  # type: ignore[arg-type]
+        # IT-101's post failed → run is done (marked), comment queued.
+        assert r1.commented == ["IT-102", "IT-103"]
+        assert IntakeState(path).has("IT-101")
+        assert "IT-101" in IntakeState(path).pending_comments()
+        # Next pass flushes the queue; the LLM is NOT re-run.
+        second = FakeRunClient()
+        r2 = IntakeLoop(transport, second, state=IntakeState(path)).run_once()  # type: ignore[arg-type]
+        assert second.calls == []
+        assert r2.commented == ["IT-101"]
+        assert transport.markers[0] == "ses_ok"  # session id doubles as idempotency marker
+        assert (out / "IT-101.md").exists()
+        assert IntakeState(path).pending_comments() == {}
+
+    def test_forget_drops_queued_comment_too(self, tmp_path: Path) -> None:
+        path = tmp_path / "state.json"
+        st = IntakeState(path)
+        st.queue_comment("IT-7", "body", "ses_x")
+        assert st.forget("IT-7") is True
+        assert IntakeState(path).pending_comments() == {}
 
     def test_forget_then_pass_reruns_only_that_key(self, tmp_path: Path) -> None:
         path, out = tmp_path / "state.json", tmp_path / "out"

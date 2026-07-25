@@ -1919,7 +1919,8 @@ def source_jsm(
     out: Path = typer.Option(  # noqa: B008
         Path("intake_comments"),
         "--out",
-        help="Directory where suggestion comments are written (live posting lands with #59).",
+        help="Directory where suggestion comments are written (replay mode only; "
+        "live mode posts them to the JSM issue).",
     ),
     api_url: str = typer.Option(
         "http://127.0.0.1:8001", "--api-url", help="Base URL of the running OpsPilot API."
@@ -1973,9 +1974,7 @@ def source_jsm(
             )
             raise typer.Exit(code=1)
         assert base_url and email and jql  # narrowed above
-        transport = JsmTransport(
-            base_url=base_url, email=email, api_token=jsm_token, jql=jql, out_dir=out
-        )
+        transport = JsmTransport(base_url=base_url, email=email, api_token=jsm_token, jql=jql)
         loop = IntakeLoop(transport, client, state=intake_state)
         if not once:
             _console.print(f"JSM intake polling every {interval}s — scope: {jql} (Ctrl+C to stop)")
@@ -1990,9 +1989,10 @@ def source_jsm(
     except Exception as exc:  # noqa: BLE001 — single pass: report and exit non-zero
         _err.print(f"[red]intake pass failed: {exc}[/red]")
         raise typer.Exit(code=1) from exc
+    dest = str(out) if replay is not None else "JSM comments"
     _console.print(
         f"intake pass done — {len(report.commented)} commented, "
-        f"{len(report.skipped)} skipped → {out}"
+        f"{len(report.skipped)} skipped → {dest}"
     )
     for key, reason in report.skipped:
         _console.print(f"  [yellow]skip[/yellow] {key}: {reason}")
