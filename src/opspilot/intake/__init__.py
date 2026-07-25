@@ -3,6 +3,7 @@
 from .base import (
     IntakeLoop,
     IntakeReport,
+    IntakeState,
     OpsPilotRunClient,
     SourceItem,
     SourceTransport,
@@ -13,6 +14,7 @@ from .jsm import JsmTransport, ReplayTransport, normalize_issue
 __all__ = [
     "IntakeLoop",
     "IntakeReport",
+    "IntakeState",
     "JsmTransport",
     "OpsPilotRunClient",
     "ReplayTransport",

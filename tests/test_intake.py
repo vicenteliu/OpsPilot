@@ -16,6 +16,7 @@ import pytest
 
 from opspilot.intake import (
     IntakeLoop,
+    IntakeState,
     JsmTransport,
     OpsPilotRunClient,
     ReplayTransport,
@@ -299,3 +300,75 @@ class TestRunForever:
             loop.run_forever(0)
         # First pass failed (outage) → logged and retried, not crashed.
         assert transport.calls == 2
+
+
+# ── IntakeState (persistence, #58) ─────────────────────────────────────────
+
+
+class TestIntakeState:
+    def test_marked_keys_survive_restart(self, tmp_path: Path) -> None:
+        path = tmp_path / "state.json"
+        IntakeState(path).mark("IT-1")
+        fresh = IntakeState(path)  # fresh instance = adapter restart
+        assert fresh.has("IT-1")
+        assert not fresh.has("IT-2")
+
+    def test_forget_enables_rerun(self, tmp_path: Path) -> None:
+        path = tmp_path / "state.json"
+        st = IntakeState(path)
+        st.mark("IT-1")
+        assert st.forget("IT-1") is True
+        assert st.forget("IT-1") is False
+        assert not IntakeState(path).has("IT-1")
+
+    def test_memory_only_without_path(self) -> None:
+        st = IntakeState()
+        st.mark("IT-1")
+        assert st.has("IT-1")
+
+
+class TestIntakeLoopPersistence:
+    def test_restart_does_not_rerun_processed_keys(self, tmp_path: Path) -> None:
+        path, out = tmp_path / "state.json", tmp_path / "out"
+        first = FakeRunClient()
+        IntakeLoop(ReplayTransport(FIXTURES, out), first, state=IntakeState(path)).run_once()  # type: ignore[arg-type]
+        assert first.calls == ["IT-101", "IT-102", "IT-103"]
+        second = FakeRunClient()
+        report = IntakeLoop(
+            ReplayTransport(FIXTURES, out),
+            second,  # type: ignore[arg-type]
+            state=IntakeState(path),
+        ).run_once()
+        assert second.calls == []
+        assert report.commented == []
+
+    def test_failed_run_not_marked_and_retries_next_pass(self, tmp_path: Path) -> None:
+        path, out = tmp_path / "state.json", tmp_path / "out"
+
+        class Boom(FakeRunClient):
+            def run(self, work_item: dict[str, Any]) -> dict[str, Any]:
+                if work_item["ticket_id"] == "IT-101":
+                    raise RuntimeError("connection refused")
+                return super().run(work_item)
+
+        IntakeLoop(ReplayTransport(FIXTURES, out), Boom(), state=IntakeState(path)).run_once()  # type: ignore[arg-type]
+        # Transient failure is not marked; deterministic outcomes are.
+        assert not IntakeState(path).has("IT-101")
+        assert IntakeState(path).has("IT-102")
+        retry = FakeRunClient()
+        IntakeLoop(ReplayTransport(FIXTURES, out), retry, state=IntakeState(path)).run_once()  # type: ignore[arg-type]
+        assert retry.calls == ["IT-101"]
+        assert (out / "IT-101.md").exists()
+
+    def test_forget_then_pass_reruns_only_that_key(self, tmp_path: Path) -> None:
+        path, out = tmp_path / "state.json", tmp_path / "out"
+        IntakeLoop(
+            ReplayTransport(FIXTURES, out),
+            FakeRunClient(),  # type: ignore[arg-type]
+            state=IntakeState(path),
+        ).run_once()
+        st = IntakeState(path)
+        assert st.forget("IT-102")
+        rerun = FakeRunClient()
+        IntakeLoop(ReplayTransport(FIXTURES, out), rerun, state=st).run_once()  # type: ignore[arg-type]
+        assert rerun.calls == ["IT-102"]

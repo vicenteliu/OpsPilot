@@ -1924,6 +1924,17 @@ def source_jsm(
     api_url: str = typer.Option(
         "http://127.0.0.1:8001", "--api-url", help="Base URL of the running OpsPilot API."
     ),
+    state: Path = typer.Option(  # noqa: B008
+        Path("intake_state.json"),
+        "--state",
+        help="Persistent intake state file (processed keys) — survives restarts.",
+    ),
+    rerun: list[str] = typer.Option(  # noqa: B008
+        [],
+        "--rerun",
+        help="Forget this issue key so it runs again this pass (repeatable; "
+        "the key must still match the intake scope).",
+    ),
 ) -> None:
     """Run the JSM intake adapter (polling, outbound-only; see docs/adr/0013).
 
@@ -1933,12 +1944,18 @@ def source_jsm(
     configured) is picked up from OPSPILOT_API_TOKEN / config.yaml
     automatically.
     """
-    from .intake import IntakeLoop, JsmTransport, OpsPilotRunClient, ReplayTransport
+    from .intake import IntakeLoop, IntakeState, JsmTransport, OpsPilotRunClient, ReplayTransport
 
     client = OpsPilotRunClient(api_url=api_url, api_token=load_config().api_token)
+    intake_state = IntakeState(state)
+    for key in rerun:
+        if intake_state.forget(key):
+            _console.print(f"rerun: {key} forgotten — runs again this pass")
+        else:
+            _console.print(f"[yellow]rerun: {key} was not in state — nothing to forget[/yellow]")
 
     if replay is not None:
-        loop = IntakeLoop(ReplayTransport(replay, out), client)
+        loop = IntakeLoop(ReplayTransport(replay, out), client, state=intake_state)
     else:
         missing = [
             name
@@ -1959,7 +1976,7 @@ def source_jsm(
         transport = JsmTransport(
             base_url=base_url, email=email, api_token=jsm_token, jql=jql, out_dir=out
         )
-        loop = IntakeLoop(transport, client)
+        loop = IntakeLoop(transport, client, state=intake_state)
         if not once:
             _console.print(f"JSM intake polling every {interval}s — scope: {jql} (Ctrl+C to stop)")
             try:

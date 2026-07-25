@@ -9,9 +9,11 @@ in-process.
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Protocol
 
 import httpx
@@ -95,6 +97,49 @@ def render_comment(result: dict[str, Any], *, session_id: str) -> str:
     return "\n".join(lines)
 
 
+class IntakeState:
+    """Processed-key state that survives adapter restarts (#58).
+
+    Operational state only — which keys already ran; the Source remains
+    the system of record for the Work items themselves (ADR-0006). With
+    no path, state is in-memory (tests, throwaway passes). No poll cursor
+    on purpose: every pass re-fetches the full intake scope, so an issue
+    created while the adapter was down is picked up on the next pass.
+    """
+
+    def __init__(self, path: Path | None = None) -> None:
+        self._path = path
+        self._processed: set[str] = set()
+        if path is not None and path.exists():
+            data = json.loads(path.read_text(encoding="utf-8"))
+            self._processed = set(data.get("processed", []))
+
+    def has(self, key: str) -> bool:
+        return key in self._processed
+
+    def mark(self, key: str) -> None:
+        self._processed.add(key)
+        self._save()
+
+    def forget(self, key: str) -> bool:
+        """Drop a key so it runs again (--rerun). True if it was present."""
+        if key not in self._processed:
+            return False
+        self._processed.discard(key)
+        self._save()
+        return True
+
+    def _save(self) -> None:
+        if self._path is None:
+            return
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self._path.with_suffix(".tmp")
+        tmp.write_text(
+            json.dumps({"processed": sorted(self._processed)}, indent=2), encoding="utf-8"
+        )
+        tmp.replace(self._path)
+
+
 @dataclass
 class IntakeReport:
     """What one intake pass did."""
@@ -117,28 +162,35 @@ def _unusable(res: dict[str, Any]) -> str | None:
 class IntakeLoop:
     """Dedupe + run + write-back over one SourceTransport.
 
-    Dedupe is in-memory for now — one run per key per process; persistent
-    state across restarts is a follow-up (#58).
+    One run per key: a key is marked processed once a run *returns*
+    (success or a deterministic non-comment outcome). A run that raises —
+    server down, provider outage — is NOT marked, so it retries on the
+    next pass. Manual reruns go through ``IntakeState.forget``.
     """
 
-    def __init__(self, transport: SourceTransport, client: OpsPilotRunClient) -> None:
+    def __init__(
+        self,
+        transport: SourceTransport,
+        client: OpsPilotRunClient,
+        state: IntakeState | None = None,
+    ) -> None:
         self._transport = transport
         self._client = client
-        self._seen: set[str] = set()
+        self._state = state or IntakeState()
 
     def run_once(self) -> IntakeReport:
         report = IntakeReport()
         for item in self._transport.fetch_new():
-            if item.key in self._seen:
+            if self._state.has(item.key):
                 report.skipped.append((item.key, "duplicate"))
                 continue
-            self._seen.add(item.key)
             try:
                 res = self._client.run(item.work_item)
-            except Exception as exc:  # noqa: BLE001 — skip this item, keep the pass alive
-                logger.error("run failed for %s: %s", item.key, exc)
+            except Exception as exc:  # noqa: BLE001 — not marked: retries next pass
+                logger.error("run failed for %s (will retry next pass): %s", item.key, exc)
                 report.skipped.append((item.key, f"run failed: {exc}"))
                 continue
+            self._state.mark(item.key)
             reason = _unusable(res)
             if reason:
                 logger.warning("no comment for %s: %s", item.key, reason)
