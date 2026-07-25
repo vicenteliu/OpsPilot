@@ -191,14 +191,18 @@ def test_connection(source: str) -> TestConnectionResult:
     configured so the admin UI is wired end to end.
     """
     if source == "ldap":
-        ok = _ldap_configured()
-        return TestConnectionResult(
-            source=source,
-            ok=ok,
-            detail="LDAP configured (bind probe lands with the LDAP slice)"
-            if ok
-            else "OPSPILOT_LDAP_URL not set",
-        )
+        from ...auth.ldap_connector import LdapConfig, LdapConnector, LdapError
+
+        cfg = LdapConfig.from_env()
+        if cfg is None:
+            return TestConnectionResult(
+                source=source, ok=False, detail="OPSPILOT_LDAP_URL / _BASE_DN not set"
+            )
+        try:
+            LdapConnector(cfg).test_connection()
+        except LdapError as exc:
+            return TestConnectionResult(source=source, ok=False, detail=str(exc))
+        return TestConnectionResult(source=source, ok=True, detail="service-account bind ok")
     if source == "oidc":
         ok = _oidc_configured()
         return TestConnectionResult(

@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS users (
     auth_source  TEXT NOT NULL DEFAULT 'local',
     password_hash TEXT NOT NULL DEFAULT '',
     enabled      INTEGER NOT NULL DEFAULT 1,
+    role_overridden INTEGER NOT NULL DEFAULT 0,
     created_at   TEXT NOT NULL,
     updated_at   TEXT NOT NULL
 );
@@ -94,6 +95,10 @@ class AuthStore:
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn
         conn.executescript(_SCHEMA)
+        # Idempotent column add (#98): pre-existing DBs gain role_overridden.
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(users)")}
+        if "role_overridden" not in cols:
+            conn.execute("ALTER TABLE users ADD COLUMN role_overridden INTEGER NOT NULL DEFAULT 0")
         conn.commit()
 
     # ── users ──────────────────────────────────────────────────────────
@@ -139,12 +144,26 @@ class AuthStore:
         return user
 
     def set_role(self, username: str, role: str) -> bool:
+        """Explicit admin role change — marks the user as override-pinned so a
+        directory group mapping won't reset it on the next LDAP/OIDC login."""
         cur = self._conn.execute(
-            "UPDATE users SET role=?, updated_at=? WHERE username=?",
+            "UPDATE users SET role=?, role_overridden=1, updated_at=? WHERE username=?",
             (role, now_rfc3339(), username),
         )
         self._conn.commit()
         return cur.rowcount > 0
+
+    def apply_directory_role(self, username: str, auth_source: str, mapped_role: str) -> str:
+        """Upsert a directory user, honoring an admin override (ADR-0020).
+
+        Returns the effective role: an existing override wins over the freshly
+        mapped group role; otherwise the mapped role is stored."""
+        existing = self.get_user(username)
+        if existing and existing["role_overridden"]:
+            self.upsert_user(username, role=existing["role"], auth_source=auth_source)
+            return str(existing["role"])
+        self.upsert_user(username, role=mapped_role, auth_source=auth_source)
+        return mapped_role
 
     def set_enabled(self, username: str, enabled: bool) -> bool:
         cur = self._conn.execute(
@@ -206,6 +225,10 @@ class AuthStore:
         self._conn.commit()
 
     # ── audit ──────────────────────────────────────────────────────────
+
+    def log_login(self, username: str, source: str, outcome: str) -> None:
+        """Public login-audit hook for non-local sources (LDAP/OIDC)."""
+        self._log_login(username, source, outcome)
 
     def _log_login(self, username: str, source: str, outcome: str) -> None:
         self._conn.execute(

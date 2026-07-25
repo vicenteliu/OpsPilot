@@ -6,6 +6,7 @@
 
   let username = $state('');
   let password = $state('');
+  let source = $state<'local' | 'ldap'>('local');
   let error = $state<string | null>(null);
   let busy = $state(false);
 
@@ -14,7 +15,7 @@
     busy = true;
     error = null;
     try {
-      onLogin(await login(username, password));
+      onLogin(await login(username, password, source));
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     } finally {
@@ -37,6 +38,13 @@
     <label class="login-field">
       <span>Password</span>
       <input type="password" bind:value={password} autocomplete="current-password" required />
+    </label>
+    <label class="login-field">
+      <span>Authenticate against</span>
+      <select bind:value={source}>
+        <option value="local">Local account</option>
+        <option value="ldap">Directory (LDAP / AD)</option>
+      </select>
     </label>
     {#if error}<p class="login-error">{error}</p>{/if}
     <button class="login-btn" type="submit" disabled={busy || !username || !password}>
@@ -100,7 +108,8 @@
     color: var(--text-muted);
   }
 
-  .login-field input {
+  .login-field input,
+  .login-field select {
     font-size: 0.9rem;
     padding: 0.5rem 0.6rem;
     border-radius: 6px;
