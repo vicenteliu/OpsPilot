@@ -70,7 +70,12 @@ def list_assets(
 # literal "procurements" segment is never captured as an asset id (#87).
 
 
-@router.post("/inventory/procurements", response_model=ApiProcurement, status_code=201, dependencies=[_operator])
+@router.post(
+    "/inventory/procurements",
+    response_model=ApiProcurement,
+    status_code=201,
+    dependencies=[_operator],
+)
 def create_procurement(body: ApiProcurementCreate, request: Request) -> ApiProcurement:
     """Group existing Assets; the Procurement adopts their common fields."""
     try:
@@ -80,13 +85,19 @@ def create_procurement(body: ApiProcurementCreate, request: Request) -> ApiProcu
     return ApiProcurement(**row)
 
 
-@router.get("/inventory/procurements", response_model=ApiProcurementListResponse, dependencies=[_viewer])
+@router.get(
+    "/inventory/procurements", response_model=ApiProcurementListResponse, dependencies=[_viewer]
+)
 def list_procurements(request: Request) -> ApiProcurementListResponse:
     rows = request.app.state.inventory.list_procurements()
     return ApiProcurementListResponse(procurements=[ApiProcurement(**r) for r in rows])
 
 
-@router.get("/inventory/procurements/{procurement_id}", response_model=ApiProcurementDetail, dependencies=[_viewer])
+@router.get(
+    "/inventory/procurements/{procurement_id}",
+    response_model=ApiProcurementDetail,
+    dependencies=[_viewer],
+)
 def get_procurement(procurement_id: str, request: Request) -> ApiProcurementDetail:
     store = request.app.state.inventory
     row = store.get_procurement(procurement_id)
@@ -96,7 +107,11 @@ def get_procurement(procurement_id: str, request: Request) -> ApiProcurementDeta
     return ApiProcurementDetail(**row, members=members)
 
 
-@router.patch("/inventory/procurements/{procurement_id}", response_model=ApiProcurement, dependencies=[_operator])
+@router.patch(
+    "/inventory/procurements/{procurement_id}",
+    response_model=ApiProcurement,
+    dependencies=[_operator],
+)
 def update_procurement(
     procurement_id: str, body: ApiProcurementUpdate, request: Request
 ) -> ApiProcurement:
@@ -111,7 +126,9 @@ def update_procurement(
     return ApiProcurement(**row)
 
 
-@router.delete("/inventory/procurements/{procurement_id}", status_code=204, dependencies=[_operator])
+@router.delete(
+    "/inventory/procurements/{procurement_id}", status_code=204, dependencies=[_operator]
+)
 def delete_procurement(procurement_id: str, request: Request) -> Response:
     """Ungroup members (their fields stay) and delete the Procurement."""
     if not request.app.state.inventory.delete_procurement(procurement_id):
