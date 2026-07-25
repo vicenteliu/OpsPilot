@@ -48,6 +48,12 @@ CREATE TABLE IF NOT EXISTS login_events (
     source   TEXT NOT NULL,
     outcome  TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS group_role_map (
+    source     TEXT NOT NULL,
+    group_name TEXT NOT NULL,
+    role       TEXT NOT NULL,
+    PRIMARY KEY (source, group_name)
+);
 """
 
 
@@ -207,6 +213,42 @@ class AuthStore:
             (now_rfc3339(), username, source, outcome),
         )
         self._conn.commit()
+
+    # ── group → role mapping (used by the LDAP / OIDC slices) ──────────
+
+    def list_group_roles(self) -> list[dict[str, Any]]:
+        cur = self._conn.execute(
+            "SELECT source, group_name, role FROM group_role_map ORDER BY source, group_name"
+        )
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row, strict=True)) for row in cur.fetchall()]
+
+    def set_group_role(self, source: str, group_name: str, role: str) -> None:
+        self._conn.execute(
+            "INSERT INTO group_role_map (source, group_name, role) VALUES (?,?,?) "
+            "ON CONFLICT(source, group_name) DO UPDATE SET role=excluded.role",
+            (source, group_name, role),
+        )
+        self._conn.commit()
+
+    def delete_group_role(self, source: str, group_name: str) -> bool:
+        cur = self._conn.execute(
+            "DELETE FROM group_role_map WHERE source=? AND group_name=?", (source, group_name)
+        )
+        self._conn.commit()
+        return cur.rowcount > 0
+
+    def resolve_group_role(self, source: str, groups: list[str]) -> str | None:
+        """Highest role any of *groups* maps to for *source*, or None."""
+        best: str | None = None
+        mapped = {
+            (r["group_name"]): r["role"] for r in self.list_group_roles() if r["source"] == source
+        }
+        for g in groups:
+            role = mapped.get(g)
+            if role and (best is None or role_at_least(role, best)):
+                best = role
+        return best
 
     def recent_logins(self, limit: int = 50) -> list[dict[str, Any]]:
         cur = self._conn.execute(
