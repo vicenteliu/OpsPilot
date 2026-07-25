@@ -12,9 +12,11 @@
 
 OpsPilot 通过 playbook 驱动的 AI 管线，把原始 IT 工作项（Work item）——事件
 （Incident）、服务请求（Service Request）、任务（Task）——转化为结构化、带知识库
-引用的摘要。它既可以用 Ollama 完全本地运行，也可以接入各大云端模型；每次运行
-都留下可审计的痕迹：内容到达模型之前先做 PII 脱敏，输出经过严格 JSON Schema
-校验，每个会话归档一份内容寻址的 artifact 和一条只追加的 trace。
+引用的建议，并与你已有的工具形成闭环：自动从 Jira Service Management 轮询
+新工单并把建议以评论的形式发回工单，也可以在 Telegram 里用一条命令把消息
+立为工作项。它既可以用 Ollama 完全本地运行，也可以接入各大云端模型；每次
+运行都留下可审计的痕迹：内容到达模型之前先做 PII 脱敏，输出经过严格 JSON
+Schema 校验，每个会话归档一份内容寻址的 artifact 和一条只追加的 trace。
 
 ## 项目初衷
 
@@ -32,9 +34,13 @@ AI 正在重塑整个 IT Support 行业。OpsPilot 是对一个具体问题的�
 
 ## 亮点
 
-- **多模型支持** —— Anthropic Claude、OpenAI、OpenRouter、Gemini 或本地
-  Ollama；playbook 声明主模型 + 可选备选模型（含本地 Gemma），UI 中按次
-  切换，provider 出错时自动降级
+- **多模型支持** —— Anthropic Claude、OpenAI、OpenRouter、Gemini、xAI Grok
+  或本地 Ollama；playbook 声明主模型 + 可选备选模型（含本地 Gemma），UI 中
+  按次切换，provider 出错时自动降级
+- **工单接入（Intake）** —— 按 JQL 范围直接从 Jira Service Management 拉取
+  工单，AI 建议以评论形式发回工单本身：纯轮询（无需公网入口）、只发评论
+  （绝不改动字段）、状态可跨重启保留，还有 `--replay` 模式离线演示完整闭环；
+  接入管道可以指定比交互使用更便宜的模型
 - **带引用的知识库检索** —— 向量（LanceDB）+ 全文（SQLite FTS5）混合搜索，
   RRF 融合；强模型走 `tool` 模式（ReAct），弱本地模型走 `prefetch` 注入
 - **脱敏优先** —— 任何内容进入模型或知识库之前先剥离 PII
@@ -48,7 +54,7 @@ AI 正在重塑整个 IT Support 行业。OpsPilot 是对一个具体问题的�
   注入 ReAct 循环，按服务器配置允许/拒绝列表
 - **界面与渠道** —— CLI、REPL 终端 UI（Textual，斜杠命令）、多标签
   Web UI（Svelte 5，含知识库增强聊天）、FastAPI 后端；Telegram 渠道把知识库
-  问答带进你的聊天软件
+  问答带进你的聊天软件，还能用 `/intake` 直接立工作项
 - **可观测性** —— Prometheus `/metrics`、OTel 兼容 JSON 日志、`/health`
 - **Rust 热路径** —— 分块器（~10×）和分词器（~45×）经 PyO3/maturin 编译，
   纯 Python 透明降级；CI 门槛 ≥5×
@@ -118,8 +124,18 @@ opspilot tui                              # 终端 UI 工作台
 opspilot serve --reload --with-ui         # API + Web UI → http://localhost:5173
 ```
 
-跑起来之后：在 **Run** 标签提交工单、在 **Chat** 标签向知识库提问，或接入
-[Telegram 渠道](docs/channels.md)在手机上与知识库对话。
+再离线看一遍完整的工单接入闭环——不需要任何工单系统：
+
+```bash
+opspilot source jsm --replay tests/fixtures/jsm_replay/
+cat intake_comments/IT-101.md             # 真实工单会收到的那条建议
+```
+
+跑起来之后：在 **Run** 标签提交工单、在 **Chat** 标签向知识库提问，接入
+[Telegram 渠道](docs/channels.md)在手机上与知识库对话（或用 `/intake` 立
+工作项），或把接入指向你的
+[Jira Service Management 项目](docs/sources.md)——免费版站点约十分钟接通，
+新工单就会自动获得摘要和评论。
 
 ## 架构
 
@@ -138,11 +154,12 @@ opspilot serve --reload --with-ui         # API + Web UI → http://localhost:51
 | [docs/architecture.md](docs/architecture.md) | 请求流、分层设计、模型路由、检索模式 |
 | [docs/cli.md](docs/cli.md) | TUI、harness、沙箱、MCP、wiki 命令参考 |
 | [docs/deployment.md](docs/deployment.md) | Docker Compose、systemd、可观测性、配置 |
-| [docs/channels.md](docs/channels.md) | 消息渠道 —— Telegram 应答模式接入指南 |
+| [docs/channels.md](docs/channels.md) | 消息渠道 —— Telegram 接入：知识库问答 + `/intake` 立单 |
+| [docs/sources.md](docs/sources.md) | 工单接入 —— JSM 接通、replay 模式、状态与重跑 |
 | [docs/specs/](docs/specs/) | 规格契约：schema + 模板（运行时加载） |
 | [docs/adr/](docs/adr/) | 架构决策记录 |
 | [docs/zh/design/](docs/zh/design/) | 历史设计文档（中文，不再维护） |
-| [ROADMAP.md](ROADMAP.md) | 方向：更多渠道（企微）、移动伴侣、渠道接单 |
+| [ROADMAP.md](ROADMAP.md) | 方向：更多渠道（企微）、移动伴侣、webhook 接单 |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 开发环境、质量门、PR 约定 |
 | [SECURITY.md](SECURITY.md) | 部署模型、威胁模型、漏洞报告 |
 
