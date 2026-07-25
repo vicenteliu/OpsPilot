@@ -27,7 +27,8 @@ from ulid import ULID
 ULID_BODY_PATTERN: Final[str] = r"[0-9A-HJKMNP-TV-Z]{26}"
 
 ULID_PREFIXES: Final[frozenset[str]] = frozenset(
-    {"sess", "run", "itr", "fb", "q", "act", "ast"}  # ast_ = inventory Asset (ADR-0017)
+    # ast_ = inventory Asset (ADR-0017); prc_ = inventory Procurement (#87)
+    {"sess", "run", "itr", "fb", "q", "act", "ast", "prc"}
 )
 
 # Hex length per content-id prefix. Wiki adds wpg_ and wlk_, skills add var_/lnt_, etc.

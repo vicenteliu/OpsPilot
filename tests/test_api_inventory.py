@@ -169,6 +169,87 @@ class TestWarrantyExpiry:
         assert [a["asset_tag"] for a in week] == ["NB-003"]
 
 
+class TestProcurements:
+    def _five(self, c: TestClient) -> list[str]:
+        ids = []
+        for i in range(5):
+            res = c.post(
+                "/api/inventory",
+                json=_laptop(
+                    asset_tag=f"NB-10{i}",
+                    serial_number=f"SN-P{i}",
+                    pr_number="PR-2026-007",
+                    vendor="JD" if i < 3 else "Tmall",  # disagreeing field
+                ),
+            )
+            ids.append(res.json()["asset_id"])
+        return ids
+
+    def test_group_adopts_common_fields_and_marks_members(self) -> None:
+        c = _client()
+        ids = self._five(c)
+        res = c.post("/api/inventory/procurements", json={"asset_ids": ids, "actor": "vicente"})
+        assert res.status_code == 201
+        proc = res.json()
+        assert proc["procurement_id"].startswith("prc_")
+        assert proc["member_count"] == 5
+        assert proc["pr_number"] == "PR-2026-007"  # unanimous → adopted
+        assert proc["vendor"] == ""  # disagreeing → starts empty
+        first = c.get(f"/api/inventory/{ids[0]}").json()
+        assert first["procurement_id"] == proc["procurement_id"]
+        assert any("grouped into" in e["change"] for e in first["events"])
+
+    def test_patch_syncs_to_all_members_with_events(self) -> None:
+        c = _client()
+        ids = self._five(c)
+        pid = c.post("/api/inventory/procurements", json={"asset_ids": ids}).json()[
+            "procurement_id"
+        ]
+        res = c.patch(
+            f"/api/inventory/procurements/{pid}",
+            json={"tracking_number": "SF-123456", "actor": "vicente"},
+        )
+        assert res.status_code == 200
+        assert res.json()["tracking_number"] == "SF-123456"
+        for aid in ids:
+            detail = c.get(f"/api/inventory/{aid}").json()
+            assert detail["tracking_number"] == "SF-123456"
+            sync_events = [e for e in detail["events"] if "tracking_number" in e["change"]]
+            assert len(sync_events) == 1
+            assert pid in sync_events[0]["note"]
+
+    def test_list_and_detail_routes_not_shadowed_by_asset_id(self) -> None:
+        c = _client()
+        ids = self._five(c)
+        pid = c.post("/api/inventory/procurements", json={"asset_ids": ids}).json()[
+            "procurement_id"
+        ]
+        listing = c.get("/api/inventory/procurements")
+        assert listing.status_code == 200  # literal segment wins over {asset_id}
+        assert listing.json()["procurements"][0]["member_count"] == 5
+        detail = c.get(f"/api/inventory/procurements/{pid}").json()
+        assert len(detail["members"]) == 5
+
+    def test_delete_ungroups_without_touching_fields(self) -> None:
+        c = _client()
+        ids = self._five(c)
+        pid = c.post("/api/inventory/procurements", json={"asset_ids": ids}).json()[
+            "procurement_id"
+        ]
+        assert c.delete(f"/api/inventory/procurements/{pid}").status_code == 204
+        for aid in ids:
+            detail = c.get(f"/api/inventory/{aid}").json()
+            assert detail["procurement_id"] == ""
+            assert detail["pr_number"] == "PR-2026-007"  # fields kept
+            assert any("ungrouped" in e["change"] for e in detail["events"])
+        assert c.delete(f"/api/inventory/procurements/{pid}").status_code == 404
+
+    def test_group_unknown_asset_404(self) -> None:
+        c = _client()
+        res = c.post("/api/inventory/procurements", json={"asset_ids": ["ast_missing"]})
+        assert res.status_code == 404
+
+
 class TestDelete:
     def test_delete_then_404(self) -> None:
         c = _client()

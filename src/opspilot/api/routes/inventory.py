@@ -9,13 +9,23 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Request, Response
 
-from ...inventory import AssetNotFoundError, DuplicateSerialError, UnknownStatusError
+from ...inventory import (
+    AssetNotFoundError,
+    DuplicateSerialError,
+    ProcurementNotFoundError,
+    UnknownStatusError,
+)
 from ..types import (
     ApiAsset,
     ApiAssetCreate,
     ApiAssetDetail,
     ApiAssetListResponse,
     ApiAssetUpdate,
+    ApiProcurement,
+    ApiProcurementCreate,
+    ApiProcurementDetail,
+    ApiProcurementListResponse,
+    ApiProcurementUpdate,
 )
 
 router = APIRouter()
@@ -49,6 +59,59 @@ def list_assets(
     else:
         rows = store.list(status=status, assignee=assignee, q=q)
     return ApiAssetListResponse(assets=[ApiAsset(**r) for r in rows])
+
+
+# Procurement routes are registered before /inventory/{asset_id} so the
+# literal "procurements" segment is never captured as an asset id (#87).
+
+
+@router.post("/inventory/procurements", response_model=ApiProcurement, status_code=201)
+def create_procurement(body: ApiProcurementCreate, request: Request) -> ApiProcurement:
+    """Group existing Assets; the Procurement adopts their common fields."""
+    try:
+        row = request.app.state.inventory.create_procurement(body.asset_ids, actor=body.actor)
+    except AssetNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=f"no asset {exc}") from exc
+    return ApiProcurement(**row)
+
+
+@router.get("/inventory/procurements", response_model=ApiProcurementListResponse)
+def list_procurements(request: Request) -> ApiProcurementListResponse:
+    rows = request.app.state.inventory.list_procurements()
+    return ApiProcurementListResponse(procurements=[ApiProcurement(**r) for r in rows])
+
+
+@router.get("/inventory/procurements/{procurement_id}", response_model=ApiProcurementDetail)
+def get_procurement(procurement_id: str, request: Request) -> ApiProcurementDetail:
+    store = request.app.state.inventory
+    row = store.get_procurement(procurement_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"no procurement {procurement_id}")
+    members = [ApiAsset(**m) for m in store.procurement_members(procurement_id)]
+    return ApiProcurementDetail(**row, members=members)
+
+
+@router.patch("/inventory/procurements/{procurement_id}", response_model=ApiProcurement)
+def update_procurement(
+    procurement_id: str, body: ApiProcurementUpdate, request: Request
+) -> ApiProcurement:
+    """Update procurement fields; changes sync to every member Asset."""
+    changes = {k: v for k, v in body.model_dump(exclude={"actor"}).items() if v is not None}
+    try:
+        row = request.app.state.inventory.update_procurement(
+            procurement_id, changes, actor=body.actor
+        )
+    except ProcurementNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=f"no procurement {procurement_id}") from exc
+    return ApiProcurement(**row)
+
+
+@router.delete("/inventory/procurements/{procurement_id}", status_code=204)
+def delete_procurement(procurement_id: str, request: Request) -> Response:
+    """Ungroup members (their fields stay) and delete the Procurement."""
+    if not request.app.state.inventory.delete_procurement(procurement_id):
+        raise HTTPException(status_code=404, detail=f"no procurement {procurement_id}")
+    return Response(status_code=204)
 
 
 @router.get("/inventory/{asset_id}", response_model=ApiAssetDetail)
