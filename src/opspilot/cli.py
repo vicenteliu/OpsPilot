@@ -2024,6 +2024,54 @@ def source_jsm(
 
 
 # ──────────────────────────────────────────────────────────────────────────
+#  inventory (ADR-0017)
+# ──────────────────────────────────────────────────────────────────────────
+
+inventory_app = typer.Typer(
+    name="inventory",
+    help="Asset inventory — CSV import/export (ADR-0017).",
+    no_args_is_help=True,
+)
+app.add_typer(inventory_app)
+
+
+@inventory_app.command("import")
+def inventory_import(
+    file: Path = typer.Argument(  # noqa: B008
+        ..., exists=True, help="CSV file to import (spreadsheet migration path)."
+    ),
+) -> None:
+    """Import Assets from a CSV file (one Asset per row; bad rows are skipped)."""
+    from .inventory import InventoryStore, import_csv
+
+    cfg = load_config()
+    conn = init_sqlite(cfg.home / "kb" / "sqlite.db")
+    store = InventoryStore(conn)
+    report = import_csv(store, file)
+    if report.unknown_columns:
+        _console.print(
+            f"[yellow]Unknown column(s) ignored: {', '.join(report.unknown_columns)}[/yellow]"
+        )
+    for row_number, reason in report.skipped:
+        _console.print(f"  [yellow]skip[/yellow] row {row_number}: {reason}")
+    _console.print(f"[green]{report.created}[/green] asset(s) imported from {file}")
+
+
+@inventory_app.command("export")
+def inventory_export(
+    file: Path = typer.Argument(..., help="Destination CSV file."),  # noqa: B008
+) -> None:
+    """Export every Asset to a CSV file."""
+    from .inventory import InventoryStore, export_csv
+
+    cfg = load_config()
+    conn = init_sqlite(cfg.home / "kb" / "sqlite.db")
+    store = InventoryStore(conn)
+    count = export_csv(store, file)
+    _console.print(f"[green]{count}[/green] asset(s) exported to {file}")
+
+
+# ──────────────────────────────────────────────────────────────────────────
 #  serve (PR-32)
 # ──────────────────────────────────────────────────────────────────────────
 
