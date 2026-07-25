@@ -45,6 +45,31 @@ services:
       retries: 6
       start_period: 30s
 
+  # JSM intake adapter (ADR-0013) — opt-in via profile:
+  #   docker compose -f docker-compose.prod.yml --profile jsm up -d
+  # Needs JSM_BASE_URL / JSM_EMAIL / JSM_API_TOKEN / JSM_JQL in .env.prod.
+  jsm-source:
+    image: opspilot:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    profiles: ["jsm"]
+    command: >
+      sh -c 'opspilot source jsm
+      --base-url "$$JSM_BASE_URL"
+      --email "$$JSM_EMAIL"
+      --jql "$$JSM_JQL"
+      --interval "$${JSM_POLL_INTERVAL:-60}"
+      --state /data/opspilot/intake_state.json
+      --api-url http://api:8000'
+    env_file: .env.prod
+    volumes:
+      - opspilot-data:/data/opspilot
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
   nginx:
     image: nginx:1.27-alpine
     ports:
