@@ -1,4 +1,9 @@
-# OpsPilot
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-on-dark.svg">
+    <img src="docs/assets/logo-on-light.svg" alt="" width="37" height="23">
+  </picture>&nbsp; OpsPilot
+</h1>
 
 **AI-augmented IT ops workbench — spec-driven, multi-provider, multi-user, local-first**
 

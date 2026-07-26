@@ -1,0 +1,22 @@
+<!-- OpsPilot brand mark — the single source of geometry for every logo artifact.
+
+     A node-apex chevron: reads as a heading pointer (Pilot) and, rotated 90
+     degrees, as a shell prompt (Ops). The node is the work item the mark
+     points at; it is fused to both arms so the mark stays one shape at
+     favicon sizes.
+
+     Geometry on the 24x15 viewBox, all values exact:
+       opening angle 90 degrees, arms at 45 degrees, butt caps
+       stroke-width 4, node radius 3 (= 1.5x stroke), node centre (12,3)
+       arms run from the node circumference to (1.41421,13.58579) and
+       (22.58579,13.58579), so the painted bounds are exactly 0..24 x 0..15
+       and the file needs no manual padding.
+
+     Colour is currentColor. The web UI masks this file and paints it with the
+     primary token; scripts/gen_pwa_icons.py wraps it for the app icons.
+     Lockup rule: mark height = cap height, gap = 0.4x mark width. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 15" fill="none">
+  <path d="M9.87868 5.12132 L1.41421 13.58579" stroke="currentColor" stroke-width="4"/>
+  <path d="M14.12132 5.12132 L22.58579 13.58579" stroke="currentColor" stroke-width="4"/>
+  <circle cx="12" cy="3" r="3" fill="currentColor"/>
+</svg>

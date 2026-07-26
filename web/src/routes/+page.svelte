@@ -127,7 +127,7 @@
 <div class="app">
   <aside class="sidebar">
     <div class="brand">
-      <span class="brand-dot"></span>
+      <span class="brand-mark"></span>
       <span class="brand-name">OpsPilot</span>
     </div>
     <div class="brand-sub">AI ops workbench</div>
@@ -296,12 +296,16 @@
     padding: 0 0.4rem;
   }
 
-  .brand-dot {
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
+  /* Brand mark: /logo.svg is used as a mask so the mark takes --primary and
+     follows the theme. Height is the cap height of .brand-name; the mark's
+     aspect ratio is 24:15. */
+  .brand-mark {
+    width: 21px;
+    height: 13px;
     background: var(--primary);
-    box-shadow: 0 0 8px var(--primary);
+    -webkit-mask: url('/logo.svg') center / contain no-repeat;
+    mask: url('/logo.svg') center / contain no-repeat;
+    filter: drop-shadow(0 0 6px var(--primary));
     flex-shrink: 0;
   }
 
