@@ -221,6 +221,110 @@ def test_connection(source: str) -> TestConnectionResult:
     raise HTTPException(status_code=422, detail="source must be ldap or oidc")
 
 
+# ── LLM providers (env-only keys; status + real health probe) ───────────────
+
+# provider_id → the env var its API key is read from (ADR-0020: env-only).
+_PROVIDER_ENV = {
+    "anthropic": "ANTHROPIC_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "openrouter": "OPENROUTER_API_KEY",
+    "gemini": "GEMINI_API_KEY",
+    "grok": "GROK_API_KEY",
+}
+_PROVIDER_LABELS = {
+    "anthropic": "Anthropic (Claude)",
+    "openai": "OpenAI",
+    "openrouter": "OpenRouter",
+    "gemini": "Google Gemini",
+    "grok": "xAI Grok",
+    "ollama-local": "Local (Ollama)",
+}
+
+
+class ProviderStatus(BaseModel):
+    id: str
+    label: str
+    env_var: str  # where to set the key ("" for Ollama, which needs none)
+    configured: bool
+
+
+class ProviderListResponse(BaseModel):
+    providers: list[ProviderStatus]
+
+
+@router.get("/admin/providers", response_model=ProviderListResponse, dependencies=[_admin])
+def list_providers() -> ProviderListResponse:
+    """Which LLM providers have a key configured (from env — never stored)."""
+    out = [
+        ProviderStatus(
+            id=pid, label=_PROVIDER_LABELS[pid], env_var=env, configured=bool(os.environ.get(env))
+        )
+        for pid, env in _PROVIDER_ENV.items()
+    ]
+    # Ollama is local — no key; report it configured (base URL always set).
+    out.append(
+        ProviderStatus(
+            id="ollama-local", label=_PROVIDER_LABELS["ollama-local"], env_var="", configured=True
+        )
+    )
+    return ProviderListResponse(providers=out)
+
+
+@router.post(
+    "/admin/providers/{provider_id}/test",
+    response_model=TestConnectionResult,
+    dependencies=[_admin],
+)
+def test_provider(provider_id: str, request: Request) -> TestConnectionResult:
+    """Build the provider from env config and run its health probe."""
+    from ...providers.registry import make_provider
+
+    env = _PROVIDER_ENV.get(provider_id)
+    if env is not None and not os.environ.get(env):
+        return TestConnectionResult(source=provider_id, ok=False, detail=f"{env} not set")
+    try:
+        provider = make_provider(provider_id, api_key=request.app.state.cfg.anthropic_api_key)
+        ok = provider.health_probe()
+    except Exception as exc:  # noqa: BLE001 — report, never 500
+        return TestConnectionResult(source=provider_id, ok=False, detail=str(exc))
+    return TestConnectionResult(
+        source=provider_id, ok=ok, detail="reachable" if ok else "health probe failed"
+    )
+
+
+# ── team default model (persisted config, not a secret) ─────────────────────
+
+_DEFAULT_MODEL_KEY = "default_model_id"
+
+
+class DefaultModel(BaseModel):
+    model_id: str | None
+
+
+def _available_model_ids(request: Request) -> list[str]:
+    pb = request.app.state.playbook
+    ids = [f"{pb.model.provider_id}/{pb.model.name}"]
+    ids += [f"{m.provider_id}/{m.name}" for m in pb.extra_models]
+    return ids
+
+
+@router.get("/admin/default-model", response_model=DefaultModel, dependencies=[_admin])
+def get_default_model(request: Request) -> DefaultModel:
+    return DefaultModel(model_id=request.app.state.settings.get(_DEFAULT_MODEL_KEY))
+
+
+@router.put("/admin/default-model", response_model=DefaultModel, dependencies=[_admin])
+def set_default_model(body: DefaultModel, request: Request) -> DefaultModel:
+    """Set the team-default model; must be one the playbook offers. Null clears it."""
+    if body.model_id is None:
+        request.app.state.settings.delete(_DEFAULT_MODEL_KEY)
+        return DefaultModel(model_id=None)
+    if body.model_id not in _available_model_ids(request):
+        raise HTTPException(status_code=422, detail="model is not one of the selectable models")
+    request.app.state.settings.set(_DEFAULT_MODEL_KEY, body.model_id)
+    return DefaultModel(model_id=body.model_id)
+
+
 # ── login audit ─────────────────────────────────────────────────────────────
 
 
