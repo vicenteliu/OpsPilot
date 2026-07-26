@@ -33,6 +33,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from ..auth import AuthStore
 from ..config import load_config
+from ..embedding import resolve_embedding
 from ..inventory import InventoryStore
 from ..mcp import McpRegistry, load_mcp_config
 from ..memory.lance_store import LanceStore
@@ -118,11 +119,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         api_key=cfg.anthropic_api_key,
     )
 
-    # Embed provider is always Ollama (Anthropic does not support embeddings).
-    embed_provider = make_provider("ollama-local", base_url=cfg.ollama_base_url)
-
-    def embed_fn(text: str) -> list[float]:
-        return embed_provider.embed([text], model=cfg.embed_model)[0]
+    # Embeddings: Ollama by default, OpenAI fallback if Ollama is down and a
+    # key is set — chosen once at startup, with a user-facing notice (ADR-0020
+    # posture: surface, don't silently degrade). See opspilot.embedding.
+    embed_fn, embed_status = resolve_embedding(cfg)
 
     session_mgr = SessionManager(home=cfg.home)
     redactor = Redactor.from_yaml()
@@ -152,6 +152,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.lance = lance
     app.state.chat_provider = chat_provider
     app.state.embed_fn = embed_fn
+    app.state.embed_status = embed_status
     app.state.session_mgr = session_mgr
     app.state.redactor = redactor
     app.state.mcp_registry = mcp_registry
