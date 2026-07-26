@@ -92,17 +92,19 @@
     {:else}
       {#each chatMessages as msg}
         <div class="chat-bubble {msg.role}">
-          <div class="bubble-content">{msg.content}</div>
-          {#if msg.role === 'assistant' && msg.citations && msg.citations.length > 0}
-            <div class="chat-citations">
-              <span class="cite-label">Sources</span>
-              {#each msg.citations as c}
-                <span class="cite-chip" title={c.snippet}>
-                  {c.source_path ?? c.document_id ?? c.chunk_id}
-                </span>
-              {/each}
-            </div>
-          {/if}
+          <div class="bubble-col">
+            <div class="bubble-content">{msg.content}</div>
+            {#if msg.role === 'assistant' && msg.citations && msg.citations.length > 0}
+              <div class="chat-citations">
+                <span class="cite-label">Sources</span>
+                {#each msg.citations as c}
+                  <span class="cite-chip" title={c.snippet}>
+                    {c.source_path ?? c.document_id ?? c.chunk_id}
+                  </span>
+                {/each}
+              </div>
+            {/if}
+          </div>
         </div>
       {/each}
       {#if chatLoading}
@@ -160,6 +162,8 @@
 </section>
 
 <style>
+  /* Stack the answer + its sources vertically; the bubble itself is a flex row. */
+  .bubble-col { display: flex; flex-direction: column; min-width: 0; }
   .chat-citations { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.5rem; align-items: center; }
   .cite-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.6; }
   .cite-chip {
