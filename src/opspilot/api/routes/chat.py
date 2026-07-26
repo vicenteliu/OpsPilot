@@ -79,76 +79,29 @@ def answer_chat(state: Any, messages: list[dict[str, str]]) -> str:
 @router.post("/chat/stream")
 async def chat_stream(body: ChatRequest, request: Request) -> StreamingResponse:
     state = request.app.state
-    pb = state.playbook
-    chat_provider = state.chat_provider
 
     loop = asyncio.get_event_loop()
     queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+    messages = [{"role": m.role, "content": m.content} for m in body.messages]
+
+    def on_step(step: dict[str, Any]) -> None:
+        loop.call_soon_threadsafe(queue.put_nowait, step)
 
     async def _run() -> None:
         try:
-            user_msgs = [m for m in body.messages if m.role == "user"]
-            query = user_msgs[-1].content if user_msgs else ""
+            from ...orchestrator.chat_agent import run_chat_agent
 
-            await queue.put({"type": "status", "message": "Searching knowledge base…"})
-
-            context_chunks: list[str] = []
-            if query:
-                try:
-                    from ...memory.retrieval import kb_search
-
-                    hits = await loop.run_in_executor(
-                        None,
-                        lambda: kb_search(
-                            query,
-                            sqlite=state.sqlite,
-                            lance=state.lance,
-                            embed_fn=state.embed_fn,
-                            top_k=4,
-                        ),
-                    )
-                    context_chunks = [h.content for h in hits[:4] if h.content]
-                except Exception:
-                    pass
-
-            await queue.put({"type": "status", "message": "Generating response…"})
-
-            context_block = ""
-            if context_chunks:
-                context_block = "\n\n## Relevant KB context\n\n" + "\n\n---\n\n".join(
-                    context_chunks
-                )
-
-            provider_msgs: list[Message] = [
-                Message(role="system", content=_SYSTEM_PROMPT + context_block)
-            ]
-            for m in body.messages:
-                if m.role in ("user", "assistant"):
-                    provider_msgs.append(
-                        Message(
-                            role=cast('Literal["user", "assistant"]', m.role), content=m.content
-                        )
-                    )
-
-            resp = await loop.run_in_executor(
+            result = await loop.run_in_executor(
                 None,
-                lambda: chat_provider.chat(
-                    provider_msgs,
-                    model=pb.model.name,
-                    params=SamplingParams(temperature=0.5, max_tokens=1024),
-                ),
+                lambda: run_chat_agent(state, messages, model_id=body.model_id, on_step=on_step),
             )
-
             await queue.put(
                 {
                     "type": "result",
                     "data": {
-                        "content": resp.content,
-                        "usage": {
-                            "input_tokens": resp.usage.input_tokens,
-                            "output_tokens": resp.usage.output_tokens,
-                            "cost_usd": resp.usage.cost_usd,
-                        },
+                        "content": result.content,
+                        "citations": result.citations,
+                        "usage": result.usage,
                     },
                 }
             )
@@ -159,12 +112,13 @@ async def chat_stream(body: ChatRequest, request: Request) -> StreamingResponse:
         task = asyncio.create_task(_run())
         while True:
             event = await queue.get()
-            if event["type"] == "status":
-                yield _sse("status", {"message": event["message"]})
-            elif event["type"] == "result":
+            etype = event.get("type")
+            if etype in ("status", "tool_call", "tool_result"):
+                yield _sse(etype, event)
+            elif etype == "result":
                 yield _sse("result", event["data"])
                 break
-            elif event["type"] == "error":
+            elif etype == "error":
                 yield _sse("error", {"message": event["message"]})
                 break
         await task

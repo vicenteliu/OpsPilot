@@ -1,13 +1,17 @@
 <script lang="ts">
-  // Chat tab — KB-augmented conversation over SSE. Reads the header-selected model.
-  import { chatStream, type ChatMessage } from '$lib/api';
+  // Chat tab — agentic KB troubleshooting over SSE. Reads the header-selected model.
+  import { chatStream, type ChatMessage, type ChatCitation } from '$lib/api';
 
   let { selectedModelId }: { selectedModelId: string } = $props();
 
-  let chatMessages = $state<ChatMessage[]>([]);
+  // An assistant turn carries its answer plus the KB citations it grounded on.
+  type ChatTurn = ChatMessage & { citations?: ChatCitation[] };
+
+  let chatMessages = $state<ChatTurn[]>([]);
   let chatInput = $state<string>('');
   let chatLoading = $state<boolean>(false);
   let chatStatusLines = $state<string[]>([]);
+  let chatSteps = $state<string[]>([]);
   let chatError = $state<string | null>(null);
   let chatUsage = $state<{ input_tokens: number; output_tokens: number; cost_usd: number } | null>(null);
 
@@ -18,13 +22,21 @@
     chatMessages = [...chatMessages, { role: 'user', content: userMsg }];
     chatLoading = true;
     chatStatusLines = [];
+    chatSteps = [];
     chatError = null;
     try {
       for await (const event of chatStream([...chatMessages], selectedModelId || undefined)) {
         if (event.type === 'status') {
           chatStatusLines = [...chatStatusLines, event.message];
+        } else if (event.type === 'tool_call') {
+          chatSteps = [...chatSteps, `🔍 Searching KB: "${event.query}"`];
+        } else if (event.type === 'tool_result') {
+          chatSteps = [...chatSteps, `↳ ${event.hits} result${event.hits === 1 ? '' : 's'}`];
         } else if (event.type === 'result') {
-          chatMessages = [...chatMessages, { role: 'assistant', content: event.data.content }];
+          chatMessages = [
+            ...chatMessages,
+            { role: 'assistant', content: event.data.content, citations: event.data.citations }
+          ];
           chatUsage = event.data.usage;
         } else if (event.type === 'error') {
           chatError = event.message;
@@ -35,6 +47,7 @@
     } finally {
       chatLoading = false;
       chatStatusLines = [];
+      chatSteps = [];
     }
   }
 
@@ -67,12 +80,25 @@
       {#each chatMessages as msg}
         <div class="chat-bubble {msg.role}">
           <div class="bubble-content">{msg.content}</div>
+          {#if msg.role === 'assistant' && msg.citations && msg.citations.length > 0}
+            <div class="chat-citations">
+              <span class="cite-label">Sources</span>
+              {#each msg.citations as c}
+                <span class="cite-chip" title={c.snippet}>
+                  {c.source_path ?? c.document_id ?? c.chunk_id}
+                </span>
+              {/each}
+            </div>
+          {/if}
         </div>
       {/each}
-      {#if chatLoading && chatStatusLines.length > 0}
+      {#if chatLoading}
         <div class="chat-bubble assistant">
           <div class="bubble-content chat-thinking">
-            {chatStatusLines[chatStatusLines.length - 1]}…
+            {#if chatSteps.length > 0}
+              {#each chatSteps as step}<div class="chat-step">{step}</div>{/each}
+            {/if}
+            <div>{chatStatusLines[chatStatusLines.length - 1] ?? 'Thinking'}…</div>
           </div>
         </div>
       {/if}
@@ -115,3 +141,15 @@
     {/if}
   </div>
 </section>
+
+<style>
+  .chat-citations { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.5rem; align-items: center; }
+  .cite-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.6; }
+  .cite-chip {
+    font-size: 0.72rem; padding: 0.1rem 0.45rem; border-radius: 10px;
+    background: var(--bg-subtle, rgba(127, 127, 127, 0.15));
+    border: 1px solid var(--border-strong, rgba(127, 127, 127, 0.3));
+    max-width: 22rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .chat-step { font-size: 0.8rem; opacity: 0.75; }
+</style>
