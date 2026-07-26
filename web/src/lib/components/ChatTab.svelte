@@ -32,6 +32,8 @@
           chatSteps = [...chatSteps, `🔍 Searching KB: "${event.query}"`];
         } else if (event.type === 'tool_result') {
           chatSteps = [...chatSteps, `↳ ${event.hits} result${event.hits === 1 ? '' : 's'}`];
+        } else if (event.type === 'skill_loaded') {
+          chatSteps = [...chatSteps, `📋 Using skill: ${event.skill}`];
         } else if (event.type === 'result') {
           chatMessages = [
             ...chatMessages,

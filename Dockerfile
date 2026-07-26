@@ -67,6 +67,7 @@ RUN pip install --no-index --find-links=./wheels --user opspilot \
 # discovered by opspilot.schemas). Specs live under docs/specs/.
 COPY --chown=opspilot:opspilot docs/specs ./docs/specs
 COPY --chown=opspilot:opspilot playbooks ./playbooks
+COPY --chown=opspilot:opspilot agent_skills ./agent_skills
 COPY --chown=opspilot:opspilot examples ./examples
 
 # Built web UI (login + admin + app), served by FastAPI (all-in-one, ADR-0020).
@@ -83,6 +84,8 @@ ENV OPSPILOT_HOME="/home/opspilot/.opspilot"
 # The package resolves its spec schemas relative to the repo root in dev; when
 # pip-installed here it reads them from the shipped copy via this override.
 ENV OPSPILOT_SPECS_DIR="/home/opspilot/docs/specs"
+# Runtime skills (SKILL.md) the chat agent loads on demand (ADR-0022).
+ENV OPSPILOT_SKILLS_DIR="/home/opspilot/agent_skills"
 # FastAPI serves the UI from here (opspilot.api.app._mount_ui).
 ENV OPSPILOT_UI_DIR="/home/opspilot/web/build"
 

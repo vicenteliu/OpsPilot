@@ -49,7 +49,7 @@ A human-authored workflow spec that orchestrates one or more LLM calls. Defines 
 _Avoid_: pipeline, workflow, prompt template
 
 **Skill**:
-A reusable, self-contained troubleshooting/task package — a `SKILL.md` (a "use-when" trigger description + procedure + tool permissions) the assistant loads on demand to guide its work. **Hand-authored** Skills live in `skills/<id>/` (git-reviewable, like a Playbook) and are loaded at runtime via a `load_skill` tool: the model sees a compact catalog (name + trigger) and pulls in the full `SKILL.md` when a problem matches (progressive disclosure); weak models fall back to retrieval-injection (mirrors **retrieval mode** `tool`/`prefetch`). Skills may *also* be **distilled** from high-scoring **Sessions** and evolved by the iteration engine (variant → harness-gated promotion → lineage) — a separate path, not wired into runs in v1. Has a lifecycle (draft → enabled → deprecated) and a trust level (internal / community / unknown).
+A reusable, self-contained troubleshooting/task package — a `SKILL.md` (a "use-when" trigger description + procedure + tool permissions) the assistant loads on demand to guide its work. **Hand-authored** Skills live in `agent_skills/<id>/` (git-reviewable, like a Playbook) and are loaded at runtime via a `load_skill` tool: the model sees a compact catalog (name + trigger) and pulls in the full `SKILL.md` when a problem matches (progressive disclosure); weak models fall back to retrieval-injection (mirrors **retrieval mode** `tool`/`prefetch`). Skills may *also* be **distilled** from high-scoring **Sessions** and evolved by the iteration engine (variant → harness-gated promotion → lineage) — a separate path, not wired into runs in v1. Has a lifecycle (draft → enabled → deprecated) and a trust level (internal / community / unknown).
 _Avoid_: tool (a Skill *uses* tools; it is not one), capability, agent, Playbook (a Playbook is the pipeline spec for a Session; a Skill is loaded into a conversation)
 
 **Artifact**:
@@ -193,7 +193,7 @@ _Avoid_: user (collides with system user), custodian, owner
 - A **Session** appends **trace events** (prompt / response / tool_call / tool_result / redaction / user_action / system) to an append-only log
 - A **Harness** run takes a **Fixture** as input and scores the resulting **Artifact**
 - A **Chunk** is the unit of both storage (in KB) and citation (in Artifact)
-- A **Skill** is either hand-authored (in `skills/`) or distilled from high-scoring **Sessions**; the assistant loads a matching Skill on demand (`load_skill`) to guide troubleshooting. Distilled Skills are evolved by the iteration engine via harness-gated promotion (not wired into runs in v1)
+- A **Skill** is either hand-authored (in `agent_skills/`) or distilled from high-scoring **Sessions**; the assistant loads a matching Skill on demand (`load_skill`) to guide troubleshooting. Distilled Skills are evolved by the iteration engine via harness-gated promotion (not wired into runs in v1)
 - A **Channel** fronts the KB chat in assist mode; Telegram also acts as a **Source** (message → Work item → suggestion reply, ADR-0014)
 - A notify-mode **Channel** receives a courtesy copy of each delivered **Intake** suggestion — best-effort; the comment on the **Source** remains the durable record
 - An **Asset** may reference the **Work item** (Service Request) that initiated its procurement via `work_item_ref` — optional: existing stock enters with no Work item
