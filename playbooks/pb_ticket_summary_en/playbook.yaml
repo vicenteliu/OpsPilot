@@ -87,7 +87,7 @@ extra_models:
       max_tokens: 8192
   - provider_id: "openrouter"
     kind: "openai"
-    name: "qwen/qwen3-235b-a22b"
+    name: "qwen/qwen3.7-plus"
     version: "2025-01"
     params:
       temperature: 0.2
@@ -95,7 +95,7 @@ extra_models:
       max_tokens: 4096
   - provider_id: "openrouter"
     kind: "openai"
-    name: "deepseek/deepseek-chat"
+    name: "deepseek/deepseek-v4-flash"
     version: "2025-01"
     params:
       temperature: 0.2
@@ -103,7 +103,7 @@ extra_models:
       max_tokens: 4096
   - provider_id: "openrouter"
     kind: "openai"
-    name: "z-ai/glm-4.6"
+    name: "z-ai/glm-5.2"
     version: "2025-01"
     params:
       temperature: 0.2
