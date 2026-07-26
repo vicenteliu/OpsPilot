@@ -332,3 +332,32 @@ def set_default_model(body: DefaultModel, request: Request) -> DefaultModel:
 def login_audit(request: Request, limit: int = 50) -> LoginAuditResponse:
     events = request.app.state.auth.recent_logins(limit)
     return LoginAuditResponse(events=[LoginEvent(**e) for e in events])
+
+
+# ── system logs (in-memory ring buffer, admin-only) ─────────────────────────
+
+
+class LogRecord(BaseModel):
+    ts: str
+    level: str
+    logger: str
+    msg: str
+    request_id: str | None = None
+
+
+class LogListResponse(BaseModel):
+    records: list[LogRecord]
+    available: bool  # False if the buffer isn't installed (no logs captured)
+
+
+@router.get("/admin/logs", response_model=LogListResponse, dependencies=[_admin])
+def system_logs(level: str | None = None, limit: int = 200) -> LogListResponse:
+    """Recent in-process log records (newest last). Ephemeral, per-worker."""
+    from ...log_buffer import get_handler
+
+    handler = get_handler()
+    if handler is None:
+        return LogListResponse(records=[], available=False)
+    limit = max(1, min(limit, 1000))
+    rows = handler.records(level=level, limit=limit)
+    return LogListResponse(records=[LogRecord(**r) for r in rows], available=True)

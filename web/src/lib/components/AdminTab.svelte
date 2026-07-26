@@ -6,14 +6,25 @@
     adminListGroupRoles, adminSetGroupRole, adminDeleteGroupRole,
     adminAuthStatus, adminTestConnection, adminLoginAudit,
     adminListProviders, adminTestProvider, adminGetDefaultModel, adminSetDefaultModel,
-    getModels,
+    adminSystemLogs, getModels,
     type AdminUser, type GroupRoleMapping, type AuthSourceStatus, type LoginEvent,
-    type ProviderStatus, type ModelOption,
+    type ProviderStatus, type ModelOption, type LogRecord,
   } from '$lib/api';
 
   const ROLES = ['viewer', 'operator', 'admin'] as const;
-  let section = $state<'users' | 'mappings' | 'sources' | 'providers' | 'model' | 'audit'>('users');
+  const LOG_LEVELS = ['', 'INFO', 'WARNING', 'ERROR'] as const;
+  let section = $state<'users' | 'mappings' | 'sources' | 'providers' | 'model' | 'audit' | 'logs'>('users');
   let error = $state<string | null>(null);
+
+  let logs = $state<LogRecord[]>([]);
+  let logsAvailable = $state<boolean>(true);
+  let logLevel = $state<string>('');
+
+  const loadLogs = () => guard(async () => {
+    const r = await adminSystemLogs(logLevel, 300);
+    logs = r.records;
+    logsAvailable = r.available;
+  });
 
   let providers = $state<ProviderStatus[]>([]);
   let providerTest = $state<Record<string, string>>({});
@@ -110,6 +121,7 @@
       <button class="tab-btn {section === 'providers' ? 'active' : ''}" onclick={() => { section = 'providers'; loadProviders(); }}>LLM providers</button>
       <button class="tab-btn {section === 'model' ? 'active' : ''}" onclick={() => { section = 'model'; loadModelSettings(); }}>Default model</button>
       <button class="tab-btn {section === 'audit' ? 'active' : ''}" onclick={() => { section = 'audit'; loadAudit(); }}>Login audit</button>
+      <button class="tab-btn {section === 'logs' ? 'active' : ''}" onclick={() => { section = 'logs'; loadLogs(); }}>System logs</button>
     </div>
   </div>
 
@@ -208,7 +220,7 @@
       <button class="btn-action" onclick={saveDefaultModel} disabled={!defaultModel}>Set default</button>
     </div>
 
-  {:else}
+  {:else if section === 'audit'}
     <table class="data-table">
       <thead><tr><th>When</th><th>Username</th><th>Source</th><th>Outcome</th></tr></thead>
       <tbody>
@@ -221,6 +233,34 @@
         {/each}
       </tbody>
     </table>
+
+  {:else}
+    <p class="admin-hint">Recent in-process logs (newest last). Ephemeral and per-worker — for real log aggregation, ship the JSON stdout logs.</p>
+    <div class="admin-newrow">
+      <select class="admin-input" bind:value={logLevel} onchange={loadLogs}>
+        {#each LOG_LEVELS as lv}<option value={lv}>{lv || 'all levels'}</option>{/each}
+      </select>
+      <button class="btn-action" onclick={loadLogs}>Refresh</button>
+    </div>
+    {#if !logsAvailable}
+      <p class="section-empty">Log buffer not available.</p>
+    {:else if logs.length === 0}
+      <p class="section-empty">No log records captured yet.</p>
+    {:else}
+      <table class="data-table">
+        <thead><tr><th>When</th><th>Level</th><th>Logger</th><th>Message</th></tr></thead>
+        <tbody>
+          {#each logs as r}
+            <tr>
+              <td class="dim mono">{r.ts.slice(0, 23)}</td>
+              <td class="mono {r.level === 'ERROR' || r.level === 'CRITICAL' ? 'admin-fail' : r.level === 'WARNING' ? 'admin-warn' : 'dim'}">{r.level}</td>
+              <td class="mono dim">{r.logger}</td>
+              <td>{r.msg}</td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    {/if}
   {/if}
 </section>
 
@@ -232,4 +272,5 @@
   }
   .admin-hint { font-size: 0.82rem; color: var(--text-muted); margin: 0 0 0.8rem; }
   .admin-fail { color: #ef4444; }
+  .admin-warn { color: #d97706; }
 </style>

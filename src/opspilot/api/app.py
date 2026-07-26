@@ -35,6 +35,7 @@ from ..auth import AuthStore
 from ..config import load_config
 from ..embedding import resolve_embedding
 from ..inventory import InventoryStore
+from ..log_buffer import install as install_log_buffer
 from ..mcp import McpRegistry, load_mcp_config
 from ..memory.lance_store import LanceStore
 from ..memory.sqlite_store import SqliteStore
@@ -164,6 +165,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="OpsPilot API", version="0.2.0", lifespan=lifespan)
+
+# Capture recent logs in memory for the admin log viewer. Installed here (after
+# any configure_json_logging, which clears root handlers) so it survives.
+install_log_buffer()
 
 # Bearer-token auth (ADR-0011). Added first so it runs INNERMOST: CORS
 # preflights short-circuit before it, and Observability still logs 401s.
