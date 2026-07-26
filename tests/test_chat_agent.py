@@ -9,6 +9,7 @@ import pytest
 
 from opspilot.orchestrator.chat_agent import CHAT_MAX_TURNS, run_chat_agent
 from opspilot.providers.types import ChatResponse, ToolCall, Usage
+from opspilot.skills import Skill, SkillRegistry
 
 
 class FakeProvider:
@@ -31,7 +32,9 @@ class FakeSqlite:
         return {"source_path": "kb/vpn.md"}
 
 
-def _state(provider: FakeProvider, *, kind: str = "anthropic") -> Any:
+def _state(
+    provider: FakeProvider, *, kind: str = "anthropic", skills: SkillRegistry | None = None
+) -> Any:
     model = types.SimpleNamespace(
         provider_id="anthropic" if kind == "anthropic" else "ollama-local",
         kind=kind,
@@ -48,7 +51,16 @@ def _state(provider: FakeProvider, *, kind: str = "anthropic") -> Any:
         embed_fn=lambda q: [0.0],
         cfg=types.SimpleNamespace(anthropic_api_key="k", ollama_base_url="http://x"),
         chat_provider=provider,
+        skills=skills,
     )
+
+
+def _registry(*skills: Skill) -> SkillRegistry:
+    return SkillRegistry(list(skills))
+
+
+def _tool_names(call: dict[str, Any]) -> list[str]:
+    return [t.name for t in (call["tools"] or [])]
 
 
 @pytest.fixture
@@ -152,3 +164,80 @@ def test_unknown_tool_is_reported_not_fatal(canned_hits: None) -> None:
     )
     result = run_chat_agent(_state(provider), [{"role": "user", "content": "q"}])
     assert result.content == "recovered"  # loop fed back an error and continued
+
+
+# ── skills (issue #119) ──────────────────────────────────────────────────────
+
+
+def _skill(sid: str, *, allowed: list[str], trigger: str = "when x") -> Skill:
+    return Skill(id=sid, name=sid, trigger=trigger, body="Do the steps.", allowed_tools=allowed)
+
+
+def test_load_skill_offered_and_no_skills_is_backward_compatible(canned_hits: None) -> None:
+    # With skills: load_skill + kb_search are offered.
+    reg = _registry(_skill("vpn", allowed=["kb_search"]))
+    provider = FakeProvider([_resp("done")])
+    run_chat_agent(_state(provider, skills=reg), [{"role": "user", "content": "hi"}])
+    assert set(_tool_names(provider.calls[0])) == {"load_skill", "kb_search"}
+
+    # No registry: behaves exactly like #116 (only kb_search).
+    provider2 = FakeProvider([_resp("done")])
+    run_chat_agent(_state(provider2, skills=None), [{"role": "user", "content": "hi"}])
+    assert _tool_names(provider2.calls[0]) == ["kb_search"]
+
+
+def test_load_skill_injects_body_and_restricts_tools(canned_hits: None) -> None:
+    # A skill that allows NO tools → after loading, kb_search is withdrawn.
+    reg = _registry(_skill("vpn", allowed=[]))
+    provider = FakeProvider(
+        [
+            _resp(
+                "",
+                finish="tool_call",
+                tool_calls=[ToolCall(id="t", name="load_skill", arguments={"id": "vpn"})],
+            ),
+            _resp("answered per skill"),
+        ]
+    )
+    steps: list[dict[str, Any]] = []
+    result = run_chat_agent(
+        _state(provider, skills=reg), [{"role": "user", "content": "vpn"}], on_step=steps.append
+    )
+    assert result.content == "answered per skill"
+    # The skill body was fed back as the tool result.
+    tool_msgs = [m for m in provider.calls[1]["messages"] if getattr(m, "role", None) == "tool"]
+    assert any("Do the steps." in m.content for m in tool_msgs)
+    # After loading a no-tools skill, the next turn offers only load_skill.
+    assert _tool_names(provider.calls[1]) == ["load_skill"]
+    assert any(s["type"] == "skill_loaded" and s["skill"] == "vpn" for s in steps)
+
+
+def test_unknown_skill_id_is_reported_not_fatal(canned_hits: None) -> None:
+    reg = _registry(_skill("vpn", allowed=["kb_search"]))
+    provider = FakeProvider(
+        [
+            _resp(
+                "",
+                finish="tool_call",
+                tool_calls=[ToolCall(id="t", name="load_skill", arguments={"id": "ghost"})],
+            ),
+            _resp("recovered"),
+        ]
+    )
+    result = run_chat_agent(_state(provider, skills=reg), [{"role": "user", "content": "q"}])
+    assert result.content == "recovered"
+
+
+def test_weak_model_injects_matched_skill(canned_hits: None) -> None:
+    reg = _registry(_skill("vpn", allowed=["kb_search"], trigger="vpn authentication failures"))
+    provider = FakeProvider([_resp("answer")])
+    steps: list[dict[str, Any]] = []
+    run_chat_agent(
+        _state(provider, kind="ollama", skills=reg),
+        [{"role": "user", "content": "my vpn login keeps failing"}],
+        on_step=steps.append,
+    )
+    # The matched skill body is folded into the (single) system prompt.
+    system_msg = provider.calls[0]["messages"][0]
+    assert "Do the steps." in system_msg.content
+    assert any(s["type"] == "skill_loaded" and s["skill"] == "vpn" for s in steps)

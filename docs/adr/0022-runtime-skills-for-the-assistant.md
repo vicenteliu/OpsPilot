@@ -12,7 +12,7 @@ adds a hand-authored, runtime-loaded skill path.
 
 ## Decision
 
-- **Hand-authored Skills live in `skills/<id>/SKILL.md`** — git-reviewable,
+- **Hand-authored Skills live in `agent_skills/<id>/SKILL.md`** — git-reviewable,
   like a Playbook. Frontmatter carries the id, a one-line "use-when"
   trigger, an allowed-tools list (the tools/MCP the skill may use), and a
   trust level; the body is the troubleshooting procedure.
@@ -44,7 +44,8 @@ to find both.
 
 ## Consequences
 
-- New `skills/` directory; a runtime loader + catalog in the chat agent.
+- New `agent_skills/` directory (root `/skills/` is reserved/git-ignored for
+  machine-local installed skills); a runtime loader + catalog in the chat agent.
 - A loaded skill may restrict the agent to its declared tools and hint a
   model tier (see ADR-0023).
 - Authored via an admin in-app editor (writes `SKILL.md`, producing a git

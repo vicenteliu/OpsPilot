@@ -7,8 +7,8 @@ citations (ADR-0022/0023/0024 groundwork). Weak local models (kind
 no tool loop — mirroring the pipeline's ``retrieval mode`` tool/prefetch
 split.
 
-This slice ships only the ``kb_search`` tool; MCP tools and ``load_skill``
-land in later slices (#120, #119).
+Tools available to the agent: ``kb_search`` and ``load_skill`` (runtime skills,
+ADR-0022). MCP tools land in a later slice (#120).
 """
 
 from __future__ import annotations
@@ -19,11 +19,27 @@ from typing import Any
 
 from ..providers.base import ProviderProtocol
 from ..providers.registry import make_provider
-from ..providers.types import Message, SamplingParams
+from ..providers.types import Message, SamplingParams, ToolDef
 from ..session.types import Model
+from ..skills import Skill, SkillRegistry
 from .tools import make_kb_search_tool, render_tool_result
 
 CHAT_MAX_TURNS = 6  # tool-call rounds before we answer with what we have
+
+_LOAD_SKILL_TOOL = ToolDef(
+    name="load_skill",
+    description=(
+        "Load a troubleshooting skill's full procedure by id when the problem matches "
+        "its 'use-when' description. Call this before answering a known problem, then "
+        "follow the loaded procedure."
+    ),
+    parameters={
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["id"],
+        "properties": {"id": {"type": "string", "description": "The skill id from the catalog."}},
+    },
+)
 
 _SYSTEM_PROMPT_BASE = (
     "You are OpsPilot, an intelligent IT operations assistant. "
@@ -96,6 +112,21 @@ def _render_context(payload: dict[str, Any], limit: int = 4) -> str:
     return "\n\n## Relevant KB context\n\n" + "\n\n---\n\n".join(chunks)
 
 
+def _catalog_prompt(registry: SkillRegistry) -> str:
+    """A compact skill catalog for the system prompt (progressive disclosure)."""
+    lines = [f"- {e['id']}: {e['trigger'] or e['name']}" for e in registry.catalog()]
+    if not lines:
+        return ""
+    return (
+        "\n\nAvailable skills — when a problem matches one, call load_skill(id) to load its "
+        "full procedure, then follow it:\n" + "\n".join(lines)
+    )
+
+
+def _skill_body(skill: Skill) -> str:
+    return f"# Skill: {skill.name}\n\n{skill.body}"
+
+
 def run_chat_agent(
     state: Any,
     messages: list[dict[str, str]],
@@ -116,6 +147,7 @@ def run_chat_agent(
         embed_fn=state.embed_fn,
         default_top_k=getattr(state.playbook.limits, "max_kb_search_results", 5),
     )
+    registry: SkillRegistry | None = getattr(state, "skills", None)
 
     citations: dict[str, dict[str, Any]] = {}
     usage = {"input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0}
@@ -151,27 +183,54 @@ def run_chat_agent(
     # ── Weak local models: prefetch once, no tool loop. ──────────────────
     if model.kind == "ollama":
         query = _last_user(messages)
+        # Weak models can't drive load_skill — inject the best-matching skill.
+        matched = registry.match(query) if registry is not None else None
+        skill_block = ""
+        if matched is not None:
+            emit({"type": "skill_loaded", "skill": matched.id})
+            skill_block = "\n\n" + _skill_body(matched)
         emit({"type": "status", "message": "Searching knowledge base…"})
         payload = tool_handler({"query": query}) if query else {"hits": []}
         collect(payload)
         emit({"type": "tool_result", "tool": "kb_search", "hits": len(payload.get("hits", []))})
         pf_msgs = [
-            Message(role="system", content=_SYSTEM_PROMPT_BASE + _render_context(payload))
+            Message(
+                role="system",
+                content=_SYSTEM_PROMPT_BASE + skill_block + _render_context(payload),
+            )
         ] + _history(messages)
         emit({"type": "status", "message": "Generating response…"})
         pf_resp = provider.chat(pf_msgs, model=model.name, params=sampling)
         accumulate(pf_resp)
         return ChatAgentResult(str(pf_resp.content), list(citations.values()), usage)
 
-    # ── Strong models: ReAct loop with kb_search. ────────────────────────
-    provider_msgs: list[Message] = [
-        Message(role="system", content=_SYSTEM_PROMPT_BASE + _TOOL_HINT)
-    ] + _history(messages)
+    # ── Strong models: ReAct loop with kb_search (+ load_skill). ─────────
+    has_skills = registry is not None and len(registry) > 0
+    system_prompt = _SYSTEM_PROMPT_BASE + _TOOL_HINT
+    if has_skills and registry is not None:
+        system_prompt += _catalog_prompt(registry)
+    provider_msgs: list[Message] = [Message(role="system", content=system_prompt)] + _history(
+        messages
+    )
+
+    active_skill: Skill | None = None  # once loaded, restricts the domain tools
+
+    def _tools_for_turn() -> list[ToolDef]:
+        tools: list[ToolDef] = []
+        if has_skills:
+            tools.append(_LOAD_SKILL_TOOL)
+        # Before a skill is loaded, all domain tools are available; after,
+        # only those the skill declares (ADR-0022).
+        if active_skill is None or "kb_search" in active_skill.allowed_tools:
+            tools.append(tool_def)
+        return tools
 
     resp: Any = None
     for _ in range(CHAT_MAX_TURNS):
         emit({"type": "status", "message": "Thinking…"})
-        resp = provider.chat(provider_msgs, model=model.name, params=sampling, tools=[tool_def])
+        resp = provider.chat(
+            provider_msgs, model=model.name, params=sampling, tools=_tools_for_turn()
+        )
         accumulate(resp)
 
         if resp.finish_reason == "tool_call" and resp.tool_calls:
@@ -202,6 +261,15 @@ def run_chat_agent(
                         }
                     )
                     rendered = render_tool_result(payload)
+                elif tc.name == "load_skill" and registry is not None:
+                    sid = str(tc.arguments.get("id", ""))
+                    skill = registry.get(sid)
+                    if skill is None:
+                        rendered = render_tool_result({"_error": f"unknown skill: {sid}"})
+                    else:
+                        active_skill = skill
+                        emit({"type": "skill_loaded", "skill": skill.id})
+                        rendered = _skill_body(skill)
                 else:
                     rendered = render_tool_result({"_error": f"unknown tool: {tc.name}"})
                 provider_msgs.append(

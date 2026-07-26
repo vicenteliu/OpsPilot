@@ -113,7 +113,7 @@ async def chat_stream(body: ChatRequest, request: Request) -> StreamingResponse:
         while True:
             event = await queue.get()
             etype = event.get("type")
-            if etype in ("status", "tool_call", "tool_result"):
+            if etype in ("status", "tool_call", "tool_result", "skill_loaded"):
                 yield _sse(etype, event)
             elif etype == "result":
                 yield _sse("result", event["data"])

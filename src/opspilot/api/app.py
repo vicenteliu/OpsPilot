@@ -45,6 +45,7 @@ from ..providers.registry import make_provider
 from ..redaction import Redactor
 from ..session.manager import SessionManager
 from ..settings_store import SettingsStore
+from ..skills import SkillRegistry
 from .middleware import AuthMiddleware, ObservabilityMiddleware
 from .routes.admin import router as admin_router
 from .routes.auth import router as auth_router
@@ -80,6 +81,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     request_fulfillment_pb = load_playbook(playbooks_base / request_pb_id)
     classify_pb_id = os.environ.get("OPSPILOT_CLASSIFY_PLAYBOOK", "pb_classify_work_item_en")
     classify_pb = load_playbook(playbooks_base / classify_pb_id)
+
+    # Hand-authored runtime skills (ADR-0022) — the chat agent loads them on
+    # demand via load_skill; weak models get the best match injected.
+    skills = SkillRegistry.load(Path(os.environ.get("OPSPILOT_SKILLS_DIR", "agent_skills")))
 
     # Build the active_model_ref string returned by /api/config.
     active_model_ref = (
@@ -142,6 +147,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.vendor_doc_pb = vendor_doc_pb
     app.state.request_fulfillment_pb = request_fulfillment_pb
     app.state.classify_pb = classify_pb
+    app.state.skills = skills
     app.state.classify_threshold = float(os.environ.get("OPSPILOT_CLASSIFY_THRESHOLD", "0.7"))
     app.state.vendor_doc_provider = vendor_doc_provider
     app.state.active_model_ref = active_model_ref
