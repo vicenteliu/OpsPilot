@@ -64,7 +64,7 @@ class ChatAgentResult:
 StepCallback = Callable[[dict[str, Any]], None]
 
 
-def _resolve_model(state: Any, model_id: str | None) -> tuple[ProviderProtocol, Model]:
+def resolve_model(state: Any, model_id: str | None) -> tuple[ProviderProtocol, Model]:
     """Pick the (provider, model) for this chat, honoring an explicit model_id.
 
     Mirrors run.py's override resolution: the primary uses the startup-cached
@@ -140,7 +140,7 @@ def run_chat_agent(
     ``tool_call`` / ``tool_result`` — for streaming; the return value carries
     the final answer, deduped citations, and accumulated token usage.
     """
-    provider, model = _resolve_model(state, model_id)
+    provider, model = resolve_model(state, model_id)
     tool_def, tool_handler = make_kb_search_tool(
         sqlite=state.sqlite,
         lance=state.lance,
