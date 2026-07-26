@@ -980,3 +980,22 @@ export async function adminSetDefaultModel(modelId: string | null): Promise<void
   });
   if (!res.ok) await adminError(res, 'Set default model');
 }
+
+// ── Admin: system logs (ADR-0020) ───────────────────────────────────────────
+
+export interface LogRecord {
+  ts: string;
+  level: string;
+  logger: string;
+  msg: string;
+  request_id: string | null;
+}
+
+export async function adminSystemLogs(level = '', limit = 200): Promise<{ records: LogRecord[]; available: boolean }> {
+  const params = new URLSearchParams();
+  if (level) params.set('level', level);
+  params.set('limit', String(limit));
+  const res = await apiFetch(`/api/admin/logs?${params.toString()}`);
+  if (!res.ok) await adminError(res, 'System logs');
+  return res.json();
+}
