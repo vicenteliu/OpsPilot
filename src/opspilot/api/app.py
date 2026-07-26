@@ -42,6 +42,7 @@ from ..orchestrator.types import load_playbook
 from ..providers.registry import make_provider
 from ..redaction import Redactor
 from ..session.manager import SessionManager
+from ..settings_store import SettingsStore
 from .middleware import AuthMiddleware, ObservabilityMiddleware
 from .routes.admin import router as admin_router
 from .routes.auth import router as auth_router
@@ -93,6 +94,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     sqlite = SqliteStore(conn)
     inventory = InventoryStore(conn)  # idempotent schema; shares the KB db file
     auth = AuthStore(conn)  # multi-user identity (ADR-0020)
+    settings = SettingsStore(conn)  # non-secret admin config (e.g. default model)
     bootstrap_admin = os.environ.get("OPSPILOT_BOOTSTRAP_ADMIN")
     bootstrap_pw = os.environ.get("OPSPILOT_BOOTSTRAP_PASSWORD")
     if bootstrap_admin and bootstrap_pw:
@@ -145,6 +147,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.sqlite = sqlite
     app.state.inventory = inventory
     app.state.auth = auth
+    app.state.settings = settings
     app.state.service_token = cfg.api_token  # ADR-0011 bearer → Service token (ADR-0020)
     app.state.lance = lance
     app.state.chat_provider = chat_provider

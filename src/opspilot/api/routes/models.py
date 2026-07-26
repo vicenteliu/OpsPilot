@@ -42,7 +42,14 @@ def get_models(request: Request) -> ApiModelsResponse:
         mode = "prefetch" if m.kind == "ollama" else primary_mode
         options.append(_model_option(m, mode))
 
+    # The admin-set team default (if any and still offered) wins over the
+    # playbook primary; the UI pre-selects it (ADR-0020 admin config).
+    primary_id = f"{playbook.model.provider_id}/{playbook.model.name}"
+    settings = getattr(request.app.state, "settings", None)
+    saved = settings.get("default_model_id") if settings is not None else None
+    default_id = saved if saved in {o.id for o in options} else primary_id
+
     return ApiModelsResponse(
         models=options,
-        default_id=f"{playbook.model.provider_id}/{playbook.model.name}",
+        default_id=default_id,
     )

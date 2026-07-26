@@ -943,3 +943,38 @@ export async function adminLoginAudit(): Promise<LoginEvent[]> {
   if (!res.ok) await adminError(res, 'Login audit');
   return (await res.json()).events;
 }
+
+// ── Admin: LLM providers + default model (ADR-0020) ─────────────────────────
+
+export interface ProviderStatus {
+  id: string;
+  label: string;
+  env_var: string;
+  configured: boolean;
+}
+
+export async function adminListProviders(): Promise<ProviderStatus[]> {
+  const res = await apiFetch('/api/admin/providers');
+  if (!res.ok) await adminError(res, 'List providers');
+  return (await res.json()).providers;
+}
+
+export async function adminTestProvider(id: string): Promise<{ ok: boolean; detail: string }> {
+  const res = await apiFetch(`/api/admin/providers/${encodeURIComponent(id)}/test`, { method: 'POST' });
+  if (!res.ok) await adminError(res, 'Test provider');
+  return res.json();
+}
+
+export async function adminGetDefaultModel(): Promise<string | null> {
+  const res = await apiFetch('/api/admin/default-model');
+  if (!res.ok) await adminError(res, 'Get default model');
+  return (await res.json()).model_id;
+}
+
+export async function adminSetDefaultModel(modelId: string | null): Promise<void> {
+  const res = await apiFetch('/api/admin/default-model', {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model_id: modelId })
+  });
+  if (!res.ok) await adminError(res, 'Set default model');
+}
