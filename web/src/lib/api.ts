@@ -967,6 +967,34 @@ export async function adminTestProvider(id: string): Promise<{ ok: boolean; deta
   return res.json();
 }
 
+// ── Admin: playbook model list (edits playbook.yaml in place, ADR-0021) ──────
+
+export interface PlaybookModelEntry {
+  provider_id: string;
+  kind: string;
+  name: string;
+  version: string;
+  params: Record<string, unknown>;
+  primary: boolean;
+}
+
+export async function adminGetPlaybookModels(): Promise<{ playbook_id: string; models: PlaybookModelEntry[] }> {
+  const res = await apiFetch('/api/admin/playbook-models');
+  if (!res.ok) await adminError(res, 'Get playbook models');
+  return res.json();
+}
+
+export async function adminSetPlaybookModels(
+  models: PlaybookModelEntry[]
+): Promise<{ playbook_id: string; models: PlaybookModelEntry[] }> {
+  const res = await apiFetch('/api/admin/playbook-models', {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ models })
+  });
+  if (!res.ok) await adminError(res, 'Save playbook models');
+  return res.json();
+}
+
 export async function adminGetDefaultModel(): Promise<string | null> {
   const res = await apiFetch('/api/admin/default-model');
   if (!res.ok) await adminError(res, 'Get default model');

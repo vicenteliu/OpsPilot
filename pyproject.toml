@@ -43,6 +43,7 @@ dependencies = [
     "cryptography >= 42",             # WeCom callback AES envelope (ADR-0019)
     "ldap3 >= 2.9",                   # LDAP / AD auth connector (ADR-0020)
     "pyjwt[crypto] >= 2.8",           # OIDC id_token JWKS verification (ADR-0020)
+    "ruamel.yaml >= 0.18",            # comment-preserving playbook.yaml edits (ADR-0021)
 ]
 
 [project.optional-dependencies]
@@ -119,6 +120,8 @@ module = [
     "ldap3.*",
     "jwt",
     "jwt.*",
+    "ruamel",
+    "ruamel.*",
 ]
 ignore_missing_imports = true
 

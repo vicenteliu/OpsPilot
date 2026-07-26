@@ -41,7 +41,9 @@ practical work-assistance layer for IT support look like?**
   Grok, or local Ollama; playbooks declare a primary model plus selectable
   alternates (down to a local Gemma), switchable per-run from the UI or set
   as a team default in the admin module, with automatic fallback when a
-  provider errors. Embeddings default to local Ollama and fall back to
+  provider errors. Admins can curate the selectable list itself — remove or
+  upgrade models — from the admin module, editing the playbook in place.
+  Embeddings default to local Ollama and fall back to
   OpenAI (with a visible notice) when Ollama is unavailable
 - **Work-item intake** — pull tickets straight from Jira Service Management
   on a JQL scope and post the AI suggestion back as a comment on the ticket:
