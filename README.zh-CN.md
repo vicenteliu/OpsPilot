@@ -36,7 +36,8 @@ AI 正在重塑整个 IT Support 行业。OpsPilot 是对一个具体问题的�
 
 - **多模型支持** —— Anthropic Claude、OpenAI、OpenRouter、Gemini、xAI Grok
   或本地 Ollama；playbook 声明主模型 + 可选备选模型（含本地 Gemma），可在 UI
-  按次切换、也可在后台设团队默认，provider 出错时自动降级。嵌入默认走本地
+  按次切换、也可在后台设团队默认，provider 出错时自动降级；管理员还能在后台
+  直接编辑 playbook 的可选模型列表（增删、升级模型名）。嵌入默认走本地
   Ollama，Ollama 不可用时回退到 OpenAI（并显著提示）
 - **工单接入（Intake）** —— 按 JQL 范围直接从 Jira Service Management 拉取
   工单，AI 建议以评论形式发回工单本身：纯轮询（无需公网入口）、只发评论

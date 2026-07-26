@@ -6,14 +6,17 @@
     adminListGroupRoles, adminSetGroupRole, adminDeleteGroupRole,
     adminAuthStatus, adminTestConnection, adminLoginAudit,
     adminListProviders, adminTestProvider, adminGetDefaultModel, adminSetDefaultModel,
+    adminGetPlaybookModels, adminSetPlaybookModels,
     adminSystemLogs, getModels,
     type AdminUser, type GroupRoleMapping, type AuthSourceStatus, type LoginEvent,
-    type ProviderStatus, type ModelOption, type LogRecord,
+    type ProviderStatus, type ModelOption, type LogRecord, type PlaybookModelEntry,
   } from '$lib/api';
 
   const ROLES = ['viewer', 'operator', 'admin'] as const;
   const LOG_LEVELS = ['', 'INFO', 'WARNING', 'ERROR'] as const;
-  let section = $state<'users' | 'mappings' | 'sources' | 'providers' | 'model' | 'audit' | 'logs'>('users');
+  const PROVIDER_IDS = ['anthropic', 'openai', 'openrouter', 'gemini', 'grok', 'ollama-local'] as const;
+  const MODEL_KINDS = ['anthropic', 'openai', 'ollama'] as const;
+  let section = $state<'users' | 'mappings' | 'sources' | 'providers' | 'modellist' | 'model' | 'audit' | 'logs'>('users');
   let error = $state<string | null>(null);
 
   let logs = $state<LogRecord[]>([]);
@@ -30,6 +33,39 @@
   let providerTest = $state<Record<string, string>>({});
   let availableModels = $state<ModelOption[]>([]);
   let defaultModel = $state<string>('');
+
+  let playbookModels = $state<PlaybookModelEntry[]>([]);
+  let playbookId = $state<string>('');
+  let modelListMsg = $state<string>('');
+
+  const loadPlaybookModels = () => guard(async () => {
+    modelListMsg = '';
+    const r = await adminGetPlaybookModels();
+    playbookId = r.playbook_id;
+    playbookModels = r.models;
+  });
+
+  function addModelRow() {
+    playbookModels = [
+      ...playbookModels,
+      { provider_id: 'anthropic', kind: 'anthropic', name: '', version: '',
+        params: { temperature: 0.2, top_p: 0.9, max_tokens: 4096 }, primary: false },
+    ];
+  }
+
+  function removeModelRow(i: number) {
+    playbookModels = playbookModels.filter((_, idx) => idx !== i);
+  }
+
+  const savePlaybookModels = () => guard(async () => {
+    modelListMsg = '';
+    if (playbookModels.some((m) => !m.name.trim() || !m.version.trim())) {
+      throw new Error('Every model needs a name and version.');
+    }
+    const r = await adminSetPlaybookModels(playbookModels);
+    playbookModels = r.models;
+    modelListMsg = 'Saved — playbook.yaml updated and reloaded.';
+  });
 
   const loadProviders = () => guard(async () => { providers = await adminListProviders(); });
 
@@ -119,6 +155,7 @@
       <button class="tab-btn {section === 'mappings' ? 'active' : ''}" onclick={() => { section = 'mappings'; loadMappings(); }}>Group → role</button>
       <button class="tab-btn {section === 'sources' ? 'active' : ''}" onclick={() => { section = 'sources'; loadSources(); }}>Auth sources</button>
       <button class="tab-btn {section === 'providers' ? 'active' : ''}" onclick={() => { section = 'providers'; loadProviders(); }}>LLM providers</button>
+      <button class="tab-btn {section === 'modellist' ? 'active' : ''}" onclick={() => { section = 'modellist'; loadPlaybookModels(); }}>Model list</button>
       <button class="tab-btn {section === 'model' ? 'active' : ''}" onclick={() => { section = 'model'; loadModelSettings(); }}>Default model</button>
       <button class="tab-btn {section === 'audit' ? 'active' : ''}" onclick={() => { section = 'audit'; loadAudit(); }}>Login audit</button>
       <button class="tab-btn {section === 'logs' ? 'active' : ''}" onclick={() => { section = 'logs'; loadLogs(); }}>System logs</button>
@@ -211,6 +248,46 @@
       </tbody>
     </table>
 
+  {:else if section === 'modellist'}
+    <p class="admin-hint">
+      Selectable models for the active playbook <code>{playbookId}</code> — the first row is the primary,
+      the rest appear in the Run-page and Default-model dropdowns. Saving rewrites the version-controlled
+      <code>playbook.yaml</code> in place and reloads it live.
+    </p>
+    <p class="admin-warn admin-hint">
+      ⚠ This bypasses the regression harness that normally gates model upgrades. Enter models your
+      providers can actually serve; the primary cannot be removed. <code>kind</code> is the provider
+      protocol (anthropic / openai / ollama).
+    </p>
+    <table class="data-table">
+      <thead><tr><th></th><th>Provider</th><th>Kind</th><th>Name</th><th>Version</th><th></th></tr></thead>
+      <tbody>
+        {#each playbookModels as m, i}
+          <tr>
+            <td class="dim">{i === 0 ? 'primary' : ''}</td>
+            <td>
+              <select class="admin-input" bind:value={m.provider_id}>
+                {#each PROVIDER_IDS as p}<option value={p}>{p}</option>{/each}
+              </select>
+            </td>
+            <td>
+              <select class="admin-input" bind:value={m.kind}>
+                {#each MODEL_KINDS as k}<option value={k}>{k}</option>{/each}
+              </select>
+            </td>
+            <td><input class="admin-input" placeholder="model name" bind:value={m.name} /></td>
+            <td><input class="admin-input admin-input-sm" placeholder="version" bind:value={m.version} /></td>
+            <td>{#if i > 0}<button class="btn-secondary" onclick={() => removeModelRow(i)}>remove</button>{/if}</td>
+          </tr>
+        {/each}
+      </tbody>
+    </table>
+    <div class="admin-newrow">
+      <button class="btn-secondary" onclick={addModelRow}>+ Add model</button>
+      <button class="btn-action" onclick={savePlaybookModels} disabled={playbookModels.length === 0}>Save changes</button>
+      {#if modelListMsg}<span class="admin-ok">{modelListMsg}</span>{/if}
+    </div>
+
   {:else if section === 'model'}
     <p class="admin-hint">The team-default model, chosen from what the active playbook offers. Each run can still override it on the Run page.</p>
     <div class="admin-newrow">
@@ -270,7 +347,9 @@
     font-size: 0.85rem; padding: 0.35rem 0.5rem; border-radius: 4px;
     border: 1px solid var(--border-strong); background: var(--bg-subtle); color: var(--text);
   }
+  .admin-input-sm { width: 7rem; }
   .admin-hint { font-size: 0.82rem; color: var(--text-muted); margin: 0 0 0.8rem; }
   .admin-fail { color: #ef4444; }
   .admin-warn { color: #d97706; }
+  .admin-ok { font-size: 0.82rem; color: #16a34a; align-self: center; }
 </style>
