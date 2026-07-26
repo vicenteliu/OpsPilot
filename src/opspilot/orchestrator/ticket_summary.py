@@ -141,11 +141,10 @@ def run_ticket_summary(
             effective_system_prompt = pb.system_prompt
             effective_tools: list[ToolDef] = [tool_def, *mcp_tool_defs]
             effective_max_turns = pb.limits.max_turns
-            prefetch_chunk_ids: set[str] = set()
             prefetch_hits: list[dict[str, Any]] = []
             if pb.retrieval.mode == "prefetch":
                 _prog("Searching knowledge base…")
-                effective_system_prompt, prefetch_chunk_ids, prefetch_hits = _do_prefetch(
+                effective_system_prompt, _prefetch_chunk_ids, prefetch_hits = _do_prefetch(
                     pb=pb,
                     ticket=ticket,
                     redactor=redactor,
@@ -325,15 +324,16 @@ def run_ticket_summary(
                     )
                     break
 
-                # Weak-model salvage: if prefetch is on and the model wrote
-                # a citation chunk_id that is 1 character off from a real
-                # retrieved chunk_id (e.g. dropped a digit), correct it
-                # before schema validation. Bounded by edit-distance ≤ 1.
-                if prefetch_chunk_ids:
-                    _correct_citation_chunk_ids(summary, prefetch_chunk_ids)
+                # Prefetch salvage: correct a citation chunk_id that is 1 char
+                # off from a real retrieved id, then overwrite document_id and
+                # source fields from the authoritative hit — models often copy
+                # the chunk_id but hallucinate a friendly document_id (e.g.
+                # 'doc_vpn_sop' instead of 'doc_<sha8>'), which fails schema.
+                if prefetch_hits:
+                    _correct_citations_from_prefetch(summary, prefetch_hits)
                     # If the model returned empty citations despite having KB
                     # hits, auto-populate from the prefetch results.
-                    if not summary.get("citations") and prefetch_hits:
+                    if not summary.get("citations"):
                         summary["citations"] = _citations_from_hits(prefetch_hits)
 
                 # Drop any top-level fields the schema doesn't declare.
@@ -587,19 +587,26 @@ def _citations_from_hits(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return result
 
 
-def _correct_citation_chunk_ids(
+def _correct_citations_from_prefetch(
     summary: dict[str, Any],
-    valid_chunk_ids: set[str],
+    hits: list[dict[str, Any]],
 ) -> None:
-    """Fix typo'd chunk_id values in artifact citations (in-place).
+    """Reconcile artifact citations against the authoritative prefetch hits.
 
-    Weak models (gemma4:e4b) sometimes drop a hex digit when copying a
-    chunk_id (observed: ``chk_0cf89826`` → ``chk_0cf8926``). For each
-    citation whose chunk_id isn't in ``valid_chunk_ids``, find the
-    nearest entry by edit distance ≤ 1 and replace it. If no candidate
-    is within 1 edit, leave the value untouched and let schema_check
-    surface the failure.
+    Two model failure modes are healed in-place:
+
+    * a chunk_id that is ≤ 1 edit off from a real retrieved id (weak models
+      like gemma4:e4b drop a hex digit: ``chk_0cf89826`` → ``chk_0cf8926``);
+    * a correct chunk_id paired with a hallucinated document_id or source
+      path (strong models cite ``doc_vpn_sop`` instead of ``doc_<sha8>``).
+
+    For every citation whose chunk_id resolves to a hit, the hit's
+    document_id / source_path / line range / heading_path overwrite whatever
+    the model wrote — retrieval is the source of truth. Citations that don't
+    resolve to any hit are left untouched for schema_check to flag.
     """
+    by_chunk = {str(h["chunk_id"]): h for h in hits if h.get("chunk_id")}
+    valid = set(by_chunk)
     citations = summary.get("citations")
     if not isinstance(citations, list):
         return
@@ -607,11 +614,24 @@ def _correct_citation_chunk_ids(
         if not isinstance(c, dict):
             continue
         cid = c.get("chunk_id")
-        if not isinstance(cid, str) or cid in valid_chunk_ids:
+        if not isinstance(cid, str):
             continue
-        match = _nearest_within_edit_distance(cid, valid_chunk_ids, max_distance=1)
-        if match is not None:
-            c["chunk_id"] = match
+        if cid not in valid:
+            match = _nearest_within_edit_distance(cid, valid, max_distance=1)
+            if match is None:
+                continue
+            c["chunk_id"] = cid = match
+        hit = by_chunk[cid]
+        c["document_id"] = hit.get("document_id", c.get("document_id", ""))
+        cit = hit.get("citation") or {}
+        if cit.get("source_path"):
+            c["source_path"] = cit["source_path"]
+        if cit.get("line_start") is not None:
+            c["line_start"] = cit["line_start"]
+        if cit.get("line_end") is not None:
+            c["line_end"] = cit["line_end"]
+        if cit.get("heading_path"):
+            c["heading_path"] = cit["heading_path"]
 
 
 def _nearest_within_edit_distance(

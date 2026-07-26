@@ -44,5 +44,8 @@ dist
 # Large fixtures we don't need at runtime
 tests
 docs
+# …but the runtime DOES need the spec schemas (opspilot.schemas discovers
+# docs/specs/**/*.schema.json + the sqlite schema) — re-include them.
+!docs/specs
 *.md
 !README.md
