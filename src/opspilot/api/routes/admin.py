@@ -10,7 +10,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
@@ -627,6 +627,157 @@ def draft_skill_route(body: SkillDraftRequest, request: Request) -> SkillDetail:
     except Exception as exc:  # noqa: BLE001 — provider/network failures → 502, not 500
         raise HTTPException(status_code=502, detail=f"drafting failed: {exc}") from exc
     return _skill_detail(skill)
+
+
+# ── MCP servers (remote add/edit via UI; stdio file-only, ADR-0024) ──────────
+
+_MCP_TRUST = {"trusted", "community", "unknown"}
+_MCP_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
+_MCP_PREFIX_RE = re.compile(r"^mcp__[a-z][a-z0-9_]*__$")  # matches the mcp-config schema
+
+
+class RemoteMcpUpsert(BaseModel):
+    name: str
+    transport: Literal["http", "sse"]  # stdio can't be created here (RCE boundary)
+    url: str
+    tools_prefix: str
+    trust: str = "unknown"
+    enabled: bool = True
+    description: str = ""
+    auth_type: Literal["none", "api_key_header", "bearer_env", "oauth2"] = "none"
+    auth_env: str | None = None  # env var holding the secret — never the secret itself
+    auth_header: str | None = None
+
+
+class McpServerSummary(BaseModel):
+    id: str
+    name: str
+    transport: str
+    url: str | None
+    tools_prefix: str
+    enabled: bool
+    trust: str
+    read_only: bool  # stdio → managed via mcp-config.yaml only
+
+
+class McpServerListResponse(BaseModel):
+    servers: list[McpServerSummary]
+
+
+def _mcp_config_path(request: Request) -> Path:
+    return getattr(request.app.state, "mcp_config_path", None) or Path("mcp-config.yaml")
+
+
+def _load_mcp_cfg(request: Request) -> Any:
+    from ...mcp import load_mcp_config
+    from ...mcp.types import McpConfig
+
+    path = _mcp_config_path(request)
+    if path.exists():
+        return load_mcp_config(path)
+    return McpConfig(version="1.0.0", mcps=[])
+
+
+def _reload_mcp_registry(request: Request) -> None:
+    from ...mcp import McpRegistry, load_mcp_config
+
+    state = request.app.state
+    path = _mcp_config_path(request)
+    old = getattr(state, "mcp_registry", None)
+    state.mcp_registry = McpRegistry.from_config(load_mcp_config(path))
+    if old is not None:
+        try:
+            old.close_all()
+        except Exception:  # noqa: BLE001 — closing the old registry is best-effort
+            logger.warning("closing old MCP registry failed", exc_info=True)
+
+
+def _mcp_summaries(cfg: Any) -> McpServerListResponse:
+    return McpServerListResponse(
+        servers=[
+            McpServerSummary(
+                id=s.id,
+                name=s.name,
+                transport=s.transport,
+                url=s.url,
+                tools_prefix=s.tools_prefix,
+                enabled=s.enabled,
+                trust=s.trust,
+                read_only=s.transport == "stdio",
+            )
+            for s in cfg.mcps
+        ]
+    )
+
+
+@router.get("/admin/mcp/servers", response_model=McpServerListResponse, dependencies=[_admin])
+def list_admin_mcp_servers(request: Request) -> McpServerListResponse:
+    return _mcp_summaries(_load_mcp_cfg(request))
+
+
+@router.put(
+    "/admin/mcp/servers/{server_id}", response_model=McpServerListResponse, dependencies=[_admin]
+)
+def upsert_mcp_server(
+    server_id: str, body: RemoteMcpUpsert, request: Request
+) -> McpServerListResponse:
+    """Add or edit a remote (http/sse) MCP server; write config + reload live."""
+    from ...mcp.config_writer import write_mcp_config
+    from ...mcp.types import McpAuth, McpServerConfig
+
+    if not _MCP_ID_RE.match(server_id):
+        raise HTTPException(status_code=422, detail="server id must be kebab-case (a-z, 0-9, -)")
+    if not body.name.strip() or not body.url.strip() or not body.tools_prefix.strip():
+        raise HTTPException(status_code=422, detail="name, url and tools_prefix are required")
+    if not _MCP_PREFIX_RE.match(body.tools_prefix):
+        raise HTTPException(
+            status_code=422, detail="tools_prefix must look like mcp__<name>__ (e.g. mcp__search__)"
+        )
+    if body.trust not in _MCP_TRUST:
+        raise HTTPException(
+            status_code=422, detail=f"trust must be one of {', '.join(sorted(_MCP_TRUST))}"
+        )
+
+    cfg = _load_mcp_cfg(request)
+    existing = next((s for s in cfg.mcps if s.id == server_id), None)
+    if existing is not None and existing.transport == "stdio":
+        raise HTTPException(
+            status_code=422, detail="stdio servers are file-managed; edit mcp-config.yaml"
+        )
+
+    server = McpServerConfig(
+        id=server_id,
+        name=body.name,
+        description=body.description,
+        transport=body.transport,
+        url=body.url,
+        tools_prefix=body.tools_prefix,
+        enabled=body.enabled,
+        trust=body.trust,  # type: ignore[arg-type]
+        auth=McpAuth(type=body.auth_type, env=body.auth_env, header=body.auth_header),
+    )
+    cfg.mcps = [s for s in cfg.mcps if s.id != server_id] + [server]
+    write_mcp_config(_mcp_config_path(request), cfg)
+    _reload_mcp_registry(request)
+    return _mcp_summaries(_load_mcp_cfg(request))
+
+
+@router.delete("/admin/mcp/servers/{server_id}", status_code=204, dependencies=[_admin])
+def delete_mcp_server(server_id: str, request: Request) -> Response:
+    from ...mcp.config_writer import write_mcp_config
+
+    cfg = _load_mcp_cfg(request)
+    target = next((s for s in cfg.mcps if s.id == server_id), None)
+    if target is None:
+        raise HTTPException(status_code=404, detail="no such MCP server")
+    if target.transport == "stdio":
+        raise HTTPException(
+            status_code=422, detail="stdio servers are file-managed; edit mcp-config.yaml"
+        )
+    cfg.mcps = [s for s in cfg.mcps if s.id != server_id]
+    write_mcp_config(_mcp_config_path(request), cfg)
+    _reload_mcp_registry(request)
+    return Response(status_code=204)
 
 
 # ── login audit ─────────────────────────────────────────────────────────────

@@ -989,6 +989,53 @@ export async function adminTestProvider(id: string): Promise<{ ok: boolean; deta
   return res.json();
 }
 
+// ── Admin: MCP servers (remote add/edit; stdio read-only, ADR-0024) ──────────
+
+export interface AdminMcpServer {
+  id: string;
+  name: string;
+  transport: string;
+  url: string | null;
+  tools_prefix: string;
+  enabled: boolean;
+  trust: string;
+  read_only: boolean;
+}
+
+export interface RemoteMcpUpsert {
+  name: string;
+  transport: 'http' | 'sse';
+  url: string;
+  tools_prefix: string;
+  trust: string;
+  enabled: boolean;
+  description: string;
+  auth_type: 'none' | 'api_key_header' | 'bearer_env' | 'oauth2';
+  auth_env: string | null;
+  auth_header: string | null;
+}
+
+export async function adminListMcpServers(): Promise<AdminMcpServer[]> {
+  const res = await apiFetch('/api/admin/mcp/servers');
+  if (!res.ok) await adminError(res, 'List MCP servers');
+  return (await res.json()).servers;
+}
+
+export async function adminSaveMcpServer(id: string, payload: RemoteMcpUpsert): Promise<AdminMcpServer[]> {
+  const res = await apiFetch(`/api/admin/mcp/servers/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) await adminError(res, 'Save MCP server');
+  return (await res.json()).servers;
+}
+
+export async function adminDeleteMcpServer(id: string): Promise<void> {
+  const res = await apiFetch(`/api/admin/mcp/servers/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  if (!res.ok) await adminError(res, 'Delete MCP server');
+}
+
 // ── Admin: runtime skills (edits agent_skills/<id>/SKILL.md, ADR-0022) ───────
 
 export interface SkillSummary {

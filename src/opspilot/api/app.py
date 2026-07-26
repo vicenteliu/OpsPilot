@@ -168,6 +168,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.session_mgr = session_mgr
     app.state.redactor = redactor
     app.state.mcp_registry = mcp_registry
+    app.state.mcp_config_path = mcp_config_path  # where the admin UI writes (ADR-0024)
 
     yield
 

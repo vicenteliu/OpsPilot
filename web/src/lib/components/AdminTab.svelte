@@ -9,10 +9,11 @@
     adminGetModelTiers, adminSetModelTiers,
     adminGetPlaybookModels, adminSetPlaybookModels,
     adminListSkills, adminGetSkill, adminSaveSkill, adminDraftSkill,
+    adminListMcpServers, adminSaveMcpServer, adminDeleteMcpServer,
     adminSystemLogs, getModels,
     type AdminUser, type GroupRoleMapping, type AuthSourceStatus, type LoginEvent,
     type ProviderStatus, type ModelOption, type LogRecord, type PlaybookModelEntry,
-    type SkillSummary,
+    type SkillSummary, type AdminMcpServer, type RemoteMcpUpsert,
   } from '$lib/api';
 
   const ROLES = ['viewer', 'operator', 'admin'] as const;
@@ -21,8 +22,57 @@
   const MODEL_KINDS = ['anthropic', 'openai', 'ollama'] as const;
   const SKILL_TRUST = ['internal', 'community', 'unknown'] as const;
   const SKILL_TOOLS = ['kb_search'] as const;
-  let section = $state<'users' | 'mappings' | 'sources' | 'providers' | 'modellist' | 'model' | 'skills' | 'audit' | 'logs'>('users');
+  let section = $state<'users' | 'mappings' | 'sources' | 'providers' | 'modellist' | 'model' | 'skills' | 'mcp' | 'audit' | 'logs'>('users');
   let error = $state<string | null>(null);
+
+  const MCP_TRANSPORTS = ['http', 'sse'] as const;
+  const MCP_TRUST = ['unknown', 'community', 'trusted'] as const;
+  const MCP_AUTH = ['none', 'api_key_header', 'bearer_env', 'oauth2'] as const;
+  type McpForm = RemoteMcpUpsert & { id: string };
+  let mcpServers = $state<AdminMcpServer[]>([]);
+  let mcpForm = $state<McpForm | null>(null);
+  let mcpMsg = $state<string>('');
+
+  const loadMcpServers = () => guard(async () => {
+    mcpServers = await adminListMcpServers();
+    mcpForm = null;
+    mcpMsg = '';
+  });
+
+  function newMcpServer() {
+    mcpForm = {
+      id: '', name: '', transport: 'http', url: '', tools_prefix: 'mcp__',
+      trust: 'unknown', enabled: true, description: '',
+      auth_type: 'none', auth_env: '', auth_header: ''
+    };
+    mcpMsg = '';
+  }
+
+  function editMcpServer(s: AdminMcpServer) {
+    mcpForm = {
+      id: s.id, name: s.name, transport: (s.transport === 'sse' ? 'sse' : 'http'),
+      url: s.url ?? '', tools_prefix: s.tools_prefix, trust: s.trust, enabled: s.enabled,
+      description: '', auth_type: 'none', auth_env: '', auth_header: ''
+    };
+    mcpMsg = '';
+  }
+
+  const saveMcpServer = () => guard(async () => {
+    if (!mcpForm) return;
+    const f = mcpForm;
+    if (!f.id.trim() || !f.name.trim() || !f.url.trim()) {
+      throw new Error('id, name and url are required.');
+    }
+    const { id, ...payload } = f;
+    mcpServers = await adminSaveMcpServer(id, payload);
+    mcpForm = null;
+    mcpMsg = 'Saved — mcp-config.yaml updated and reloaded.';
+  });
+
+  const removeMcpServer = (s: AdminMcpServer) => guard(async () => {
+    await adminDeleteMcpServer(s.id);
+    mcpServers = await adminListMcpServers();
+  });
 
   type SkillForm = { id: string; name: string; trigger: string; body: string; allowed_tools: string[]; trust: string };
   let skills = $state<SkillSummary[]>([]);
@@ -230,6 +280,7 @@
       <button class="tab-btn {section === 'modellist' ? 'active' : ''}" onclick={() => { section = 'modellist'; loadPlaybookModels(); }}>Model list</button>
       <button class="tab-btn {section === 'model' ? 'active' : ''}" onclick={() => { section = 'model'; loadModelSettings(); }}>Default model</button>
       <button class="tab-btn {section === 'skills' ? 'active' : ''}" onclick={() => { section = 'skills'; loadSkills(); }}>Skills</button>
+      <button class="tab-btn {section === 'mcp' ? 'active' : ''}" onclick={() => { section = 'mcp'; loadMcpServers(); }}>MCP servers</button>
       <button class="tab-btn {section === 'audit' ? 'active' : ''}" onclick={() => { section = 'audit'; loadAudit(); }}>Login audit</button>
       <button class="tab-btn {section === 'logs' ? 'active' : ''}" onclick={() => { section = 'logs'; loadLogs(); }}>System logs</button>
     </div>
@@ -466,6 +517,82 @@
         <div class="admin-newrow">
           <button class="btn-action" onclick={saveSkill}>Save skill</button>
           <button class="btn-secondary" onclick={() => { skillForm = null; }}>Cancel</button>
+        </div>
+      </div>
+    {/if}
+
+  {:else if section === 'mcp'}
+    <p class="admin-hint">
+      MCP tool servers the chat agent can call. Add/edit <strong>remote</strong> (http/sse) servers here —
+      URL + auth via an environment variable (the secret is never stored). <strong>stdio</strong> servers run
+      a local command (= code execution), so they're file-managed only: edit <code>mcp-config.yaml</code> and
+      git-review them (ADR-0024). Saving writes the config and reloads live.
+    </p>
+    {#if !mcpForm}
+      <div class="admin-newrow">
+        <button class="btn-action" onclick={newMcpServer}>+ Add remote server</button>
+        {#if mcpMsg}<span class="admin-ok">{mcpMsg}</span>{/if}
+      </div>
+      <table class="data-table">
+        <thead><tr><th>ID</th><th>Name</th><th>Transport</th><th>URL</th><th>Enabled</th><th>Trust</th><th></th></tr></thead>
+        <tbody>
+          {#each mcpServers as s}
+            <tr>
+              <td class="mono">{s.id}</td>
+              <td>{s.name}</td>
+              <td class="dim">{s.transport}</td>
+              <td class="dim mono">{s.url ?? '—'}</td>
+              <td>{s.enabled ? '✓' : '—'}</td>
+              <td class="dim">{s.trust}</td>
+              <td>
+                {#if s.read_only}
+                  <span class="dim" title="stdio — file-managed in mcp-config.yaml">file-managed</span>
+                {:else}
+                  <button class="btn-secondary" onclick={() => editMcpServer(s)}>edit</button>
+                  <button class="btn-secondary" onclick={() => removeMcpServer(s)}>remove</button>
+                {/if}
+              </td>
+            </tr>
+          {/each}
+          {#if mcpServers.length === 0}
+            <tr><td colspan="7" class="section-empty">No MCP servers configured.</td></tr>
+          {/if}
+        </tbody>
+      </table>
+    {:else}
+      <div class="skill-editor">
+        <label class="skill-field"><span>ID (kebab-case)</span>
+          <input class="admin-input" bind:value={mcpForm.id} placeholder="search" /></label>
+        <label class="skill-field"><span>Name</span>
+          <input class="admin-input" bind:value={mcpForm.name} placeholder="Web Search" /></label>
+        <label class="skill-field"><span>Transport</span>
+          <select class="admin-input" bind:value={mcpForm.transport}>
+            {#each MCP_TRANSPORTS as t}<option value={t}>{t}</option>{/each}
+          </select></label>
+        <label class="skill-field"><span>URL</span>
+          <input class="admin-input" bind:value={mcpForm.url} placeholder="https://host/mcp" /></label>
+        <label class="skill-field"><span>Tools prefix</span>
+          <input class="admin-input" bind:value={mcpForm.tools_prefix} placeholder="mcp__search__" /></label>
+        <label class="skill-field"><span>Trust</span>
+          <select class="admin-input" bind:value={mcpForm.trust}>
+            {#each MCP_TRUST as t}<option value={t}>{t}</option>{/each}
+          </select></label>
+        <label class="skill-field"><span>Auth</span>
+          <select class="admin-input" bind:value={mcpForm.auth_type}>
+            {#each MCP_AUTH as a}<option value={a}>{a}</option>{/each}
+          </select></label>
+        {#if mcpForm.auth_type !== 'none'}
+          <label class="skill-field"><span>Auth env var (holds the secret)</span>
+            <input class="admin-input" bind:value={mcpForm.auth_env} placeholder="SEARCH_TOKEN" /></label>
+          {#if mcpForm.auth_type === 'api_key_header'}
+            <label class="skill-field"><span>Header name</span>
+              <input class="admin-input" bind:value={mcpForm.auth_header} placeholder="X-API-Key" /></label>
+          {/if}
+        {/if}
+        <label class="skill-tool"><input type="checkbox" bind:checked={mcpForm.enabled} /> Enabled</label>
+        <div class="admin-newrow">
+          <button class="btn-action" onclick={saveMcpServer}>Save server</button>
+          <button class="btn-secondary" onclick={() => { mcpForm = null; }}>Cancel</button>
         </div>
       </div>
     {/if}
