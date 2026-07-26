@@ -44,7 +44,7 @@ model:
 extra_models:
   - provider_id: "anthropic"
     kind: "anthropic"
-    name: "claude-sonnet-4-5"
+    name: "claude-sonnet-5"
     version: "2025-01"
     params:
       temperature: 0.2
@@ -52,7 +52,7 @@ extra_models:
       max_tokens: 8192
   - provider_id: "anthropic"
     kind: "anthropic"
-    name: "claude-opus-4-5"
+    name: "claude-opus-5"
     version: "2025-01"
     params:
       temperature: 0.2
@@ -64,6 +64,46 @@ extra_models:
   - provider_id: "openrouter"
     kind: "openai"
     name: "google/gemini-2.0-flash-001"
+    version: "2025-01"
+    params:
+      temperature: 0.2
+      top_p: 0.9
+      max_tokens: 4096
+  - provider_id: "openai"
+    kind: "openai"
+    name: "gpt-5"
+    version: "2025-01"
+    params:
+      temperature: 0.2
+      top_p: 0.9
+      max_tokens: 8192
+  - provider_id: "openai"
+    kind: "openai"
+    name: "gpt-5-mini"
+    version: "2025-01"
+    params:
+      temperature: 0.2
+      top_p: 0.9
+      max_tokens: 8192
+  - provider_id: "openrouter"
+    kind: "openai"
+    name: "qwen/qwen3-235b-a22b"
+    version: "2025-01"
+    params:
+      temperature: 0.2
+      top_p: 0.9
+      max_tokens: 4096
+  - provider_id: "openrouter"
+    kind: "openai"
+    name: "deepseek/deepseek-chat"
+    version: "2025-01"
+    params:
+      temperature: 0.2
+      top_p: 0.9
+      max_tokens: 4096
+  - provider_id: "openrouter"
+    kind: "openai"
+    name: "z-ai/glm-4.6"
     version: "2025-01"
     params:
       temperature: 0.2
