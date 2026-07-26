@@ -116,13 +116,19 @@ class OpenAIProvider:
         kwargs: dict[str, Any] = {
             "model": model,
             "messages": openai_messages,
-            "max_tokens": params.max_tokens,
             "timeout": timeout_ms / 1000,
         }
-        if params.temperature is not None:
-            kwargs["temperature"] = params.temperature
-        if params.top_p is not None:
-            kwargs["top_p"] = params.top_p
+        # Real OpenAI's current models (gpt-5, o-series) require
+        # ``max_completion_tokens`` and reject ``max_tokens`` + a custom
+        # temperature/top_p. OpenRouter / Gemini / Grok keep the classic params.
+        if self.provider_id.split("-")[0] == "openai":
+            kwargs["max_completion_tokens"] = params.max_tokens
+        else:
+            kwargs["max_tokens"] = params.max_tokens
+            if params.temperature is not None:
+                kwargs["temperature"] = params.temperature
+            if params.top_p is not None:
+                kwargs["top_p"] = params.top_p
         if params.stop:
             kwargs["stop"] = params.stop
         if tools:
