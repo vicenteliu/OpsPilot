@@ -213,6 +213,9 @@ class ApiConfigResponse(BaseModel):
 
     active_model_ref: str
     modules: dict[str, bool]
+    # Active embedding backend + a notice when it fell back (ADR-0020).
+    embed_provider: str = "ollama"
+    embed_warning: str | None = None
 
 
 class ApiSessionSummary(BaseModel):
