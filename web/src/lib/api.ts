@@ -556,13 +556,24 @@ export interface ChatMessage {
   content: string;
 }
 
+export interface ChatCitation {
+  chunk_id: string;
+  document_id: string | null;
+  source_path: string | null;
+  heading_path: string[];
+  snippet: string;
+}
+
 export interface ChatResult {
   content: string;
+  citations: ChatCitation[];
   usage: { input_tokens: number; output_tokens: number; cost_usd: number };
 }
 
 export type ChatStreamEvent =
   | { type: 'status'; message: string }
+  | { type: 'tool_call'; tool: string; query: string }
+  | { type: 'tool_result'; tool: string; hits: number }
   | { type: 'result'; data: ChatResult }
   | { type: 'error'; message: string };
 
@@ -597,6 +608,10 @@ export async function* chatStream(
         const payload = JSON.parse(line.slice(6));
         if (currentEvent === 'status') {
           yield { type: 'status', message: payload.message };
+        } else if (currentEvent === 'tool_call') {
+          yield { type: 'tool_call', tool: payload.tool, query: payload.query };
+        } else if (currentEvent === 'tool_result') {
+          yield { type: 'tool_result', tool: payload.tool, hits: payload.hits };
         } else if (currentEvent === 'result') {
           yield { type: 'result', data: payload };
         } else if (currentEvent === 'error') {
