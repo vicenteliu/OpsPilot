@@ -580,12 +580,13 @@ export type ChatStreamEvent =
 
 export async function* chatStream(
   messages: ChatMessage[],
-  modelId?: string
+  modelId?: string,
+  deepThinking = false
 ): AsyncGenerator<ChatStreamEvent> {
   const res = await apiFetch('/api/chat/stream', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages, model_id: modelId ?? null })
+    body: JSON.stringify({ messages, model_id: modelId ?? null, deep_thinking: deepThinking })
   });
   if (!res.ok) throw new Error(`Chat stream failed: ${res.status}`);
 
@@ -1059,6 +1060,27 @@ export async function adminSetPlaybookModels(
     body: JSON.stringify({ models })
   });
   if (!res.ok) await adminError(res, 'Save playbook models');
+  return res.json();
+}
+
+export interface ModelTiers {
+  cheap_model_id: string | null;
+  thinking_model_id: string | null;
+}
+
+export async function adminGetModelTiers(): Promise<ModelTiers> {
+  const res = await apiFetch('/api/admin/model-tiers');
+  if (!res.ok) await adminError(res, 'Get model tiers');
+  return res.json();
+}
+
+export async function adminSetModelTiers(tiers: ModelTiers): Promise<ModelTiers> {
+  const res = await apiFetch('/api/admin/model-tiers', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(tiers)
+  });
+  if (!res.ok) await adminError(res, 'Set model tiers');
   return res.json();
 }
 

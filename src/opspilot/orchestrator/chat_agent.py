@@ -174,14 +174,19 @@ def run_chat_agent(
         usage["output_tokens"] += resp.usage.output_tokens
         usage["cost_usd"] += resp.usage.cost_usd
 
+    thinking_budget = int(model.params.get("thinking_budget_tokens") or 0)
     sampling = SamplingParams(
         temperature=float(model.params.get("temperature", 0.5)),
         top_p=float(model.params.get("top_p", 0.9)),
         max_tokens=int(model.params.get("max_tokens", 1024)),
+        thinking_budget_tokens=thinking_budget or None,
     )
 
-    # ── Weak local models: prefetch once, no tool loop. ──────────────────
-    if model.kind == "ollama":
+    # ── Prefetch path: weak local models, and thinking models. ───────────
+    # Extended thinking + multi-turn tool use needs thinking-block echo we don't
+    # model, so a thinking turn does one deeply-reasoned call over injected KB +
+    # skill instead of the tool loop.
+    if model.kind == "ollama" or thinking_budget > 0:
         query = _last_user(messages)
         # Weak models can't drive load_skill — inject the best-matching skill.
         matched = registry.match(query) if registry is not None else None

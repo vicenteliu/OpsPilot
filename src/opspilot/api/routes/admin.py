@@ -330,6 +330,48 @@ def set_default_model(body: DefaultModel, request: Request) -> DefaultModel:
     return DefaultModel(model_id=body.model_id)
 
 
+# ── model tiers (cheap vs thinking, ADR-0023) ────────────────────────────────
+
+_CHEAP_MODEL_KEY = "cheap_model_id"
+_THINKING_MODEL_KEY = "thinking_model_id"
+
+
+class ModelTiers(BaseModel):
+    cheap_model_id: str | None
+    thinking_model_id: str | None
+
+
+@router.get("/admin/model-tiers", response_model=ModelTiers, dependencies=[_admin])
+def get_model_tiers(request: Request) -> ModelTiers:
+    settings = request.app.state.settings
+    return ModelTiers(
+        cheap_model_id=settings.get(_CHEAP_MODEL_KEY),
+        thinking_model_id=settings.get(_THINKING_MODEL_KEY),
+    )
+
+
+@router.put("/admin/model-tiers", response_model=ModelTiers, dependencies=[_admin])
+def set_model_tiers(body: ModelTiers, request: Request) -> ModelTiers:
+    """Designate the cheap / thinking tier models (each from the model list; null clears)."""
+    available = set(_available_model_ids(request))
+    # Validate both before writing either, so a bad tier can't leave a partial update.
+    for mid in (body.cheap_model_id, body.thinking_model_id):
+        if mid is not None and mid not in available:
+            raise HTTPException(
+                status_code=422, detail=f"{mid} is not one of the selectable models"
+            )
+    settings = request.app.state.settings
+    for key, mid in (
+        (_CHEAP_MODEL_KEY, body.cheap_model_id),
+        (_THINKING_MODEL_KEY, body.thinking_model_id),
+    ):
+        if mid is None:
+            settings.delete(key)
+        else:
+            settings.set(key, mid)
+    return get_model_tiers(request)
+
+
 # ── playbook model list (edits the active playbook.yaml in place) ────────────
 
 # provider_ids and kinds an admin may save. Kinds are the *protocol* kinds the
