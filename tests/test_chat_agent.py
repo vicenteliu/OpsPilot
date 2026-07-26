@@ -33,7 +33,12 @@ class FakeSqlite:
 
 
 def _state(
-    provider: FakeProvider, *, kind: str = "anthropic", skills: SkillRegistry | None = None
+    provider: FakeProvider,
+    *,
+    kind: str = "anthropic",
+    skills: SkillRegistry | None = None,
+    web_search_enabled: bool = False,
+    mcp_registry: Any = None,
 ) -> Any:
     model = types.SimpleNamespace(
         provider_id="anthropic" if kind == "anthropic" else "ollama-local",
@@ -52,7 +57,31 @@ def _state(
         cfg=types.SimpleNamespace(anthropic_api_key="k", ollama_base_url="http://x"),
         chat_provider=provider,
         skills=skills,
+        web_search_enabled=web_search_enabled,
+        mcp_registry=mcp_registry,
     )
+
+
+class FakeMcp:
+    """Minimal MCP registry: advertises prefixed tools and echoes call results."""
+
+    def __init__(self, tool_names: list[str]) -> None:
+        from opspilot.providers.types import ToolDef
+
+        self._defs = [
+            ToolDef(name=n, description="", parameters={"type": "object"}) for n in tool_names
+        ]
+        self.called: list[str] = []
+
+    def refresh_all_tools(self) -> dict[str, Any]:
+        return {}
+
+    def as_tool_defs(self) -> list[Any]:
+        return list(self._defs)
+
+    def call_tool(self, name: str, arguments: dict[str, Any]) -> Any:
+        self.called.append(name)
+        return types.SimpleNamespace(text=f"result for {name}", is_error=False)
 
 
 def _registry(*skills: Skill) -> SkillRegistry:
@@ -164,6 +193,65 @@ def test_unknown_tool_is_reported_not_fatal(canned_hits: None) -> None:
     )
     result = run_chat_agent(_state(provider), [{"role": "user", "content": "q"}])
     assert result.content == "recovered"  # loop fed back an error and continued
+
+
+# ── web search + MCP tools (issue #120) ──────────────────────────────────────
+
+
+def test_web_search_offered_and_dispatched(
+    canned_hits: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "opspilot.websearch.web_search",
+        lambda q, **k: [{"title": "T", "url": "http://x", "snippet": "s"}],
+    )
+    provider = FakeProvider(
+        [
+            _resp(
+                "",
+                finish="tool_call",
+                tool_calls=[ToolCall(id="w", name="web_search", arguments={"query": "err"})],
+            ),
+            _resp("answer with [http://x]"),
+        ]
+    )
+    result = run_chat_agent(
+        _state(provider, web_search_enabled=True), [{"role": "user", "content": "err"}]
+    )
+    assert result.content == "answer with [http://x]"
+    assert "web_search" in _tool_names(provider.calls[0])
+    # Web results surface as citations (source = url).
+    assert any(c["source_path"] == "http://x" for c in result.citations)
+
+
+def test_web_search_absent_when_disabled(canned_hits: None) -> None:
+    provider = FakeProvider([_resp("done")])
+    run_chat_agent(_state(provider, web_search_enabled=False), [{"role": "user", "content": "hi"}])
+    assert "web_search" not in _tool_names(provider.calls[0])
+
+
+def test_mcp_tools_offered_and_dispatched(canned_hits: None) -> None:
+    mcp = FakeMcp(["srv__lookup"])
+    provider = FakeProvider(
+        [
+            _resp(
+                "",
+                finish="tool_call",
+                tool_calls=[ToolCall(id="m", name="srv__lookup", arguments={"x": 1})],
+            ),
+            _resp("used mcp"),
+        ]
+    )
+    result = run_chat_agent(_state(provider, mcp_registry=mcp), [{"role": "user", "content": "q"}])
+    assert result.content == "used mcp"
+    assert "srv__lookup" in _tool_names(provider.calls[0])
+    assert mcp.called == ["srv__lookup"]
+
+
+def test_mcp_absent_when_no_registry(canned_hits: None) -> None:
+    provider = FakeProvider([_resp("done")])
+    run_chat_agent(_state(provider, mcp_registry=None), [{"role": "user", "content": "hi"}])
+    assert _tool_names(provider.calls[0]) == ["kb_search"]
 
 
 # ── skills (issue #119) ──────────────────────────────────────────────────────
