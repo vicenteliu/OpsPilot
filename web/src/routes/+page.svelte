@@ -70,6 +70,7 @@
 
   // --- Core State ---
   let modelRef = $state<string | null>(null);
+  let embedWarning = $state<string | null>(null);
   let modules = $state<Record<string, boolean>>({ run: true, history: true });
   let availableModels = $state<ModelOption[]>([]);
   let selectedModelId = $state<string>('');
@@ -102,6 +103,7 @@
         const cfg = await getConfig();
         modelRef = cfg.active_model_ref;
         modules = cfg.modules;
+        embedWarning = cfg.embed_warning ?? null;
       } catch {
         modelRef = 'unknown';
       }
@@ -179,6 +181,10 @@
 
   <main>
 
+    {#if embedWarning}
+      <div class="embed-banner" role="alert">⚠ {embedWarning}</div>
+    {/if}
+
     <!-- ══════════════════════════════ RUN TAB ══════════════════════════════ -->
     {#if activeTab === 'run'}
       <RunTab {selectedModelId} {modules} />
@@ -252,6 +258,16 @@
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: var(--primary);
+  }
+
+  .embed-banner {
+    margin-bottom: 1.25rem;
+    padding: 0.6rem 0.85rem;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    color: #b45309;
+    background: rgba(217, 119, 6, 0.12);
+    border: 1px solid rgba(217, 119, 6, 0.4);
   }
   .app {
     display: flex;

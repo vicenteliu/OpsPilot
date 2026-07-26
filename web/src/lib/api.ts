@@ -92,6 +92,8 @@ export interface Citation {
 export interface ConfigResponse {
   active_model_ref: string;
   modules: Record<string, boolean>;
+  embed_provider?: string;
+  embed_warning?: string | null;
 }
 
 export interface ModelOption {
