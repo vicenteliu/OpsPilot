@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import logging
 import os
+import re
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -445,6 +447,112 @@ def set_playbook_models(body: PlaybookModelsUpdate, request: Request) -> Playboo
             settings.delete(_DEFAULT_MODEL_KEY)
 
     return get_playbook_models(request)
+
+
+# ── runtime skills (edit agent_skills/<id>/SKILL.md in place, ADR-0022) ──────
+
+# Tools a skill may allow-list. Just kb_search today; MCP tools join in #120.
+_KNOWN_SKILL_TOOLS = {"kb_search"}
+_SKILL_TRUST = {"internal", "community", "unknown"}
+_SKILL_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
+
+
+class SkillSummary(BaseModel):
+    id: str
+    name: str
+    trigger: str
+    trust: str
+    allowed_tools: list[str]
+
+
+class SkillDetail(SkillSummary):
+    body: str
+
+
+class SkillListResponse(BaseModel):
+    skills: list[SkillSummary]
+
+
+class SkillUpsert(BaseModel):
+    name: str
+    trigger: str
+    body: str
+    allowed_tools: list[str] = []
+    trust: str = "internal"
+
+
+def _skills_dir(request: Request) -> Path:
+    reg = request.app.state.skills
+    if getattr(reg, "base_dir", None) is not None:
+        return reg.base_dir  # type: ignore[no-any-return]
+    return Path(os.environ.get("OPSPILOT_SKILLS_DIR", "agent_skills"))
+
+
+def _skill_summary(s: Any) -> SkillSummary:
+    return SkillSummary(
+        id=s.id, name=s.name, trigger=s.trigger, trust=s.trust, allowed_tools=list(s.allowed_tools)
+    )
+
+
+def _skill_detail(s: Any) -> SkillDetail:
+    return SkillDetail(
+        id=s.id,
+        name=s.name,
+        trigger=s.trigger,
+        trust=s.trust,
+        allowed_tools=list(s.allowed_tools),
+        body=s.body,
+    )
+
+
+@router.get("/admin/skills", response_model=SkillListResponse, dependencies=[_admin])
+def list_skills(request: Request) -> SkillListResponse:
+    return SkillListResponse(skills=[_skill_summary(s) for s in request.app.state.skills.skills])
+
+
+@router.get("/admin/skills/{skill_id}", response_model=SkillDetail, dependencies=[_admin])
+def get_skill(skill_id: str, request: Request) -> SkillDetail:
+    skill = request.app.state.skills.get(skill_id)
+    if skill is None:
+        raise HTTPException(status_code=404, detail="no such skill")
+    return _skill_detail(skill)
+
+
+@router.put("/admin/skills/{skill_id}", response_model=SkillDetail, dependencies=[_admin])
+def upsert_skill(skill_id: str, body: SkillUpsert, request: Request) -> SkillDetail:
+    """Create or edit a skill's SKILL.md in place, then reload the registry live."""
+    from ...skills import Skill, SkillRegistry, write_skill_md
+
+    if not _SKILL_ID_RE.match(skill_id):
+        raise HTTPException(status_code=422, detail="skill id must be kebab-case (a-z, 0-9, -)")
+    if not body.name.strip() or not body.trigger.strip():
+        raise HTTPException(status_code=422, detail="name and trigger are required")
+    if not body.body.strip():
+        raise HTTPException(status_code=422, detail="skill body is required")
+    if body.trust not in _SKILL_TRUST:
+        raise HTTPException(
+            status_code=422, detail=f"trust must be one of {', '.join(sorted(_SKILL_TRUST))}"
+        )
+    unknown = [t for t in body.allowed_tools if t not in _KNOWN_SKILL_TOOLS]
+    if unknown:
+        raise HTTPException(status_code=422, detail=f"unknown tools: {', '.join(unknown)}")
+
+    state = request.app.state
+    base = _skills_dir(request)
+    skill = Skill(
+        id=skill_id,
+        name=body.name,
+        trigger=body.trigger,
+        body=body.body,
+        allowed_tools=list(body.allowed_tools),
+        trust=body.trust,
+    )
+    write_skill_md(base, skill)
+    state.skills = SkillRegistry.load(base)  # reload live so the agent sees it now
+    saved = state.skills.get(skill_id)
+    if saved is None:  # pragma: no cover — write+reload just succeeded
+        raise HTTPException(status_code=500, detail="skill saved but did not reload")
+    return _skill_detail(saved)
 
 
 # ── login audit ─────────────────────────────────────────────────────────────

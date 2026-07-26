@@ -7,17 +7,58 @@
     adminAuthStatus, adminTestConnection, adminLoginAudit,
     adminListProviders, adminTestProvider, adminGetDefaultModel, adminSetDefaultModel,
     adminGetPlaybookModels, adminSetPlaybookModels,
+    adminListSkills, adminGetSkill, adminSaveSkill,
     adminSystemLogs, getModels,
     type AdminUser, type GroupRoleMapping, type AuthSourceStatus, type LoginEvent,
     type ProviderStatus, type ModelOption, type LogRecord, type PlaybookModelEntry,
+    type SkillSummary,
   } from '$lib/api';
 
   const ROLES = ['viewer', 'operator', 'admin'] as const;
   const LOG_LEVELS = ['', 'INFO', 'WARNING', 'ERROR'] as const;
   const PROVIDER_IDS = ['anthropic', 'openai', 'openrouter', 'gemini', 'grok', 'ollama-local'] as const;
   const MODEL_KINDS = ['anthropic', 'openai', 'ollama'] as const;
-  let section = $state<'users' | 'mappings' | 'sources' | 'providers' | 'modellist' | 'model' | 'audit' | 'logs'>('users');
+  const SKILL_TRUST = ['internal', 'community', 'unknown'] as const;
+  const SKILL_TOOLS = ['kb_search'] as const;
+  let section = $state<'users' | 'mappings' | 'sources' | 'providers' | 'modellist' | 'model' | 'skills' | 'audit' | 'logs'>('users');
   let error = $state<string | null>(null);
+
+  type SkillForm = { id: string; name: string; trigger: string; body: string; allowed_tools: string[]; trust: string };
+  let skills = $state<SkillSummary[]>([]);
+  let skillForm = $state<SkillForm | null>(null);
+  let skillIsNew = $state<boolean>(false);
+  let skillMsg = $state<string>('');
+
+  const loadSkills = () => guard(async () => {
+    skills = await adminListSkills();
+    skillForm = null;
+    skillMsg = '';
+  });
+
+  function newSkill() {
+    skillForm = { id: '', name: '', trigger: '', body: '', allowed_tools: ['kb_search'], trust: 'internal' };
+    skillIsNew = true;
+    skillMsg = '';
+  }
+
+  const editSkill = (id: string) => guard(async () => {
+    const d = await adminGetSkill(id);
+    skillForm = { id: d.id, name: d.name, trigger: d.trigger, body: d.body, allowed_tools: d.allowed_tools, trust: d.trust };
+    skillIsNew = false;
+    skillMsg = '';
+  });
+
+  const saveSkill = () => guard(async () => {
+    if (!skillForm) return;
+    const f = skillForm;
+    if (!f.id.trim() || !f.name.trim() || !f.trigger.trim() || !f.body.trim()) {
+      throw new Error('id, name, trigger and body are all required.');
+    }
+    await adminSaveSkill(f.id, { name: f.name, trigger: f.trigger, body: f.body, allowed_tools: f.allowed_tools, trust: f.trust });
+    skills = await adminListSkills();
+    skillForm = null;
+    skillMsg = 'Saved — SKILL.md written and reloaded.';
+  });
 
   let logs = $state<LogRecord[]>([]);
   let logsAvailable = $state<boolean>(true);
@@ -157,6 +198,7 @@
       <button class="tab-btn {section === 'providers' ? 'active' : ''}" onclick={() => { section = 'providers'; loadProviders(); }}>LLM providers</button>
       <button class="tab-btn {section === 'modellist' ? 'active' : ''}" onclick={() => { section = 'modellist'; loadPlaybookModels(); }}>Model list</button>
       <button class="tab-btn {section === 'model' ? 'active' : ''}" onclick={() => { section = 'model'; loadModelSettings(); }}>Default model</button>
+      <button class="tab-btn {section === 'skills' ? 'active' : ''}" onclick={() => { section = 'skills'; loadSkills(); }}>Skills</button>
       <button class="tab-btn {section === 'audit' ? 'active' : ''}" onclick={() => { section = 'audit'; loadAudit(); }}>Login audit</button>
       <button class="tab-btn {section === 'logs' ? 'active' : ''}" onclick={() => { section = 'logs'; loadLogs(); }}>System logs</button>
     </div>
@@ -297,6 +339,73 @@
       <button class="btn-action" onclick={saveDefaultModel} disabled={!defaultModel}>Set default</button>
     </div>
 
+  {:else if section === 'skills'}
+    <p class="admin-hint">
+      Troubleshooting skills the assistant loads on demand in Chat (ADR-0022). Saving writes
+      <code>agent_skills/&lt;id&gt;/SKILL.md</code> in place (a git diff) and reloads it live.
+      Skills guide the assistant — they don't override human judgement — and aren't harness-gated.
+    </p>
+    {#if !skillForm}
+      <div class="admin-newrow">
+        <button class="btn-action" onclick={newSkill}>+ New skill</button>
+        {#if skillMsg}<span class="admin-ok">{skillMsg}</span>{/if}
+      </div>
+      <table class="data-table">
+        <thead><tr><th>ID</th><th>Name</th><th>When to use</th><th>Trust</th><th></th></tr></thead>
+        <tbody>
+          {#each skills as s}
+            <tr>
+              <td class="mono">{s.id}</td>
+              <td>{s.name}</td>
+              <td class="dim">{s.trigger}</td>
+              <td class="dim">{s.trust}</td>
+              <td><button class="btn-secondary" onclick={() => editSkill(s.id)}>edit</button></td>
+            </tr>
+          {/each}
+          {#if skills.length === 0}
+            <tr><td colspan="5" class="section-empty">No skills yet — create one.</td></tr>
+          {/if}
+        </tbody>
+      </table>
+    {:else}
+      <div class="skill-editor">
+        <label class="skill-field">
+          <span>ID (kebab-case)</span>
+          <input class="admin-input" bind:value={skillForm.id} disabled={!skillIsNew} placeholder="vpn-auth-failures" />
+        </label>
+        <label class="skill-field">
+          <span>Name</span>
+          <input class="admin-input" bind:value={skillForm.name} placeholder="VPN authentication failures" />
+        </label>
+        <label class="skill-field">
+          <span>When to use (trigger)</span>
+          <input class="admin-input" bind:value={skillForm.trigger} placeholder="A user cannot authenticate to the VPN…" />
+        </label>
+        <div class="skill-field">
+          <span>Allowed tools</span>
+          <div class="skill-tools">
+            {#each SKILL_TOOLS as t}
+              <label class="skill-tool"><input type="checkbox" bind:group={skillForm.allowed_tools} value={t} /> {t}</label>
+            {/each}
+          </div>
+        </div>
+        <label class="skill-field">
+          <span>Trust</span>
+          <select class="admin-input" bind:value={skillForm.trust}>
+            {#each SKILL_TRUST as t}<option value={t}>{t}</option>{/each}
+          </select>
+        </label>
+        <label class="skill-field">
+          <span>Procedure (markdown)</span>
+          <textarea class="admin-input skill-body" rows={14} bind:value={skillForm.body} placeholder="# Steps…"></textarea>
+        </label>
+        <div class="admin-newrow">
+          <button class="btn-action" onclick={saveSkill}>Save skill</button>
+          <button class="btn-secondary" onclick={() => { skillForm = null; }}>Cancel</button>
+        </div>
+      </div>
+    {/if}
+
   {:else if section === 'audit'}
     <table class="data-table">
       <thead><tr><th>When</th><th>Username</th><th>Source</th><th>Outcome</th></tr></thead>
@@ -352,4 +461,10 @@
   .admin-fail { color: #ef4444; }
   .admin-warn { color: #d97706; }
   .admin-ok { font-size: 0.82rem; color: #16a34a; align-self: center; }
+  .skill-editor { display: flex; flex-direction: column; gap: 0.75rem; max-width: 46rem; }
+  .skill-field { display: flex; flex-direction: column; gap: 0.25rem; }
+  .skill-field > span { font-size: 0.78rem; color: var(--text-muted); }
+  .skill-body { font-family: var(--font-mono, monospace); resize: vertical; }
+  .skill-tools { display: flex; gap: 1rem; }
+  .skill-tool { display: flex; align-items: center; gap: 0.3rem; font-size: 0.85rem; }
 </style>

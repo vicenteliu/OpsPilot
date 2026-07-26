@@ -985,6 +985,45 @@ export async function adminTestProvider(id: string): Promise<{ ok: boolean; deta
   return res.json();
 }
 
+// ── Admin: runtime skills (edits agent_skills/<id>/SKILL.md, ADR-0022) ───────
+
+export interface SkillSummary {
+  id: string;
+  name: string;
+  trigger: string;
+  trust: string;
+  allowed_tools: string[];
+}
+
+export interface SkillDetail extends SkillSummary {
+  body: string;
+}
+
+export async function adminListSkills(): Promise<SkillSummary[]> {
+  const res = await apiFetch('/api/admin/skills');
+  if (!res.ok) await adminError(res, 'List skills');
+  return (await res.json()).skills;
+}
+
+export async function adminGetSkill(id: string): Promise<SkillDetail> {
+  const res = await apiFetch(`/api/admin/skills/${encodeURIComponent(id)}`);
+  if (!res.ok) await adminError(res, 'Get skill');
+  return res.json();
+}
+
+export async function adminSaveSkill(
+  id: string,
+  payload: { name: string; trigger: string; body: string; allowed_tools: string[]; trust: string }
+): Promise<SkillDetail> {
+  const res = await apiFetch(`/api/admin/skills/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) await adminError(res, 'Save skill');
+  return res.json();
+}
+
 // ── Admin: playbook model list (edits playbook.yaml in place, ADR-0021) ──────
 
 export interface PlaybookModelEntry {
