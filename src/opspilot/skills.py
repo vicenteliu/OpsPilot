@@ -33,6 +33,27 @@ class Skill:
         return {"id": self.id, "name": self.name, "trigger": self.trigger}
 
 
+def write_skill_md(base_dir: Path, skill: Skill) -> Path:
+    """Write ``<base_dir>/<skill.id>/SKILL.md`` (frontmatter + body); return its path.
+
+    Round-trips through :func:`parse_skill_md` — a file this writes always parses
+    back to an equal Skill. Used by the admin skill editor (ADR-0022).
+    """
+    fm = {
+        "id": skill.id,
+        "name": skill.name,
+        "trigger": skill.trigger,
+        "allowed_tools": list(skill.allowed_tools),
+        "trust": skill.trust,
+    }
+    fm_str = yaml.safe_dump(fm, sort_keys=False, allow_unicode=True)
+    skill_dir = base_dir / skill.id
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    path = skill_dir / "SKILL.md"
+    path.write_text(f"---\n{fm_str}---\n\n{skill.body.rstrip()}\n", encoding="utf-8")
+    return path
+
+
 def parse_skill_md(text: str, *, fallback_id: str) -> Skill:
     """Parse a SKILL.md (YAML frontmatter + markdown body). Raises on malformed input."""
     if not text.startswith("---\n"):
@@ -88,9 +109,10 @@ def _tokens(s: str) -> set[str]:
 class SkillRegistry:
     """In-memory catalog of loaded Skills, keyed by id."""
 
-    def __init__(self, skills: list[Skill]) -> None:
+    def __init__(self, skills: list[Skill], base_dir: Path | None = None) -> None:
         self._skills = list(skills)
         self._by_id = {s.id: s for s in skills}
+        self.base_dir = base_dir  # where load() read from; where the editor writes
 
     @classmethod
     def load(cls, base_dir: Path) -> SkillRegistry:
@@ -107,7 +129,7 @@ class SkillRegistry:
                         )
                     except Exception:  # noqa: BLE001 — a bad skill must not break startup
                         continue
-        return cls(skills)
+        return cls(skills, base_dir=base_dir)
 
     def __len__(self) -> int:
         return len(self._skills)

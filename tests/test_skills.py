@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from opspilot.skills import SkillRegistry, parse_skill_md
+from opspilot.skills import Skill, SkillRegistry, parse_skill_md, write_skill_md
 
 _SKILL = """\
 ---
@@ -69,6 +69,30 @@ def test_load_missing_dir_is_empty(tmp_path: Path) -> None:
     reg = SkillRegistry.load(tmp_path / "does-not-exist")
     assert len(reg) == 0
     assert reg.catalog() == []
+
+
+def test_write_skill_md_roundtrips(tmp_path: Path) -> None:
+    s = Skill(
+        id="x",
+        name="X skill",
+        trigger="when x happens",
+        body="# Body\n\ndo the thing",
+        allowed_tools=["kb_search"],
+        trust="community",
+    )
+    path = write_skill_md(tmp_path, s)
+    assert path == tmp_path / "x" / "SKILL.md"
+    back = parse_skill_md(path.read_text(encoding="utf-8"), fallback_id="x")
+    assert (back.id, back.name, back.trigger, back.allowed_tools, back.trust) == (
+        s.id,
+        s.name,
+        s.trigger,
+        s.allowed_tools,
+        s.trust,
+    )
+    assert back.body.strip() == s.body.strip()
+    # And the registry picks it up.
+    assert SkillRegistry.load(tmp_path).get("x") is not None
 
 
 def test_match_picks_best_overlap_or_none(tmp_path: Path) -> None:
