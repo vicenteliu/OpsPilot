@@ -64,7 +64,11 @@ class TestCrypto:
     def test_tampered_ciphertext_rejected(self) -> None:
         crypto = _crypto()
         blob = bytearray(base64.b64decode(crypto.encrypt("x")))
-        blob[-1] ^= 0xFF
+        # Corrupt the FIRST block: in CBC this garbles the whole second
+        # plaintext block, including the 4-byte message-length field, so decode
+        # deterministically fails. (Flipping only the last byte would just
+        # mutate the PKCS#7 pad, which stays valid ~1/256 of the time — flaky.)
+        blob[0] ^= 0xFF
         with pytest.raises(WeComCryptoError):
             crypto.decrypt(base64.b64encode(bytes(blob)).decode())
 
