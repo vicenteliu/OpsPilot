@@ -69,6 +69,46 @@ extra_models:
       temperature: 0.2
       top_p: 0.9
       max_tokens: 4096
+  - provider_id: "openai"
+    kind: "openai"
+    name: "gpt-5"
+    version: "2025-01"
+    params:
+      temperature: 0.2
+      top_p: 0.9
+      max_tokens: 8192
+  - provider_id: "openai"
+    kind: "openai"
+    name: "gpt-5-mini"
+    version: "2025-01"
+    params:
+      temperature: 0.2
+      top_p: 0.9
+      max_tokens: 8192
+  - provider_id: "openrouter"
+    kind: "openai"
+    name: "qwen/qwen3-235b-a22b"
+    version: "2025-01"
+    params:
+      temperature: 0.2
+      top_p: 0.9
+      max_tokens: 4096
+  - provider_id: "openrouter"
+    kind: "openai"
+    name: "deepseek/deepseek-chat"
+    version: "2025-01"
+    params:
+      temperature: 0.2
+      top_p: 0.9
+      max_tokens: 4096
+  - provider_id: "openrouter"
+    kind: "openai"
+    name: "z-ai/glm-4.6"
+    version: "2025-01"
+    params:
+      temperature: 0.2
+      top_p: 0.9
+      max_tokens: 4096
   - provider_id: "ollama-local"
     kind: "ollama"
     name: "gemma4:e4b"

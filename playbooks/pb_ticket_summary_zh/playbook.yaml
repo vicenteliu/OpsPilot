@@ -49,7 +49,7 @@ model:
 extra_models:
   - provider_id: "anthropic"
     kind: "anthropic"
-    name: "claude-sonnet-4-5"
+    name: "claude-sonnet-5"
     version: "2025-01"
     params:
       temperature: 0.2
@@ -57,7 +57,7 @@ extra_models:
       max_tokens: 8192
   - provider_id: "anthropic"
     kind: "anthropic"
-    name: "claude-opus-4-5"
+    name: "claude-opus-5"
     version: "2025-01"
     params:
       temperature: 0.2

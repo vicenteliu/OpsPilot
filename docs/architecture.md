@@ -113,7 +113,7 @@ model:
 extra_models:
   - provider_id: anthropic
     kind: anthropic
-    name: claude-sonnet-4-5
+    name: claude-sonnet-5
   - provider_id: ollama-local
     kind: ollama
     name: gemma4:e4b
