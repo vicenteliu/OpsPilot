@@ -30,9 +30,17 @@
         if (event.type === 'status') {
           chatStatusLines = [...chatStatusLines, event.message];
         } else if (event.type === 'tool_call') {
-          chatSteps = [...chatSteps, `🔍 Searching KB: "${event.query}"`];
+          const label =
+            event.tool === 'kb_search' ? `🔍 Searching KB: "${event.query}"`
+            : event.tool === 'web_search' ? `🌐 Web search: "${event.query}"`
+            : `🔧 ${event.tool}`;
+          chatSteps = [...chatSteps, label];
         } else if (event.type === 'tool_result') {
-          chatSteps = [...chatSteps, `↳ ${event.hits} result${event.hits === 1 ? '' : 's'}`];
+          const label =
+            event.tool === 'kb_search' || event.tool === 'web_search'
+              ? `↳ ${event.hits} result${event.hits === 1 ? '' : 's'}`
+              : '↳ done';
+          chatSteps = [...chatSteps, label];
         } else if (event.type === 'skill_loaded') {
           chatSteps = [...chatSteps, `📋 Using skill: ${event.skill}`];
         } else if (event.type === 'routing') {

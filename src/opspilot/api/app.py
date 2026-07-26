@@ -148,6 +148,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.request_fulfillment_pb = request_fulfillment_pb
     app.state.classify_pb = classify_pb
     app.state.skills = skills
+    # Web search for the chat agent (#120) — gated on a Brave key, since it
+    # egresses the query to an external engine. No key → the tool isn't offered.
+    from ..websearch import web_search_available
+
+    app.state.web_search_enabled = web_search_available()
     app.state.classify_threshold = float(os.environ.get("OPSPILOT_CLASSIFY_THRESHOLD", "0.7"))
     app.state.vendor_doc_provider = vendor_doc_provider
     app.state.active_model_ref = active_model_ref

@@ -7,8 +7,10 @@ citations (ADR-0022/0023/0024 groundwork). Weak local models (kind
 no tool loop — mirroring the pipeline's ``retrieval mode`` tool/prefetch
 split.
 
-Tools available to the agent: ``kb_search`` and ``load_skill`` (runtime skills,
-ADR-0022). MCP tools land in a later slice (#120).
+Tools available to the strong-model loop: ``kb_search``, ``load_skill``
+(runtime skills, ADR-0022), an opt-in ``web_search`` (self-built, #120), and
+any enabled MCP tools (ADR-0024). The prefetch path (weak/thinking models)
+stays single-shot with injected KB + skill.
 """
 
 from __future__ import annotations
@@ -22,6 +24,7 @@ from ..providers.registry import make_provider
 from ..providers.types import Message, SamplingParams, ToolDef
 from ..session.types import Model
 from ..skills import Skill, SkillRegistry
+from ..websearch import make_web_search_tool
 from .tools import make_kb_search_tool, render_tool_result
 
 CHAT_MAX_TURNS = 6  # tool-call rounds before we answer with what we have
@@ -169,6 +172,18 @@ def run_chat_agent(
                     "snippet": (h.get("content") or "")[:240],
                 }
 
+    def collect_web(payload: dict[str, Any]) -> None:
+        for r in payload.get("results", []):
+            url = r.get("url") or r.get("title")
+            if url and url not in citations:
+                citations[url] = {
+                    "chunk_id": url,
+                    "document_id": None,
+                    "source_path": r.get("url") or "",
+                    "heading_path": [],
+                    "snippet": (r.get("snippet") or "")[:240],
+                }
+
     def accumulate(resp: Any) -> None:
         usage["input_tokens"] += resp.usage.input_tokens
         usage["output_tokens"] += resp.usage.output_tokens
@@ -209,8 +224,31 @@ def run_chat_agent(
         accumulate(pf_resp)
         return ChatAgentResult(str(pf_resp.content), list(citations.values()), usage)
 
-    # ── Strong models: ReAct loop with kb_search (+ load_skill). ─────────
+    # ── Strong models: ReAct loop with kb_search (+ load_skill, web, MCP). ──
     has_skills = registry is not None and len(registry) > 0
+
+    # Optional web_search tool (opt-in; egresses the query — ADR-0024/#120).
+    web_tool: ToolDef | None = None
+    web_handler = None
+    if getattr(state, "web_search_enabled", False):
+        web_tool, web_handler = make_web_search_tool()
+
+    # MCP tools from the registry, injected into the chat loop (ADR-0024).
+    mcp_registry = getattr(state, "mcp_registry", None)
+    mcp_tool_defs: list[ToolDef] = []
+    if mcp_registry is not None:
+        try:
+            mcp_registry.refresh_all_tools()
+            mcp_tool_defs = mcp_registry.as_tool_defs()
+        except Exception:  # noqa: BLE001 — a bad MCP server must not break chat
+            mcp_tool_defs = []
+    mcp_names = {t.name for t in mcp_tool_defs}
+
+    domain_tools: list[ToolDef] = [tool_def]
+    if web_tool is not None:
+        domain_tools.append(web_tool)
+    domain_tools += mcp_tool_defs
+
     system_prompt = _SYSTEM_PROMPT_BASE + _TOOL_HINT
     if has_skills and registry is not None:
         system_prompt += _catalog_prompt(registry)
@@ -221,13 +259,14 @@ def run_chat_agent(
     active_skill: Skill | None = None  # once loaded, restricts the domain tools
 
     def _tools_for_turn() -> list[ToolDef]:
-        tools: list[ToolDef] = []
-        if has_skills:
-            tools.append(_LOAD_SKILL_TOOL)
+        tools: list[ToolDef] = [_LOAD_SKILL_TOOL] if has_skills else []
         # Before a skill is loaded, all domain tools are available; after,
         # only those the skill declares (ADR-0022).
-        if active_skill is None or "kb_search" in active_skill.allowed_tools:
-            tools.append(tool_def)
+        if active_skill is None:
+            tools += domain_tools
+        else:
+            allowed = set(active_skill.allowed_tools)
+            tools += [t for t in domain_tools if t.name in allowed]
         return tools
 
     resp: Any = None
@@ -275,6 +314,36 @@ def run_chat_agent(
                         active_skill = skill
                         emit({"type": "skill_loaded", "skill": skill.id})
                         rendered = _skill_body(skill)
+                elif tc.name == "web_search" and web_handler is not None:
+                    emit(
+                        {
+                            "type": "tool_call",
+                            "tool": "web_search",
+                            "query": str(tc.arguments.get("query", "")),
+                        }
+                    )
+                    try:
+                        payload = web_handler(tc.arguments)
+                    except Exception as e:  # noqa: BLE001 — surface tool errors to the model
+                        payload = {"results": [], "_error": f"{type(e).__name__}: {e}"}
+                    collect_web(payload)
+                    emit(
+                        {
+                            "type": "tool_result",
+                            "tool": "web_search",
+                            "hits": len(payload.get("results", [])),
+                        }
+                    )
+                    rendered = render_tool_result(payload)
+                elif tc.name in mcp_names and mcp_registry is not None:
+                    emit({"type": "tool_call", "tool": tc.name, "query": ""})
+                    try:
+                        mcp_result = mcp_registry.call_tool(tc.name, tc.arguments)
+                        payload = {"text": mcp_result.text, "is_error": mcp_result.is_error}
+                    except Exception as e:  # noqa: BLE001 — surface tool errors to the model
+                        payload = {"_error": f"{type(e).__name__}: {e}"}
+                    emit({"type": "tool_result", "tool": tc.name, "hits": 0})
+                    rendered = render_tool_result(payload)
                 else:
                     rendered = render_tool_result({"_error": f"unknown tool: {tc.name}"})
                 provider_msgs.append(
