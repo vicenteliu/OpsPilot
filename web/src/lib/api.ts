@@ -575,6 +575,7 @@ export type ChatStreamEvent =
   | { type: 'tool_call'; tool: string; query: string }
   | { type: 'tool_result'; tool: string; hits: number }
   | { type: 'skill_loaded'; skill: string }
+  | { type: 'routing'; tier: string }
   | { type: 'result'; data: ChatResult }
   | { type: 'error'; message: string };
 
@@ -616,6 +617,8 @@ export async function* chatStream(
           yield { type: 'tool_result', tool: payload.tool, hits: payload.hits };
         } else if (currentEvent === 'skill_loaded') {
           yield { type: 'skill_loaded', skill: payload.skill };
+        } else if (currentEvent === 'routing') {
+          yield { type: 'routing', tier: payload.tier };
         } else if (currentEvent === 'result') {
           yield { type: 'result', data: payload };
         } else if (currentEvent === 'error') {

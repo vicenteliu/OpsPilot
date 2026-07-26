@@ -35,6 +35,8 @@
           chatSteps = [...chatSteps, `↳ ${event.hits} result${event.hits === 1 ? '' : 's'}`];
         } else if (event.type === 'skill_loaded') {
           chatSteps = [...chatSteps, `📋 Using skill: ${event.skill}`];
+        } else if (event.type === 'routing') {
+          chatSteps = [...chatSteps, `🧭 Routed to ${event.tier} tier`];
         } else if (event.type === 'result') {
           chatMessages = [
             ...chatMessages,

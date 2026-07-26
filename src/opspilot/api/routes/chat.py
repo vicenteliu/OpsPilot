@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from typing import Any, Literal, cast
 
 from fastapi import APIRouter, Request
@@ -37,19 +37,42 @@ def _sse(event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-def resolve_tier_model_id(
-    *, cheap: str | None, thinking: str | None, deep_thinking: bool, explicit: str | None
-) -> str | None:
-    """Pick the model for a chat turn from the configured tiers (ADR-0023).
+def route_chat_model(
+    *,
+    cheap: str | None,
+    thinking: str | None,
+    deep_thinking: bool,
+    explicit: str | None,
+    triage: Callable[[], bool],
+) -> tuple[str | None, dict[str, Any] | None]:
+    """Pick the model for a chat turn and an optional routing step (ADR-0023).
 
-    Deep-thinking prefers the thinking tier; a normal turn prefers the cheap
-    tier. Either degrades to the other tier, then to the explicitly-selected
-    model, so unconfigured tiers leave the header selection untouched. Auto
-    complexity triage (#118) layers on top of this later.
+    - ``deep_thinking`` forces the thinking tier (triage is *not* called).
+    - else, when both tiers are configured, ``triage()`` decides: complex →
+      thinking, simple → cheap, and a ``routing`` step is returned to surface it.
+    - else, the cheap tier (or the header-selected model) is used — triage is
+      *not* called, so unconfigured tiers leave the header selection untouched.
     """
     if deep_thinking:
-        return thinking or cheap or explicit
-    return cheap or explicit
+        return (thinking or cheap or explicit), None
+    if cheap and thinking:
+        is_complex = triage()
+        tier = thinking if is_complex else cheap
+        return tier, {"type": "routing", "tier": "thinking" if is_complex else "cheap"}
+    return (cheap or explicit), None
+
+
+def _triage_is_complex(state: Any, cheap_model_id: str | None, text: str) -> bool:
+    """Run the cheap-model complexity triage; any failure degrades to simple."""
+    try:
+        from ...orchestrator.chat_agent import resolve_model
+        from ...orchestrator.triage import triage_complexity
+
+        provider, model = resolve_model(state, cheap_model_id)
+        is_complex, _ = triage_complexity(provider, model_name=model.name, text=text)
+        return is_complex
+    except Exception:  # noqa: BLE001 — triage failure must not break the chat; use cheap
+        return False
 
 
 def answer_chat(state: Any, messages: list[dict[str, str]]) -> str:
@@ -100,15 +123,10 @@ async def chat_stream(body: ChatRequest, request: Request) -> StreamingResponse:
     queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
     messages = [{"role": m.role, "content": m.content} for m in body.messages]
 
-    # Resolve the tier: deep-thinking → thinking tier, else cheap tier; falls
-    # back to the header-selected model when tiers aren't configured (ADR-0023).
     settings = getattr(state, "settings", None)
-    model_id = resolve_tier_model_id(
-        cheap=settings.get("cheap_model_id") if settings is not None else None,
-        thinking=settings.get("thinking_model_id") if settings is not None else None,
-        deep_thinking=body.deep_thinking,
-        explicit=body.model_id,
-    )
+    cheap = settings.get("cheap_model_id") if settings is not None else None
+    thinking = settings.get("thinking_model_id") if settings is not None else None
+    last_user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
 
     def on_step(step: dict[str, Any]) -> None:
         loop.call_soon_threadsafe(queue.put_nowait, step)
@@ -117,10 +135,21 @@ async def chat_stream(body: ChatRequest, request: Request) -> StreamingResponse:
         try:
             from ...orchestrator.chat_agent import run_chat_agent
 
-            result = await loop.run_in_executor(
-                None,
-                lambda: run_chat_agent(state, messages, model_id=model_id, on_step=on_step),
-            )
+            def _plan_and_run() -> Any:
+                # Tier routing (deep toggle wins; else cheap-model triage when both
+                # tiers are set). The triage LLM call runs here, off the event loop.
+                model_id, routing = route_chat_model(
+                    cheap=cheap,
+                    thinking=thinking,
+                    deep_thinking=body.deep_thinking,
+                    explicit=body.model_id,
+                    triage=lambda: _triage_is_complex(state, cheap, last_user),
+                )
+                if routing is not None:
+                    on_step(routing)
+                return run_chat_agent(state, messages, model_id=model_id, on_step=on_step)
+
+            result = await loop.run_in_executor(None, _plan_and_run)
             await queue.put(
                 {
                     "type": "result",
@@ -139,7 +168,7 @@ async def chat_stream(body: ChatRequest, request: Request) -> StreamingResponse:
         while True:
             event = await queue.get()
             etype = event.get("type")
-            if etype in ("status", "tool_call", "tool_result", "skill_loaded"):
+            if etype in ("status", "tool_call", "tool_result", "skill_loaded", "routing"):
                 yield _sse(etype, event)
             elif etype == "result":
                 yield _sse("result", event["data"])
