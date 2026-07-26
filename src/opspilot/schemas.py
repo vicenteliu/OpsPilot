@@ -15,6 +15,7 @@ discovers all ``*.schema.json`` files and exposes:
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Iterable
 from functools import lru_cache
 from pathlib import Path
@@ -47,9 +48,15 @@ def _discover_schemas(repo_root: Path) -> dict[str, dict[str, Any]]:
     *name* = filename without ``.schema.json`` suffix (e.g. ``kb-document``).
     Raises :class:`SchemaError` on duplicate names.
     """
+    # When pip-installed outside the repo (the Docker image), the shipped
+    # specs live at OPSPILOT_SPECS_DIR; otherwise resolve under the repo root.
+    specs_override = os.environ.get("OPSPILOT_SPECS_DIR")
     out: dict[str, dict[str, Any]] = {}
     for d in SCHEMA_SEARCH_DIRS:
-        sd = repo_root / d / "schemas"
+        if specs_override:
+            sd = Path(specs_override) / Path(d).relative_to("docs/specs") / "schemas"
+        else:
+            sd = repo_root / d / "schemas"
         if not sd.is_dir():
             continue
         for f in sorted(sd.glob("*.schema.json")):

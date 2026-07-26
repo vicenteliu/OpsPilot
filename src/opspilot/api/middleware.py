@@ -90,7 +90,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
         self._token = token
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        if request.url.path in _AUTH_EXEMPT_PATHS:
+        path = request.url.path
+        if path in _AUTH_EXEMPT_PATHS:
+            return await call_next(request)
+
+        # The web UI (SPA shell + static assets) is public — its content is
+        # gated client-side and every data call is under /api (ADR-0020). Only
+        # the API and the /metrics ops endpoint are token/cookie-guarded here;
+        # otherwise the all-in-one image could never serve its own login page.
+        if not path.startswith("/api/") and path != "/metrics":
             return await call_next(request)
 
         # A logged-in browser carries a session cookie, not a bearer token

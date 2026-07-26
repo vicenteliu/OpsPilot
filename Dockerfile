@@ -34,6 +34,8 @@ WORKDIR /build
 
 # Install dependencies first so `pip install -e .` later is fast.
 COPY pyproject.toml ./
+# hatchling reads README.md for the package's long-description metadata.
+COPY README.md ./
 COPY src ./src
 COPY docs/specs/memory/storage/sqlite-schema.sql ./docs/specs/memory/storage/sqlite-schema.sql
 
@@ -54,10 +56,12 @@ RUN useradd --create-home --uid 1001 opspilot
 USER opspilot
 WORKDIR /home/opspilot
 
-# Install the wheels from the builder.
-COPY --from=builder /wheels /wheels
-RUN pip install --no-index --find-links=/wheels --user opspilot \
-    && rm -rf /wheels
+# Install the wheels from the builder. They live under the user's home so the
+# non-root user can install and then delete them (removing a dir needs write
+# on its parent, and / is root-owned).
+COPY --from=builder --chown=opspilot:opspilot /wheels ./wheels
+RUN pip install --no-index --find-links=./wheels --user opspilot \
+    && rm -rf ./wheels
 
 # Copy spec dirs the runtime needs (sqlite schema + json schemas
 # discovered by opspilot.schemas). Specs live under docs/specs/.
@@ -71,6 +75,9 @@ COPY --from=webbuilder --chown=opspilot:opspilot /web/build ./web/build
 ENV PATH="/home/opspilot/.local/bin:${PATH}"
 ENV LANCEDB_CONFIG_DIR="/home/opspilot/.config/lancedb"
 ENV OPSPILOT_HOME="/home/opspilot/.opspilot"
+# The package resolves its spec schemas relative to the repo root in dev; when
+# pip-installed here it reads them from the shipped copy via this override.
+ENV OPSPILOT_SPECS_DIR="/home/opspilot/docs/specs"
 # FastAPI serves the UI from here (opspilot.api.app._mount_ui).
 ENV OPSPILOT_UI_DIR="/home/opspilot/web/build"
 

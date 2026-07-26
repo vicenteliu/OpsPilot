@@ -19,6 +19,7 @@ Returns text + structured hits + a per-rule summary.
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 from collections import Counter
 from dataclasses import dataclass
@@ -30,9 +31,14 @@ import yaml
 from .errors import RedactionError
 
 # Spec rules live in the OpsPilot spec tree (not under src/opspilot/).
-_REPO_ROOT: Final[Path] = Path(__file__).resolve().parents[2]
+# OPSPILOT_SPECS_DIR overrides the location when pip-installed (Docker image).
+_SPECS_DIR: Final[Path] = (
+    Path(os.environ["OPSPILOT_SPECS_DIR"])
+    if os.environ.get("OPSPILOT_SPECS_DIR")
+    else Path(__file__).resolve().parents[2] / "docs" / "specs"
+)
 DEFAULT_RULES_PATH: Final[Path] = (
-    _REPO_ROOT / "docs" / "specs" / "session" / "templates" / "redaction-rules.template.yaml"
+    _SPECS_DIR / "session" / "templates" / "redaction-rules.template.yaml"
 )
 
 

@@ -19,17 +19,22 @@ to the repo root via :data:`SCHEMA_SQL_PATH`.
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from pathlib import Path
 from typing import Final
 
-# Repo-root-relative path to the spec schema. The package lives at
-# ``src/opspilot/memory/`` so we walk up four parents to reach repo root,
-# then descend into ``docs/specs/memory/storage/``.
+# Path to the spec schema. In the repo the package lives at
+# ``src/opspilot/memory/`` so we walk up four parents to reach repo root and
+# descend into ``docs/specs``. When pip-installed outside the repo (the Docker
+# image), ``OPSPILOT_SPECS_DIR`` points at the shipped ``docs/specs`` dir.
 _THIS_FILE = Path(__file__).resolve()
-SCHEMA_SQL_PATH: Final[Path] = (
-    _THIS_FILE.parents[3] / "docs" / "specs" / "memory" / "storage" / "sqlite-schema.sql"
+_SPECS_DIR: Final[Path] = (
+    Path(os.environ["OPSPILOT_SPECS_DIR"])
+    if os.environ.get("OPSPILOT_SPECS_DIR")
+    else _THIS_FILE.parents[3] / "docs" / "specs"
 )
+SCHEMA_SQL_PATH: Final[Path] = _SPECS_DIR / "memory" / "storage" / "sqlite-schema.sql"
 
 # Recommended PRAGMAs from the schema header. Applied on every connection
 # (some are connection-scoped, e.g. mmap_size; others persist in the file).
