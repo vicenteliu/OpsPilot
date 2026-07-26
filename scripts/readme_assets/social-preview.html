@@ -33,10 +33,13 @@
     position: absolute; right: -180px; top: -180px; width: 560px; height: 560px;
     background: radial-gradient(circle, rgba(34,211,238,0.13), transparent 65%);
   }
-  .brand { display: flex; align-items: center; gap: 22px; position: relative; }
-  .dot {
-    width: 26px; height: 26px; border-radius: 50%;
-    background: var(--cyan); box-shadow: 0 0 34px var(--cyan);
+  .brand { display: flex; align-items: center; gap: 42px; position: relative; }
+  /* Brand mark at the h1 cap height, gap 0.4x its width — see docs/assets/logo.svg.
+     An <img> rather than a CSS mask: Chrome blocks mask-image over file://,
+     which is how render.sh loads this page. */
+  .mark {
+    width: 106px; height: 66px;
+    filter: drop-shadow(0 0 34px rgba(34, 211, 238, 0.55));
   }
   h1 { font-size: 92px; font-weight: 800; letter-spacing: -0.02em; }
   .tagline {
@@ -62,7 +65,7 @@
 <body>
   <div class="grid"></div>
   <div class="glow"></div>
-  <div class="brand"><span class="dot"></span><h1>OpsPilot</h1></div>
+  <div class="brand"><img class="mark" src="../../docs/assets/logo-on-dark.svg" alt=""><h1>OpsPilot</h1></div>
   <div class="tagline">AI-augmented IT ops workbench</div>
   <div class="sub">Incidents in&thinsp;&rarr;&thinsp;KB-cited, schema-validated, auditable summaries out</div>
   <div class="pills">

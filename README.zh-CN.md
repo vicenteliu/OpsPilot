@@ -1,4 +1,9 @@
-# OpsPilot
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-on-dark.svg">
+    <img src="docs/assets/logo-on-light.svg" alt="" width="37" height="23">
+  </picture>&nbsp; OpsPilot
+</h1>
 
 **AI 增强的 IT 运维工作台 —— 规格驱动、多模型、多用户、本地优先**
 

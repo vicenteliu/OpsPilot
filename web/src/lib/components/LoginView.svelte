@@ -35,7 +35,7 @@
 <div class="login-wrap">
   <form class="login-card" onsubmit={submit}>
     <div class="login-brand">
-      <span class="brand-dot"></span>
+      <span class="brand-mark"></span>
       <span class="brand-name">OpsPilot</span>
     </div>
     <p class="login-sub">Sign in to the workbench</p>
@@ -91,12 +91,16 @@
     gap: 0.55rem;
   }
 
-  .brand-dot {
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
+  /* Brand mark — see the note in routes/+page.svelte; sized to the cap height
+     of this card's slightly larger .brand-name. */
+  .brand-mark {
+    width: 22px;
+    height: 14px;
     background: var(--primary);
-    box-shadow: 0 0 8px var(--primary);
+    -webkit-mask: url('/logo.svg') center / contain no-repeat;
+    mask: url('/logo.svg') center / contain no-repeat;
+    filter: drop-shadow(0 0 6px var(--primary));
+    flex-shrink: 0;
   }
 
   .brand-name {
