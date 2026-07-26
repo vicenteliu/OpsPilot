@@ -1,6 +1,6 @@
 # OpsPilot
 
-**AI-augmented IT ops workbench — spec-driven, multi-provider, local-first**
+**AI-augmented IT ops workbench — spec-driven, multi-provider, multi-user, local-first**
 
 [![CI](https://github.com/vicenteliu/OpsPilot/actions/workflows/ci.yml/badge.svg)](https://github.com/vicenteliu/OpsPilot/actions/workflows/ci.yml)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](pyproject.toml)
@@ -39,8 +39,10 @@ practical work-assistance layer for IT support look like?**
 
 - **Multi-provider** — Anthropic Claude, OpenAI, OpenRouter, Gemini, xAI
   Grok, or local Ollama; playbooks declare a primary model plus selectable
-  alternates (down to a local Gemma), switchable per-run from the UI, with
-  automatic fallback when a provider errors
+  alternates (down to a local Gemma), switchable per-run from the UI or set
+  as a team default in the admin module, with automatic fallback when a
+  provider errors. Embeddings default to local Ollama and fall back to
+  OpenAI (with a visible notice) when Ollama is unavailable
 - **Work-item intake** — pull tickets straight from Jira Service Management
   on a JQL scope and post the AI suggestion back as a comment on the ticket:
   polling-only (no public endpoint), comment-only (no field is ever touched),
@@ -64,13 +66,16 @@ practical work-assistance layer for IT support look like?**
 - **Interfaces & channels** — CLI, REPL terminal UI (Textual, slash
   commands), tabbed web UI (Svelte 5) with KB-augmented chat, FastAPI
   backend; a Telegram channel brings the KB chat into your messenger and
-  files work items with `/intake`; a WeCom group robot receives every
-  intake suggestion (notify mode)
+  files work items with `/intake`; WeCom connects both ways — a group robot
+  pushes intake suggestions (notify), and a self-built app answers KB
+  questions in chat (assist)
 - **Multi-user & SSO** — login-gated web UI with three roles
   (viewer / operator / admin); authenticate against local accounts,
-  LDAP / Active Directory, or OIDC SSO; an admin module for users and
-  group→role mapping. Ships as an all-in-one Docker image — one
-  `docker run` is a complete workbench
+  LDAP / Active Directory, or OIDC SSO, with group→role mapping and an
+  admin module for users, roles, provider status, and audit. Machine
+  callers (channels, intake) use a Service token; secrets stay in the
+  environment, never the database. Ships as an all-in-one Docker image —
+  one `docker run` is a complete, login-gated workbench
 - **Observability** — Prometheus `/metrics`, OTel-compatible JSON logs,
   `/health`
 - **Rust hot paths** — chunker (~10×) and tokenizer (~45×) compiled via
@@ -155,6 +160,23 @@ intake at your [Jira Service Management project](docs/sources.md) — a
 free-tier site connects in about ten minutes — so new tickets get summarised
 and commented automatically.
 
+### Or: one container (all-in-one)
+
+The image bundles the built web UI, so a single container is a complete,
+login-gated workbench ([docs/deployment.md](docs/deployment.md)):
+
+```bash
+docker build -t opspilot:latest .
+docker run -p 8000:8000 \
+  -e OPSPILOT_API_TOKEN="$(openssl rand -hex 32)" \
+  -e OPSPILOT_BOOTSTRAP_ADMIN=admin -e OPSPILOT_BOOTSTRAP_PASSWORD='<strong-pw>' \
+  -e ANTHROPIC_API_KEY=sk-ant-... \
+  -e OPSPILOT_OLLAMA_BASE_URL=http://host.docker.internal:11434 \
+  -v opspilot-data:/home/opspilot/.opspilot \
+  opspilot:latest serve --host 0.0.0.0 --port 8000
+# → http://localhost:8000, sign in as the bootstrap admin
+```
+
 ## Architecture
 
 ![OpsPilot system architecture](docs/assets/architecture.png)
@@ -182,14 +204,19 @@ flow, the six-layer system design, provider routing, and retrieval modes.
 
 ## Safety
 
-- OpsPilot is **single-user**; local use needs no auth, and remote binding
-  is fail-closed — it requires a bearer token, plus TLS in front
-  ([ADR-0011](docs/adr/0011-remote-access-bearer-token-proxy-tls.md),
+- **Multi-user with three roles** (viewer / operator / admin) via local
+  accounts, LDAP/AD, or OIDC SSO. Loopback dev stays friction-free; remote
+  binding is fail-closed on a token, with TLS in front; machine callers use
+  a Service token
+  ([ADR-0020](docs/adr/0020-multi-user-auth-three-roles-three-sources.md),
+  [ADR-0011](docs/adr/0011-remote-access-bearer-token-proxy-tls.md),
   [SECURITY.md](SECURITY.md))
+- **Secrets stay in the environment** — cloud API keys and LDAP/OIDC
+  credentials are read from env vars, never committed and never stored in
+  the database; the admin module shows status, not secrets
 - The redaction layer strips PII from structured work items, but always
   sanitize manually before pasting content into any model or tool
-- Cloud API keys are resolved from environment variables — never committed
-- Session traces stay local in `~/.opspilot/sessions/`
+- Session traces and all state stay local under `~/.opspilot/`
 
 ## License
 
