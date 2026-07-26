@@ -555,6 +555,38 @@ def upsert_skill(skill_id: str, body: SkillUpsert, request: Request) -> SkillDet
     return _skill_detail(saved)
 
 
+class SkillDraftRequest(BaseModel):
+    description: str
+    conversation: list[dict[str, str]] | None = None
+
+
+@router.post("/admin/skills/draft", response_model=SkillDetail, dependencies=[_admin])
+def draft_skill_route(body: SkillDraftRequest, request: Request) -> SkillDetail:
+    """Draft a SKILL.md from a description with the LLM; return it for review.
+
+    Nothing is written — the draft pre-fills the editor and the admin saves it
+    via PUT (ADR-0022). LLM failures surface as 502, never a 500.
+    """
+    from ...skill_drafter import SkillDraftError, draft_skill
+
+    if not body.description.strip():
+        raise HTTPException(status_code=422, detail="description is required")
+    state = request.app.state
+    try:
+        skill = draft_skill(
+            state.chat_provider,
+            model_name=state.playbook.model.name,
+            description=body.description,
+            allowed_tools=sorted(_KNOWN_SKILL_TOOLS),
+            conversation=body.conversation,
+        )
+    except SkillDraftError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001 — provider/network failures → 502, not 500
+        raise HTTPException(status_code=502, detail=f"drafting failed: {exc}") from exc
+    return _skill_detail(skill)
+
+
 # ── login audit ─────────────────────────────────────────────────────────────
 
 

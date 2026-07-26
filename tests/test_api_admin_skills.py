@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+import types
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -11,7 +12,20 @@ from fastapi.testclient import TestClient
 from opspilot.api.routes.admin import router as admin_router
 from opspilot.api.routes.auth import router as auth_router
 from opspilot.auth import AuthStore
+from opspilot.providers.types import ChatResponse, Usage
 from opspilot.skills import SkillRegistry
+
+_DRAFT_JSON = (
+    '{"id": "printer-offline", "name": "Printer offline", '
+    '"trigger": "A shared printer shows offline.", '
+    '"allowed_tools": ["kb_search"], "body": "# Steps\\n\\n1. Power-cycle it."}'
+)
+
+
+class FakeChatProvider:
+    def chat(self, messages, *, model, params, tools=None, timeout_ms=90_000):  # type: ignore[no-untyped-def]
+        return ChatResponse(content=_DRAFT_JSON, finish_reason="stop", usage=Usage())
+
 
 _VALID = {
     "name": "VPN auth failures",
@@ -31,6 +45,8 @@ def _client(tmp_path: Path) -> tuple[TestClient, Path, FastAPI]:
     app.state.auth = store
     app.state.service_token = None
     app.state.skills = SkillRegistry.load(tmp_path)  # empty registry, base_dir=tmp_path
+    app.state.chat_provider = FakeChatProvider()
+    app.state.playbook = types.SimpleNamespace(model=types.SimpleNamespace(name="m"))
     store.upsert_user("root", role="admin", password="pw")
     store.upsert_user("olga", role="operator", password="pw")
     return TestClient(app), tmp_path, app
@@ -99,11 +115,31 @@ def test_rejects_missing_fields_and_unknown_tool(tmp_path: Path) -> None:
     )
 
 
+def test_draft_returns_editable_skill(tmp_path: Path) -> None:
+    c, _, _ = _client(tmp_path)
+    _login(c, "root")
+    r = c.post("/api/admin/skills/draft", json={"description": "printer keeps going offline"})
+    assert r.status_code == 200
+    d = r.json()
+    assert d["id"] == "printer-offline"
+    assert d["allowed_tools"] == ["kb_search"]
+    assert "Power-cycle" in d["body"]
+    # Nothing was written — drafting only proposes.
+    assert c.get("/api/admin/skills").json()["skills"] == []
+
+
+def test_draft_requires_description(tmp_path: Path) -> None:
+    c, _, _ = _client(tmp_path)
+    _login(c, "root")
+    assert c.post("/api/admin/skills/draft", json={"description": "  "}).status_code == 422
+
+
 def test_operator_forbidden(tmp_path: Path) -> None:
     c, _, _ = _client(tmp_path)
     _login(c, "olga")
     assert c.get("/api/admin/skills").status_code == 403
     assert c.put("/api/admin/skills/x", json=_VALID).status_code == 403
+    assert c.post("/api/admin/skills/draft", json={"description": "x"}).status_code == 403
 
 
 def test_anonymous_401(tmp_path: Path) -> None:
