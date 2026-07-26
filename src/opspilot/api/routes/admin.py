@@ -6,6 +6,7 @@ source status — it never stores connection secrets (those are env-only).
 
 from __future__ import annotations
 
+import logging
 import os
 from typing import Any
 
@@ -16,6 +17,8 @@ from ...auth import require_role
 from ...auth.store import ROLES
 
 router = APIRouter()
+
+logger = logging.getLogger("opspilot.api.admin")
 
 _admin = Depends(require_role("admin"))
 
@@ -423,9 +426,16 @@ def set_playbook_models(body: PlaybookModelsUpdate, request: Request) -> Playboo
     pb = load_playbook(source_dir)
     state.playbook = pb
     state.active_model_ref = f"{pb.model.provider_id}/{pb.model.name}@{pb.model.version}"
-    state.chat_provider = make_provider(
-        pb.model.provider_id, kind=pb.model.kind, api_key=state.cfg.anthropic_api_key
-    )
+    # Best-effort: a primary whose provider can't be built right now (e.g. its
+    # API key isn't set yet) must not fail the save — the file is already
+    # written and the issue surfaces at run time — so keep the previous
+    # provider and log rather than 500.
+    try:
+        state.chat_provider = make_provider(
+            pb.model.provider_id, kind=pb.model.kind, api_key=state.cfg.anthropic_api_key
+        )
+    except Exception:  # noqa: BLE001 — provider issues surface at run time, not on save
+        logger.warning("could not rebuild primary provider after model-list edit", exc_info=True)
 
     # Drop a team-default that no longer points at an offered model.
     settings = getattr(state, "settings", None)

@@ -6,6 +6,7 @@ import sqlite3
 import types
 from pathlib import Path
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -142,13 +143,14 @@ def test_get_returns_primary_and_extras(tmp_path: Path) -> None:
 def test_put_writes_reloads_and_rebuilds(tmp_path: Path) -> None:
     c, d, app = _client(tmp_path)
     _login(c, "root")
+    # Local (ollama) primary builds offline — no API key needed in CI.
     payload = {
         "models": [
             {
-                "provider_id": "anthropic",
-                "kind": "anthropic",
-                "name": "claude-haiku-4-5-new",
-                "version": "2025-06",
+                "provider_id": "ollama-local",
+                "kind": "ollama",
+                "name": "gemma4:e4b",
+                "version": "2026-06",
                 "params": {"temperature": 0.2},
                 "primary": True,
             },
@@ -156,14 +158,38 @@ def test_put_writes_reloads_and_rebuilds(tmp_path: Path) -> None:
     }
     r = c.put("/api/admin/playbook-models", json=payload)
     assert r.status_code == 200
-    assert [m["name"] for m in r.json()["models"]] == ["claude-haiku-4-5-new"]
+    assert [m["name"] for m in r.json()["models"]] == ["gemma4:e4b"]
     # File on disk updated + comments intact.
     text = (d / "playbook.yaml").read_text(encoding="utf-8")
-    assert "claude-haiku-4-5-new" in text and "# Loop bounds." in text
+    assert "gemma4:e4b" in text and "# Loop bounds." in text
     # Live reload: state.playbook, active_model_ref, chat_provider all refreshed.
-    assert app.state.playbook.model.name == "claude-haiku-4-5-new"
-    assert app.state.active_model_ref == "anthropic/claude-haiku-4-5-new@2025-06"
+    assert app.state.playbook.model.name == "gemma4:e4b"
+    assert app.state.active_model_ref == "ollama-local/gemma4:e4b@2026-06"
     assert app.state.chat_provider is not None  # rebuilt (was None)
+
+
+def test_put_survives_unbuildable_primary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A primary whose provider can't be built (no key) still saves; no 500."""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    c, d, app = _client(tmp_path)  # cfg.anthropic_api_key is None
+    _login(c, "root")
+    r = c.put(
+        "/api/admin/playbook-models",
+        json={
+            "models": [
+                {
+                    "provider_id": "anthropic",
+                    "kind": "anthropic",
+                    "name": "claude-haiku-4-5-new",
+                    "version": "2025-06",
+                    "primary": True,
+                }
+            ]
+        },
+    )
+    assert r.status_code == 200
+    assert app.state.playbook.model.name == "claude-haiku-4-5-new"  # reloaded despite provider fail
+    assert "claude-haiku-4-5-new" in (d / "playbook.yaml").read_text(encoding="utf-8")
 
 
 def test_put_clears_stale_default(tmp_path: Path) -> None:
