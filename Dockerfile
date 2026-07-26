@@ -72,6 +72,11 @@ COPY --chown=opspilot:opspilot examples ./examples
 # Built web UI (login + admin + app), served by FastAPI (all-in-one, ADR-0020).
 COPY --from=webbuilder --chown=opspilot:opspilot /web/build ./web/build
 
+# Pre-create the state dir owned by the non-root user, so a named volume
+# mounted here inherits opspilot ownership instead of Docker's root default
+# (otherwise the app can't create kb/ on first start).
+RUN mkdir -p /home/opspilot/.opspilot
+
 ENV PATH="/home/opspilot/.local/bin:${PATH}"
 ENV LANCEDB_CONFIG_DIR="/home/opspilot/.config/lancedb"
 ENV OPSPILOT_HOME="/home/opspilot/.opspilot"

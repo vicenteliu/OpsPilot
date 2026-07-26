@@ -780,46 +780,65 @@ def test_prefetch_query_fallback_when_fields_missing(
     assert tool_calls[0]["args"]["query"]  # non-empty
 
 
-def test_correct_citation_chunk_ids_fixes_typo() -> None:
+def _hit(chunk_id: str, document_id: str, **cit: object) -> dict:
+    return {"chunk_id": chunk_id, "document_id": document_id, "citation": cit}
+
+
+def test_correct_citations_fixes_chunk_id_typo() -> None:
     """gemma4:e4b drops a hex digit when copying chunk_ids out of the
     prefetch addendum (observed on host: chk_0cf89826 → chk_0cf8926).
-    PR-8.5 hotfix-5 fuzzy-corrects within edit distance 1."""
-    from opspilot.orchestrator.ticket_summary import _correct_citation_chunk_ids
+    Fuzzy-corrects within edit distance 1, then stamps the real doc id."""
+    from opspilot.orchestrator.ticket_summary import _correct_citations_from_prefetch
 
-    valid = {"chk_0cf89826", "chk_ea5a0261"}
+    hits = [_hit("chk_0cf89826", "doc_11111111"), _hit("chk_ea5a0261", "doc_22222222")]
     summary = {
         "citations": [
-            {"id": "kb-1", "chunk_id": "chk_0cf8926"},  # 1 digit dropped
-            {"id": "kb-2", "chunk_id": "chk_ea5a0261"},  # already correct
+            {"id": "kb-1", "chunk_id": "chk_0cf8926", "document_id": "doc_11111111"},
+            {"id": "kb-2", "chunk_id": "chk_ea5a0261", "document_id": "doc_22222222"},
         ]
     }
-    _correct_citation_chunk_ids(summary, valid)
+    _correct_citations_from_prefetch(summary, hits)
     assert summary["citations"][0]["chunk_id"] == "chk_0cf89826"
     assert summary["citations"][1]["chunk_id"] == "chk_ea5a0261"
 
 
-def test_correct_citation_chunk_ids_does_not_overreach() -> None:
+def test_correct_citations_heals_hallucinated_document_id() -> None:
+    """A correct chunk_id with a friendly/hallucinated document_id (e.g.
+    'doc_vpn_sop') gets the authoritative doc id + source from the hit."""
+    from opspilot.orchestrator.ticket_summary import _correct_citations_from_prefetch
+
+    hits = [_hit("chk_0cf89826", "doc_11111111", source_path="kb/vpn.md", line_start=3)]
+    summary = {
+        "citations": [{"id": "kb-1", "chunk_id": "chk_0cf89826", "document_id": "doc_vpn_sop"}]
+    }
+    _correct_citations_from_prefetch(summary, hits)
+    c = summary["citations"][0]
+    assert c["document_id"] == "doc_11111111"
+    assert c["source_path"] == "kb/vpn.md"
+    assert c["line_start"] == 3
+
+
+def test_correct_citations_does_not_overreach() -> None:
     """Edit distance > 1 must NOT auto-correct — that masks real bugs."""
-    from opspilot.orchestrator.ticket_summary import _correct_citation_chunk_ids
+    from opspilot.orchestrator.ticket_summary import _correct_citations_from_prefetch
 
-    valid = {"chk_0cf89826"}
-    summary = {"citations": [{"chunk_id": "chk_999999"}]}  # totally different
-    _correct_citation_chunk_ids(summary, valid)
-    assert summary["citations"][0]["chunk_id"] == "chk_999999"
+    hits = [_hit("chk_0cf89826", "doc_11111111")]
+    summary = {"citations": [{"chunk_id": "chk_999999", "document_id": "doc_bad"}]}
+    _correct_citations_from_prefetch(summary, hits)
+    assert summary["citations"][0]["chunk_id"] == "chk_999999"  # untouched
+    assert summary["citations"][0]["document_id"] == "doc_bad"
 
 
-def test_correct_citation_chunk_ids_handles_malformed_input() -> None:
+def test_correct_citations_handles_malformed_input() -> None:
     """Robust against missing/non-string citations fields."""
-    from opspilot.orchestrator.ticket_summary import _correct_citation_chunk_ids
+    from opspilot.orchestrator.ticket_summary import _correct_citations_from_prefetch
 
-    valid = {"chk_x"}
-    # No citations key
+    hits = [_hit("chk_x", "doc_x")]
     s1: dict = {"summary": "x"}
-    _correct_citation_chunk_ids(s1, valid)
+    _correct_citations_from_prefetch(s1, hits)
     assert s1 == {"summary": "x"}
-    # citations is not a list
     s2 = {"citations": "oops"}
-    _correct_citation_chunk_ids(s2, valid)
+    _correct_citations_from_prefetch(s2, hits)
     assert s2 == {"citations": "oops"}
 
 

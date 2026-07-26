@@ -68,7 +68,6 @@ class IngestRequest(BaseModel):
 async def ingest_docs(body: IngestRequest, request: Request) -> dict[str, Any]:
     """Ingest one or more files into the KB."""
     state = request.app.state
-    cfg = state.cfg
 
     from ...memory.ingestion import IngestConfig
     from ...memory.ingestion import ingest as run_ingest
@@ -78,8 +77,13 @@ async def ingest_docs(body: IngestRequest, request: Request) -> dict[str, Any]:
         kb_id=body.kb_id,
         namespace=body.namespace,
         classification=body.classification,
-        embedding_model=f"ollama-local/{cfg.embed_model}@2026-04",
-        embedding_dim=768,
+        # Stamp records with the vector table's own declared model so the
+        # LanceStore accepts them. Fabricating a different string here (e.g.
+        # a fully-qualified ref while the table was opened with the bare
+        # model name) makes upsert_vectors reject every record — the FTS
+        # write still commits, leaving keyword-only chunks with no vectors.
+        embedding_model=state.lance.embedding_model,
+        embedding_dim=state.lance.dim,
     )
 
     loop = asyncio.get_event_loop()
