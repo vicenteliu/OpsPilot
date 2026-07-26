@@ -6,6 +6,7 @@
     adminListGroupRoles, adminSetGroupRole, adminDeleteGroupRole,
     adminAuthStatus, adminTestConnection, adminLoginAudit,
     adminListProviders, adminTestProvider, adminGetDefaultModel, adminSetDefaultModel,
+    adminGetModelTiers, adminSetModelTiers,
     adminGetPlaybookModels, adminSetPlaybookModels,
     adminListSkills, adminGetSkill, adminSaveSkill, adminDraftSkill,
     adminSystemLogs, getModels,
@@ -124,11 +125,27 @@
 
   const loadProviders = () => guard(async () => { providers = await adminListProviders(); });
 
+  let cheapModel = $state<string>('');
+  let thinkingModel = $state<string>('');
+  let tiersMsg = $state<string>('');
+
   async function loadModelSettings() {
     await guard(async () => {
-      const [models, current] = await Promise.all([getModels(), adminGetDefaultModel()]);
+      const [models, current, tiers] = await Promise.all([
+        getModels(), adminGetDefaultModel(), adminGetModelTiers()
+      ]);
       availableModels = models.models;
       defaultModel = current ?? models.default_id;
+      cheapModel = tiers.cheap_model_id ?? '';
+      thinkingModel = tiers.thinking_model_id ?? '';
+      tiersMsg = '';
+    });
+  }
+
+  async function saveModelTiers() {
+    await guard(async () => {
+      await adminSetModelTiers({ cheap_model_id: cheapModel || null, thinking_model_id: thinkingModel || null });
+      tiersMsg = 'Saved.';
     });
   }
 
@@ -351,6 +368,24 @@
         {#each availableModels as m}<option value={m.id}>{m.label}</option>{/each}
       </select>
       <button class="btn-action" onclick={saveDefaultModel} disabled={!defaultModel}>Set default</button>
+    </div>
+
+    <p class="admin-hint">
+      <strong>Complexity tiers (ADR-0023)</strong> — the Chat "deep thinking" toggle routes to the
+      thinking tier; other turns use the cheap tier. A model reasons deeply only when its own params
+      enable extended thinking. Leave blank to disable a tier.
+    </p>
+    <div class="admin-newrow">
+      <select class="admin-input" bind:value={cheapModel}>
+        <option value="">cheap tier — (none)</option>
+        {#each availableModels as m}<option value={m.id}>{m.label}</option>{/each}
+      </select>
+      <select class="admin-input" bind:value={thinkingModel}>
+        <option value="">thinking tier — (none)</option>
+        {#each availableModels as m}<option value={m.id}>{m.label}</option>{/each}
+      </select>
+      <button class="btn-action" onclick={saveModelTiers}>Save tiers</button>
+      {#if tiersMsg}<span class="admin-ok">{tiersMsg}</span>{/if}
     </div>
 
   {:else if section === 'skills'}

@@ -30,10 +30,26 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     messages: list[ChatMessage]
     model_id: str | None = None
+    deep_thinking: bool = False
 
 
 def _sse(event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+def resolve_tier_model_id(
+    *, cheap: str | None, thinking: str | None, deep_thinking: bool, explicit: str | None
+) -> str | None:
+    """Pick the model for a chat turn from the configured tiers (ADR-0023).
+
+    Deep-thinking prefers the thinking tier; a normal turn prefers the cheap
+    tier. Either degrades to the other tier, then to the explicitly-selected
+    model, so unconfigured tiers leave the header selection untouched. Auto
+    complexity triage (#118) layers on top of this later.
+    """
+    if deep_thinking:
+        return thinking or cheap or explicit
+    return cheap or explicit
 
 
 def answer_chat(state: Any, messages: list[dict[str, str]]) -> str:
@@ -84,6 +100,16 @@ async def chat_stream(body: ChatRequest, request: Request) -> StreamingResponse:
     queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
     messages = [{"role": m.role, "content": m.content} for m in body.messages]
 
+    # Resolve the tier: deep-thinking → thinking tier, else cheap tier; falls
+    # back to the header-selected model when tiers aren't configured (ADR-0023).
+    settings = getattr(state, "settings", None)
+    model_id = resolve_tier_model_id(
+        cheap=settings.get("cheap_model_id") if settings is not None else None,
+        thinking=settings.get("thinking_model_id") if settings is not None else None,
+        deep_thinking=body.deep_thinking,
+        explicit=body.model_id,
+    )
+
     def on_step(step: dict[str, Any]) -> None:
         loop.call_soon_threadsafe(queue.put_nowait, step)
 
@@ -93,7 +119,7 @@ async def chat_stream(body: ChatRequest, request: Request) -> StreamingResponse:
 
             result = await loop.run_in_executor(
                 None,
-                lambda: run_chat_agent(state, messages, model_id=body.model_id, on_step=on_step),
+                lambda: run_chat_agent(state, messages, model_id=model_id, on_step=on_step),
             )
             await queue.put(
                 {

@@ -20,7 +20,7 @@ class FakeProvider:
         self.calls: list[dict[str, Any]] = []
 
     def chat(self, messages, *, model, params, tools=None, timeout_ms=90_000):  # type: ignore[no-untyped-def]
-        self.calls.append({"messages": list(messages), "tools": tools})
+        self.calls.append({"messages": list(messages), "tools": tools, "params": params})
         return self._responses[min(len(self.calls) - 1, len(self._responses) - 1)]
 
 
@@ -226,6 +226,23 @@ def test_unknown_skill_id_is_reported_not_fatal(canned_hits: None) -> None:
     )
     result = run_chat_agent(_state(provider, skills=reg), [{"role": "user", "content": "q"}])
     assert result.content == "recovered"
+
+
+def test_thinking_model_uses_prefetch_and_passes_budget(canned_hits: None) -> None:
+    provider = FakeProvider([_resp("deep answer")])
+    state = _state(provider, kind="anthropic")
+    state.playbook.model.params = {
+        "temperature": 0.5,
+        "max_tokens": 8000,
+        "thinking_budget_tokens": 4000,
+    }
+    result = run_chat_agent(state, [{"role": "user", "content": "hard problem"}])
+    assert result.content == "deep answer"
+    # Thinking → prefetch path: a single call, no tool loop.
+    assert len(provider.calls) == 1
+    assert provider.calls[0]["tools"] is None
+    # The budget reached the provider via SamplingParams.
+    assert provider.calls[0]["params"].thinking_budget_tokens == 4000
 
 
 def test_weak_model_injects_matched_skill(canned_hits: None) -> None:

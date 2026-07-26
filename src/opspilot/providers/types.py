@@ -56,6 +56,8 @@ class SamplingParams(BaseModel):
     max_tokens: int = Field(default=2000, ge=1)
     seed: int | None = None
     stop: list[str] | None = None
+    # Extended-thinking budget (Anthropic); providers that don't support it ignore it.
+    thinking_budget_tokens: int | None = None
 
 
 class Usage(BaseModel):

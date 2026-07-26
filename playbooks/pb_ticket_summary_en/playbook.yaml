@@ -58,6 +58,9 @@ extra_models:
       temperature: 0.2
       top_p: 0.9
       max_tokens: 8192
+      # Extended thinking (ADR-0023): designate this as the thinking tier in the
+      # admin module. The provider forces temperature=1 and max_tokens > budget.
+      thinking_budget_tokens: 4000
   - provider_id: "openrouter"
     kind: "openai"
     name: "google/gemini-2.0-flash-001"

@@ -127,7 +127,14 @@ class AnthropicProvider:
         }
         if system_text:
             kwargs["system"] = system_text
-        if params.temperature is not None:
+        thinking_budget = params.thinking_budget_tokens or 0
+        if thinking_budget > 0:
+            # Extended thinking: budget must be < max_tokens; temperature must be 1
+            # and top_p must be unset (Anthropic API constraints).
+            kwargs["thinking"] = {"type": "enabled", "budget_tokens": thinking_budget}
+            kwargs["max_tokens"] = max(params.max_tokens, thinking_budget + 1024)
+            kwargs["temperature"] = 1.0
+        elif params.temperature is not None:
             kwargs["temperature"] = params.temperature
         elif params.top_p is not None:
             kwargs["top_p"] = params.top_p

@@ -9,6 +9,7 @@
 
   let chatMessages = $state<ChatTurn[]>([]);
   let chatInput = $state<string>('');
+  let deepThinking = $state<boolean>(false);
   let chatLoading = $state<boolean>(false);
   let chatStatusLines = $state<string[]>([]);
   let chatSteps = $state<string[]>([]);
@@ -25,7 +26,7 @@
     chatSteps = [];
     chatError = null;
     try {
-      for await (const event of chatStream([...chatMessages], selectedModelId || undefined)) {
+      for await (const event of chatStream([...chatMessages], selectedModelId || undefined, deepThinking)) {
         if (event.type === 'status') {
           chatStatusLines = [...chatStatusLines, event.message];
         } else if (event.type === 'tool_call') {
@@ -130,6 +131,10 @@
   </div>
 
   <div class="chat-footer">
+    <label class="deep-toggle" title="Route this question to the thinking-tier model (if configured)">
+      <input type="checkbox" bind:checked={deepThinking} disabled={chatLoading} />
+      Deep thinking
+    </label>
     {#if chatUsage}
       <span class="usage-badge">
         ↑ {chatUsage.input_tokens.toLocaleString()} / ↓ {chatUsage.output_tokens.toLocaleString()} tokens
@@ -154,4 +159,5 @@
     max-width: 22rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .chat-step { font-size: 0.8rem; opacity: 0.75; }
+  .deep-toggle { display: flex; align-items: center; gap: 0.3rem; font-size: 0.8rem; opacity: 0.85; cursor: pointer; }
 </style>
