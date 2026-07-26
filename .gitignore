@@ -272,3 +272,6 @@ pytest-cache-files-*/
 web/node_modules/
 web/.svelte-kit/
 !web/src/lib/
+
+# macOS
+.DS_Store

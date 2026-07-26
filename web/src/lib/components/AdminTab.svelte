@@ -7,7 +7,7 @@
     adminAuthStatus, adminTestConnection, adminLoginAudit,
     adminListProviders, adminTestProvider, adminGetDefaultModel, adminSetDefaultModel,
     adminGetPlaybookModels, adminSetPlaybookModels,
-    adminListSkills, adminGetSkill, adminSaveSkill,
+    adminListSkills, adminGetSkill, adminSaveSkill, adminDraftSkill,
     adminSystemLogs, getModels,
     type AdminUser, type GroupRoleMapping, type AuthSourceStatus, type LoginEvent,
     type ProviderStatus, type ModelOption, type LogRecord, type PlaybookModelEntry,
@@ -28,6 +28,8 @@
   let skillForm = $state<SkillForm | null>(null);
   let skillIsNew = $state<boolean>(false);
   let skillMsg = $state<string>('');
+  let draftPrompt = $state<string>('');
+  let drafting = $state<boolean>(false);
 
   const loadSkills = () => guard(async () => {
     skills = await adminListSkills();
@@ -39,7 +41,19 @@
     skillForm = { id: '', name: '', trigger: '', body: '', allowed_tools: ['kb_search'], trust: 'internal' };
     skillIsNew = true;
     skillMsg = '';
+    draftPrompt = '';
   }
+
+  const draftSkill = () => guard(async () => {
+    if (!draftPrompt.trim()) throw new Error('Describe the problem to draft from.');
+    drafting = true;
+    try {
+      const d = await adminDraftSkill(draftPrompt);
+      skillForm = { id: d.id, name: d.name, trigger: d.trigger, body: d.body, allowed_tools: d.allowed_tools, trust: d.trust };
+    } finally {
+      drafting = false;
+    }
+  });
 
   const editSkill = (id: string) => guard(async () => {
     const d = await adminGetSkill(id);
@@ -369,6 +383,21 @@
       </table>
     {:else}
       <div class="skill-editor">
+        {#if skillIsNew}
+          <div class="skill-draft">
+            <span class="skill-draft-label">✨ Draft with AI</span>
+            <textarea
+              class="admin-input"
+              rows={2}
+              bind:value={draftPrompt}
+              placeholder="Describe a common problem — the assistant drafts a skill you can review and edit below."
+              disabled={drafting}
+            ></textarea>
+            <button class="btn-secondary" onclick={draftSkill} disabled={drafting || !draftPrompt.trim()}>
+              {drafting ? 'Drafting…' : 'Draft'}
+            </button>
+          </div>
+        {/if}
         <label class="skill-field">
           <span>ID (kebab-case)</span>
           <input class="admin-input" bind:value={skillForm.id} disabled={!skillIsNew} placeholder="vpn-auth-failures" />
@@ -467,4 +496,10 @@
   .skill-body { font-family: var(--font-mono, monospace); resize: vertical; }
   .skill-tools { display: flex; gap: 1rem; }
   .skill-tool { display: flex; align-items: center; gap: 0.3rem; font-size: 0.85rem; }
+  .skill-draft {
+    display: flex; flex-direction: column; gap: 0.4rem; padding: 0.6rem;
+    border: 1px dashed var(--border-strong, rgba(127, 127, 127, 0.4)); border-radius: 6px;
+  }
+  .skill-draft-label { font-size: 0.82rem; color: var(--text-muted); }
+  .skill-draft button { align-self: flex-start; }
 </style>

@@ -1024,6 +1024,16 @@ export async function adminSaveSkill(
   return res.json();
 }
 
+export async function adminDraftSkill(description: string): Promise<SkillDetail> {
+  const res = await apiFetch('/api/admin/skills/draft', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ description })
+  });
+  if (!res.ok) await adminError(res, 'Draft skill');
+  return res.json();
+}
+
 // ── Admin: playbook model list (edits playbook.yaml in place, ADR-0021) ──────
 
 export interface PlaybookModelEntry {
