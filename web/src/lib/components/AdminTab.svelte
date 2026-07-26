@@ -5,12 +5,41 @@
     adminListUsers, adminCreateUser, adminSetRole, adminSetEnabled,
     adminListGroupRoles, adminSetGroupRole, adminDeleteGroupRole,
     adminAuthStatus, adminTestConnection, adminLoginAudit,
+    adminListProviders, adminTestProvider, adminGetDefaultModel, adminSetDefaultModel,
+    getModels,
     type AdminUser, type GroupRoleMapping, type AuthSourceStatus, type LoginEvent,
+    type ProviderStatus, type ModelOption,
   } from '$lib/api';
 
   const ROLES = ['viewer', 'operator', 'admin'] as const;
-  let section = $state<'users' | 'mappings' | 'sources' | 'audit'>('users');
+  let section = $state<'users' | 'mappings' | 'sources' | 'providers' | 'model' | 'audit'>('users');
   let error = $state<string | null>(null);
+
+  let providers = $state<ProviderStatus[]>([]);
+  let providerTest = $state<Record<string, string>>({});
+  let availableModels = $state<ModelOption[]>([]);
+  let defaultModel = $state<string>('');
+
+  const loadProviders = () => guard(async () => { providers = await adminListProviders(); });
+
+  async function loadModelSettings() {
+    await guard(async () => {
+      const [models, current] = await Promise.all([getModels(), adminGetDefaultModel()]);
+      availableModels = models.models;
+      defaultModel = current ?? models.default_id;
+    });
+  }
+
+  async function testProvider(id: string) {
+    await guard(async () => {
+      const r = await adminTestProvider(id);
+      providerTest = { ...providerTest, [id]: `${r.ok ? '✓' : '✗'} ${r.detail}` };
+    });
+  }
+
+  async function saveDefaultModel() {
+    await guard(async () => { await adminSetDefaultModel(defaultModel || null); });
+  }
 
   let users = $state<AdminUser[]>([]);
   let newUser = $state({ username: '', password: '', role: 'viewer' });
@@ -78,6 +107,8 @@
       <button class="tab-btn {section === 'users' ? 'active' : ''}" onclick={() => { section = 'users'; loadUsers(); }}>Users</button>
       <button class="tab-btn {section === 'mappings' ? 'active' : ''}" onclick={() => { section = 'mappings'; loadMappings(); }}>Group → role</button>
       <button class="tab-btn {section === 'sources' ? 'active' : ''}" onclick={() => { section = 'sources'; loadSources(); }}>Auth sources</button>
+      <button class="tab-btn {section === 'providers' ? 'active' : ''}" onclick={() => { section = 'providers'; loadProviders(); }}>LLM providers</button>
+      <button class="tab-btn {section === 'model' ? 'active' : ''}" onclick={() => { section = 'model'; loadModelSettings(); }}>Default model</button>
       <button class="tab-btn {section === 'audit' ? 'active' : ''}" onclick={() => { section = 'audit'; loadAudit(); }}>Login audit</button>
     </div>
   </div>
@@ -150,6 +181,32 @@
         {/each}
       </tbody>
     </table>
+
+  {:else if section === 'providers'}
+    <p class="admin-hint">API keys are read from environment variables and are never shown or stored here (ADR-0020). Set them in <code>.env</code> / your deployment env.</p>
+    <table class="data-table">
+      <thead><tr><th>Provider</th><th>Env var</th><th>Configured</th><th></th><th>Result</th></tr></thead>
+      <tbody>
+        {#each providers as p}
+          <tr>
+            <td>{p.label}</td>
+            <td class="mono dim">{p.env_var || '—'}</td>
+            <td>{p.configured ? '✓' : '—'}</td>
+            <td>{#if p.env_var}<button class="btn-secondary" onclick={() => testProvider(p.id)}>test</button>{/if}</td>
+            <td class="dim">{providerTest[p.id] ?? ''}</td>
+          </tr>
+        {/each}
+      </tbody>
+    </table>
+
+  {:else if section === 'model'}
+    <p class="admin-hint">The team-default model, chosen from what the active playbook offers. Each run can still override it on the Run page.</p>
+    <div class="admin-newrow">
+      <select class="admin-input" bind:value={defaultModel}>
+        {#each availableModels as m}<option value={m.id}>{m.label}</option>{/each}
+      </select>
+      <button class="btn-action" onclick={saveDefaultModel} disabled={!defaultModel}>Set default</button>
+    </div>
 
   {:else}
     <table class="data-table">
