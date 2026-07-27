@@ -54,8 +54,7 @@ class ApiAssetCreate(BaseModel):
     assignee: str = ""
     location: str = ""
     warranty_until: str = ""
-    actor: str = ""  # who made this entry, recorded on the created event
-    note: str = ""
+    note: str = ""  # free-text annotation; the actor comes from the caller's identity
 
 
 class ApiAssetUpdate(BaseModel):
@@ -78,7 +77,6 @@ class ApiAssetUpdate(BaseModel):
     assignee: str | None = None
     location: str | None = None
     warranty_until: str | None = None
-    actor: str = ""
     note: str = ""
 
 
@@ -112,7 +110,6 @@ class ApiProcurementCreate(BaseModel):
     """Request body for POST /api/inventory/procurements — group existing Assets."""
 
     asset_ids: list[str]
-    actor: str = ""
 
 
 class ApiProcurementUpdate(BaseModel):
@@ -123,7 +120,6 @@ class ApiProcurementUpdate(BaseModel):
     tracking_number: str | None = None
     vendor: str | None = None
     cost: str | None = None
-    actor: str = ""
 
 
 class ApiProcurement(BaseModel):
@@ -152,6 +148,16 @@ class ApiAssetEvent(BaseModel):
     actor: str
     change: str
     note: str
+
+
+class ApiInventoryEvent(ApiAssetEvent):
+    """An event in the cross-Asset feed, where the Asset may no longer exist."""
+
+    asset_id: str
+
+
+class ApiInventoryEventListResponse(BaseModel):
+    events: list[ApiInventoryEvent]
 
 
 class ApiAssetDetail(ApiAsset):

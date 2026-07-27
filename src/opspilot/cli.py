@@ -2042,12 +2042,17 @@ def inventory_import(
     ),
 ) -> None:
     """Import Assets from a CSV file (one Asset per row; bad rows are skipped)."""
+    import getpass
+
     from .inventory import InventoryStore, import_csv
 
     cfg = load_config()
     conn = init_sqlite(cfg.home / "kb" / "sqlite.db")
     store = InventoryStore(conn)
-    report = import_csv(store, file)
+    # There is no auth context on the CLI, so the OS user is the best available
+    # attribution — advisory, not evidence: anyone who can run this can also
+    # edit the SQLite file directly.
+    report = import_csv(store, file, actor=f"cli:{getpass.getuser()}")
     if report.unknown_columns:
         _console.print(
             f"[yellow]Unknown column(s) ignored: {', '.join(report.unknown_columns)}[/yellow]"

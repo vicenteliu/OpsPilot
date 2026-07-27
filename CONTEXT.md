@@ -167,7 +167,8 @@ One of eight free-set values: `requested → ordered → shipped → received �
 _Avoid_: state, stage, phase
 
 **Asset event**:
-An append-only, timestamped entry recording one change to an **Asset** (status transition, field change, note) and who made it. The source of date/time tracking — never edited, never deleted.
+An append-only, timestamped entry recording one change to an **Asset** (status transition, field change, note) and who made it. The source of date/time tracking — never edited, never deleted, and **outliving the Asset**: deleting an Asset removes the row, not its events; the closing `deleted` event carries a snapshot of the identity fields so the orphaned log still names the device.
+The **actor** is derived by the system from the caller's identity — the authenticated **User**, the service identity, the `session:` that drafted it, or the OS user for CLI writes — never taken from the request. A self-reported actor is not evidence. (Events written before this rule carry placeholder actors such as `web-user`; they are left untouched, because rewriting the log to make it look better is the one thing an append-only log may not do.)
 _Avoid_: history entry, audit row (it is both, but call it an event)
 
 **PR number**:
@@ -198,7 +199,7 @@ _Avoid_: user (collides with system user), custodian, owner
 - A notify-mode **Channel** receives a courtesy copy of each delivered **Intake** suggestion — best-effort; the comment on the **Source** remains the durable record
 - An **Asset** may reference the **Work item** (Service Request) that initiated its procurement via `work_item_ref` — optional: existing stock enters with no Work item
 - A schema-valid fulfillment **Artifact** with an `asset_draft` block auto-drafts requested-status **Assets** for its Work item — once per Work item, event-stamped with the **Session** (ADR-0018)
-- Every change to an **Asset** appends one **Asset event**; the current row is a projection, the event log is the history
+- Every change to an **Asset** appends one **Asset event**; the current row is a projection, the event log is the history — so deleting the Asset deletes the projection, and the log survives it
 - A **Source** owns the lifecycle of the **Work items** pulled from it; **Intake** turns each new Source item into one **Session** and posts the resulting suggestion back as a comment
 
 ## Example dialogue

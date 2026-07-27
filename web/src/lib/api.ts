@@ -728,7 +728,7 @@ export async function createAsset(fields: Partial<AssetFields>): Promise<Asset> 
   const res = await apiFetch('/api/inventory', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...fields, actor: 'web-user' })
+    body: JSON.stringify(fields)
   });
   if (!res.ok) await assetError(res, 'Asset create');
   return res.json();
@@ -738,7 +738,7 @@ export async function updateAsset(assetId: string, changes: Partial<AssetFields>
   const res = await apiFetch(`/api/inventory/${encodeURIComponent(assetId)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...changes, actor: 'web-user' })
+    body: JSON.stringify(changes)
   });
   if (!res.ok) await assetError(res, 'Asset update');
   return res.json();
@@ -775,7 +775,7 @@ export async function createProcurement(assetIds: string[]): Promise<Procurement
   const res = await apiFetch('/api/inventory/procurements', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ asset_ids: assetIds, actor: 'web-user' })
+    body: JSON.stringify({ asset_ids: assetIds })
   });
   if (!res.ok) await assetError(res, 'Procurement create');
   return res.json();
@@ -794,7 +794,7 @@ export async function updateProcurement(
   const res = await apiFetch(`/api/inventory/procurements/${encodeURIComponent(procurementId)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...changes, actor: 'web-user' })
+    body: JSON.stringify(changes)
   });
   if (!res.ok) await assetError(res, 'Procurement update');
   return res.json();

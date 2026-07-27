@@ -98,6 +98,22 @@ class TestImport:
         for asset in store.list():
             assert [e["change"] for e in store.events(asset["asset_id"])] == ["imported"]
 
+    def test_bulk_import_is_attributable(self, tmp_path: Path) -> None:
+        """A bulk import is where a wall of unattributed rows would appear."""
+        source = tmp_path / "legacy-assets.csv"
+        _write_csv(
+            source,
+            ["asset_tag", "serial_number"],
+            [["NB-001", "SN-A1"], ["NB-002", "SN-B2"]],
+        )
+        store = _store()
+        import_csv(store, source, actor="cli:vicente")
+        events = store.all_events()
+        assert len(events) == 2
+        assert {e["actor"] for e in events} == {"cli:vicente"}
+        # Provenance rides in the note: actor answers "who", note answers "from where".
+        assert {e["note"] for e in events} == {"imported from legacy-assets.csv"}
+
 
 class TestRoundTrip:
     def test_export_import_is_lossless(self, tmp_path: Path) -> None:
