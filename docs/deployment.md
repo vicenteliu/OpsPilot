@@ -1,9 +1,16 @@
 # Deployment and configuration
 
-> **Deployment model:** OpsPilot is single-user. Local (loopback) use needs
-> no configuration; remote access requires a bearer token and TLS — see
+> **Deployment model:** OpsPilot is multi-user — the IT team signs in, with
+> three fixed roles and local / LDAP / OIDC identity sources
+> ([ADR-0020](adr/0020-multi-user-auth-three-roles-three-sources.md)). Machine
+> callers keep using the Service token. Local (loopback) use needs no
+> configuration; remote access requires TLS and a configured identity — see
 > [Remote access](#remote-access) below and
 > [ADR-0011](adr/0011-remote-access-bearer-token-proxy-tls.md).
+>
+> Before trusting an LDAP, OIDC or WeCom deployment, run
+> [the post-deployment verification checklist](verification.md) — those
+> integrations' automated tests all mock the counterparty.
 
 ## Local development
 
