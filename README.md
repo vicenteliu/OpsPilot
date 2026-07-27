@@ -49,7 +49,9 @@ practical work-assistance layer for IT support look like?**
   provider errors. Admins can curate the selectable list itself — remove or
   upgrade models — from the admin module, editing the playbook in place.
   Embeddings default to local Ollama and fall back to
-  OpenAI (with a visible notice) when Ollama is unavailable
+  OpenAI (with a visible notice) when Ollama is unavailable. Playbooks can
+  route by complexity, sending the easy majority to a cheap tier and
+  escalating only what needs it
 - **Work-item intake** — pull tickets straight from Jira Service Management
   on a JQL scope and post the AI suggestion back as a comment on the ticket:
   polling-only (no public endpoint), comment-only (no field is ever touched),
@@ -59,10 +61,23 @@ practical work-assistance layer for IT support look like?**
 - **KB retrieval with citations** — hybrid vector (LanceDB) + full-text
   (SQLite FTS5) search fused with RRF; `tool` mode (ReAct) for strong models,
   `prefetch` injection for weak local ones
+- **Asset inventory** — procurement-to-retirement tracking for the devices
+  your team manages, and the one domain OpsPilot *owns* rather than mirrors:
+  small teams have no CMDB, so CSV import/export is the migration path in and
+  out. Eight free-set statuses (no state machine — real inventories are full
+  of corrections), an append-only event log whose actor comes from the
+  authenticated caller, and a fulfillment playbook that drafts Assets straight
+  from a Service Request
+- **Runtime Skills** — reusable `SKILL.md` packages the assistant loads on
+  demand: it sees a compact catalog of triggers and pulls in the full
+  procedure when a problem matches, with retrieval-injection fallback for
+  models too weak to call tools. Admins can have one drafted from a problem
+  description and edit it before saving
 - **Redaction first** — PII stripped before any content reaches a model or
   the KB
 - **Auditable sessions** — content-addressed artifacts, append-only traces,
-  schema-validated output, browsable history
+  schema-validated output, browsable history. Who acted is taken from the
+  authenticated caller, never from what the caller claims
 - **Sandboxed actions** — AI-proposed shell actions run in hardened Docker
   (L2) or gVisor (L3, fail-closed) containers; an approval gate flags risky
   patterns for human sign-off
@@ -203,9 +218,12 @@ flow, the six-layer system design, provider routing, and retrieval modes.
 | [docs/deployment.md](docs/deployment.md) | Docker Compose, systemd, observability, configuration |
 | [docs/channels.md](docs/channels.md) | Messaging channels — Telegram setup: KB chat + `/intake` |
 | [docs/sources.md](docs/sources.md) | Work-item intake — JSM setup, replay mode, state and reruns |
+| [docs/inventory.md](docs/inventory.md) | Asset model, statuses, event log, CSV migration, REST surface |
+| [docs/verification.md](docs/verification.md) | Post-deployment checks for LDAP, OIDC, WeCom and the all-in-one image |
 | [docs/specs/](docs/specs/) | Spec contracts: schemas + templates (loaded at runtime) |
 | [docs/adr/](docs/adr/) | Architecture decision records |
-| [ROADMAP.md](ROADMAP.md) | Direction: mobile companion, voice input |
+| [CONTEXT.md](CONTEXT.md) | Domain glossary — the canonical name for every concept above |
+| [ROADMAP.md](ROADMAP.md) | What is shipped, what is open, what is deferred |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Dev setup, quality gates, PR conventions |
 | [SECURITY.md](SECURITY.md) | Deployment model, threat model, reporting vulnerabilities |
 

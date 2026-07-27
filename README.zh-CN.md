@@ -43,7 +43,8 @@ AI 正在重塑整个 IT Support 行业。OpsPilot 是对一个具体问题的�
   或本地 Ollama；playbook 声明主模型 + 可选备选模型（含本地 Gemma），可在 UI
   按次切换、也可在后台设团队默认，provider 出错时自动降级；管理员还能在后台
   直接编辑 playbook 的可选模型列表（增删、升级模型名）。嵌入默认走本地
-  Ollama，Ollama 不可用时回退到 OpenAI（并显著提示）
+  Ollama，Ollama 不可用时回退到 OpenAI（并显著提示）。playbook 还可按复杂度
+  分级路由，把占多数的简单任务交给便宜档位，只在需要时才升档
 - **工单接入（Intake）** —— 按 JQL 范围直接从 Jira Service Management 拉取
   工单，AI 建议以评论形式发回工单本身：纯轮询（无需公网入口）、只发评论
   （绝不改动字段）、状态可跨重启保留，还有 `--replay` 模式离线演示完整闭环；
@@ -51,9 +52,17 @@ AI 正在重塑整个 IT Support 行业。OpsPilot 是对一个具体问题的�
   `POST /api/intake` 推送接入
 - **带引用的知识库检索** —— 向量（LanceDB）+ 全文（SQLite FTS5）混合搜索，
   RRF 融合；强模型走 `tool` 模式（ReAct），弱本地模型走 `prefetch` 注入
+- **资产盘存** —— 从采购到退役追踪团队管理的设备，也是 OpsPilot 唯一*自己
+  持有*而非镜像的领域：小团队本就没有 CMDB，所以 CSV 导入导出既是迁入路径也
+  是迁出路径。八个自由设置的状态（不是状态机——真实盘存里到处是补录和更正）、
+  只追加且行为人取自认证调用方的事件日志，以及能从服务请求直接起草资产的
+  履约 playbook
+- **运行时 Skills** —— 可复用的 `SKILL.md` 包，助手按需加载：它只看到一份
+  紧凑的触发条件目录，遇到匹配的问题才拉入完整流程；工具调用能力弱的模型
+  回退到检索注入。管理员可以让模型根据一段问题描述起草，再审阅保存
 - **脱敏优先** —— 任何内容进入模型或知识库之前先剥离 PII
 - **可审计会话** —— 内容寻址 artifact、只追加 trace、schema 校验输出、可
-  浏览的历史记录
+  浏览的历史记录。行为人取自认证调用方，而非调用方自报
 - **沙箱化动作执行** —— AI 提议的 shell 动作在加固 Docker（L2）或 gVisor
   （L3，fail-closed）容器中运行；审批门对危险模式标记要求人工签核
 - **复利式 wiki** —— 会话洞见蒸馏为经过 lint 检查、有生命周期管理的 wiki
@@ -187,10 +196,13 @@ docker run -p 8000:8000 \
 | [docs/deployment.md](docs/deployment.md) | Docker Compose、systemd、可观测性、配置 |
 | [docs/channels.md](docs/channels.md) | 消息渠道 —— Telegram 接入：知识库问答 + `/intake` 立单 |
 | [docs/sources.md](docs/sources.md) | 工单接入 —— JSM 接通、replay 模式、状态与重跑 |
+| [docs/inventory.md](docs/inventory.md) | 资产模型、状态、事件日志、CSV 迁移、REST 接口 |
+| [docs/verification.md](docs/verification.md) | 部署后核对：LDAP、OIDC、WeCom、全量镜像 |
 | [docs/specs/](docs/specs/) | 规格契约：schema + 模板（运行时加载） |
 | [docs/adr/](docs/adr/) | 架构决策记录 |
 | [docs/zh/design/](docs/zh/design/) | 历史设计文档（中文，不再维护） |
-| [ROADMAP.md](ROADMAP.md) | 方向：移动伴侣、语音输入 |
+| [CONTEXT.md](CONTEXT.md) | 领域词汇表 —— 上述每个概念的规范名称 |
+| [ROADMAP.md](ROADMAP.md) | 已发布什么、还开着什么、推迟了什么 |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 开发环境、质量门、PR 约定 |
 | [SECURITY.md](SECURITY.md) | 部署模型、威胁模型、漏洞报告 |
 
