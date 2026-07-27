@@ -70,6 +70,16 @@ _Avoid_: passage, segment, document fragment
 The pipeline that converts raw documents (markdown, PDF, DOCX) → redact PII → split into chunks → embed → upsert into KB.
 _Avoid_: index, import, upload
 
+**Conflict**:
+Two **Chunks** the detector believes cannot both be trusted — one of `temporal_supersede` (one doc is clearly newer), `scope_overlap` (near-duplicates), or `direct_contradiction` (opposing claims). Detected automatically, settled by a human: a **Resolution** (`a_wins` / `b_wins` / `merged` / `dismissed`) marks the losing Chunk superseded. Until settled it is *open*, and answers citing either Chunk are flagged.
+_Avoid_: duplicate, contradiction (that is one of the three types), error
+
+**Correction**:
+A human overriding a **Chunk**'s content in place, with a reason. The old content is kept on the correction record — the Chunk is what retrieval reads, the correction is why it changed.
+_Avoid_: edit, fix, update
+
+Both a **Resolution** and a **Correction** record who acted, taken from the caller's identity and never from what the caller claims — the same rule as an **Asset event**, and for the same reason: these are the decisions about which knowledge is trustworthy, so the one thing that must not be self-reported is who decided. Records written before this rule carry per-client placeholders (`web-user`, `cli-user`, `tui-user`, `api-user`) and are left as they are.
+
 ### Retrieval
 
 **Retrieval mode**:

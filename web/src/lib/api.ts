@@ -337,13 +337,12 @@ export async function listConflicts(status = 'open'): Promise<KBConflict[]> {
 export async function resolveConflict(
   conflictId: string,
   resolution: string,
-  resolvedBy = 'web-user',
   note = ''
 ): Promise<void> {
   const res = await apiFetch(`/api/kb/conflicts/${conflictId}/resolve`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ resolution, resolved_by: resolvedBy, note })
+    body: JSON.stringify({ resolution, note })
   });
   if (!res.ok) throw new Error(`Resolve failed: ${res.status}`);
 }
@@ -351,13 +350,12 @@ export async function resolveConflict(
 export async function correctChunk(
   chunkId: string,
   newContent: string,
-  reason: string,
-  correctedBy = 'web-user'
+  reason: string
 ): Promise<{ corr_id: string; chunk_id: string; ok: boolean }> {
   const res = await apiFetch(`/api/kb/chunks/${encodeURIComponent(chunkId)}/correct`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ new_content: newContent, reason, corrected_by: correctedBy })
+    body: JSON.stringify({ new_content: newContent, reason })
   });
   if (!res.ok) throw new Error(`Correct failed: ${res.status}`);
   return res.json();

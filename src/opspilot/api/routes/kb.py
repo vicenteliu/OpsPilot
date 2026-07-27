@@ -1,6 +1,11 @@
 """KB API routes: GET /api/kb/docs, GET /api/kb/stats, POST /api/kb/ingest,
 GET /api/kb/search, GET /api/kb/conflicts, PATCH /api/kb/conflicts/{id}/resolve,
-POST /api/kb/chunks/{id}/correct, GET /api/kb/corrections."""
+POST /api/kb/chunks/{id}/correct, GET /api/kb/corrections.
+
+Conflict resolutions and chunk corrections record who acted, taken from the
+caller's resolved **Identity** rather than from the request body — an
+attribution the caller chooses is not evidence of who acted.
+"""
 
 from __future__ import annotations
 
@@ -9,10 +14,16 @@ import sqlite3
 from pathlib import Path
 from typing import Any, cast
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel
 
+from ...auth import Identity, require_role
+
 router = APIRouter()
+
+# Overriding a chunk or settling a conflict is an act, not a read: the glossary
+# puts KB *search* under viewer and acting under operator (ADR-0020).
+_operator = Depends(require_role("operator"))
 
 
 @router.get("/kb/stats")
@@ -186,13 +197,12 @@ async def list_conflicts(
 
 class ResolveRequest(BaseModel):
     resolution: str  # a_wins | b_wins | merged | dismissed
-    resolved_by: str = "api-user"
     note: str = ""
 
 
 @router.patch("/kb/conflicts/{conflict_id}/resolve")
 async def resolve_conflict_route(
-    conflict_id: str, body: ResolveRequest, request: Request
+    conflict_id: str, body: ResolveRequest, request: Request, identity: Identity = _operator
 ) -> dict[str, Any]:
     """Apply a resolution to an open KB conflict."""
     state = request.app.state
@@ -205,7 +215,7 @@ async def resolve_conflict_route(
         resolve_conflict(
             conflict_id,
             resolution=body.resolution,
-            resolved_by=body.resolved_by,
+            resolved_by=identity.name,
             note=body.note,
             sqlite=state.sqlite,
         )
@@ -226,11 +236,12 @@ async def resolve_conflict_route(
 class CorrectRequest(BaseModel):
     new_content: str
     reason: str
-    corrected_by: str = "api-user"
 
 
 @router.post("/kb/chunks/{chunk_id}/correct")
-async def correct_chunk(chunk_id: str, body: CorrectRequest, request: Request) -> dict[str, Any]:
+async def correct_chunk(
+    chunk_id: str, body: CorrectRequest, request: Request, identity: Identity = _operator
+) -> dict[str, Any]:
     """Apply an inline content correction to a KB chunk."""
     state = request.app.state
     loop = asyncio.get_event_loop()
@@ -240,7 +251,7 @@ async def correct_chunk(chunk_id: str, body: CorrectRequest, request: Request) -
             "str",
             state.sqlite.add_correction(
                 chunk_id,
-                corrected_by=body.corrected_by,
+                corrected_by=identity.name,
                 reason=body.reason,
                 new_content=body.new_content,
             ),
