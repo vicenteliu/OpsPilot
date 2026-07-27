@@ -83,6 +83,19 @@ _console = Console()
 _err = Console(stderr=True, style="red")
 
 
+def _cli_actor() -> str:
+    """Attribution for records written outside an HTTP request.
+
+    There is no auth context on the CLI, so the OS user is the best available
+    answer. It is advisory, not evidence: anyone who can run this can also edit
+    the SQLite file directly. Over HTTP the actor comes from the caller's
+    Identity instead.
+    """
+    import getpass
+
+    return f"cli:{getpass.getuser()}"
+
+
 def _version_callback(value: bool) -> None:
     if value:
         _console.print(f"opspilot {__version__}")
@@ -824,7 +837,7 @@ def kb_resolve_cmd(
         "-r",
         help="Resolution: a_wins | b_wins | merged | dismissed",
     ),
-    resolved_by: str = typer.Option("cli-user", "--by", help="Who is resolving."),
+    resolved_by: str = typer.Option("", "--by", help="Who is resolving; defaults to the OS user."),
     note: str = typer.Option("", "--note", "-m", help="Optional resolution note."),
 ) -> None:
     """Apply a resolution to an open KB conflict."""
@@ -834,7 +847,7 @@ def kb_resolve_cmd(
         resolve_conflict(
             conflict_id,
             resolution=resolution,
-            resolved_by=resolved_by,
+            resolved_by=resolved_by or _cli_actor(),
             note=note,
             sqlite=sqlite,
         )
@@ -849,7 +862,9 @@ def kb_correct_cmd(
     chunk_id: str = typer.Argument(..., help="Chunk ID (chk_xxxxxxxx)."),
     new_content: str = typer.Option(..., "--content", "-c", help="Corrected chunk content."),
     reason: str = typer.Option(..., "--reason", "-m", help="Why this correction is needed."),
-    corrected_by: str = typer.Option("cli-user", "--by", help="Who is applying the correction."),
+    corrected_by: str = typer.Option(
+        "", "--by", help="Who is applying the correction; defaults to the OS user."
+    ),
 ) -> None:
     """Apply an inline content correction to a KB chunk."""
     cfg = load_config()
@@ -857,7 +872,7 @@ def kb_correct_cmd(
     try:
         corr_id = sqlite.add_correction(
             chunk_id,
-            corrected_by=corrected_by,
+            corrected_by=corrected_by or _cli_actor(),
             reason=reason,
             new_content=new_content,
         )
@@ -2042,17 +2057,12 @@ def inventory_import(
     ),
 ) -> None:
     """Import Assets from a CSV file (one Asset per row; bad rows are skipped)."""
-    import getpass
-
     from .inventory import InventoryStore, import_csv
 
     cfg = load_config()
     conn = init_sqlite(cfg.home / "kb" / "sqlite.db")
     store = InventoryStore(conn)
-    # There is no auth context on the CLI, so the OS user is the best available
-    # attribution — advisory, not evidence: anyone who can run this can also
-    # edit the SQLite file directly.
-    report = import_csv(store, file, actor=f"cli:{getpass.getuser()}")
+    report = import_csv(store, file, actor=_cli_actor())
     if report.unknown_columns:
         _console.print(
             f"[yellow]Unknown column(s) ignored: {', '.join(report.unknown_columns)}[/yellow]"

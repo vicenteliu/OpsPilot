@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import getpass
 from typing import Any, Literal, cast
 
 from textual import work
@@ -328,7 +329,7 @@ class KBBrowserScreen(Widget):
         try:
             corr_id = sqlite.add_correction(
                 chunk_id,
-                corrected_by="tui-user",
+                corrected_by=f"tui:{getpass.getuser()}",
                 reason=reason,
                 new_content=new_content,
             )
