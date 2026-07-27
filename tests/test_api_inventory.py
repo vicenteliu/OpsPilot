@@ -86,7 +86,7 @@ class TestUpdate:
         aid = c.post("/api/inventory", json=_laptop()).json()["asset_id"]
         res = c.patch(
             f"/api/inventory/{aid}",
-            json={"status": "deployed", "assignee": "Alice", "actor": "vicente"},
+            json={"status": "deployed", "assignee": "Alice"},
         )
         assert res.status_code == 200
         assert res.json()["status"] == "deployed"
@@ -94,7 +94,7 @@ class TestUpdate:
         assert len(events) == 2  # created + one combined diff
         assert "status: 'requested' → 'deployed'" in events[-1]["change"]
         assert "assignee: '' → 'Alice'" in events[-1]["change"]
-        assert events[-1]["actor"] == "vicente"
+        assert events[-1]["actor"] == "local-dev"  # from the identity, not the body
 
     def test_status_freely_settable_backwards(self) -> None:
         c = _client()
@@ -193,7 +193,7 @@ class TestProcurements:
     def test_group_adopts_common_fields_and_marks_members(self) -> None:
         c = _client()
         ids = self._five(c)
-        res = c.post("/api/inventory/procurements", json={"asset_ids": ids, "actor": "vicente"})
+        res = c.post("/api/inventory/procurements", json={"asset_ids": ids})
         assert res.status_code == 201
         proc = res.json()
         assert proc["procurement_id"].startswith("prc_")
@@ -212,7 +212,7 @@ class TestProcurements:
         ]
         res = c.patch(
             f"/api/inventory/procurements/{pid}",
-            json={"tracking_number": "SF-123456", "actor": "vicente"},
+            json={"tracking_number": "SF-123456"},
         )
         assert res.status_code == 200
         assert res.json()["tracking_number"] == "SF-123456"
@@ -262,3 +262,69 @@ class TestDelete:
         assert c.delete(f"/api/inventory/{aid}").status_code == 204
         assert c.get(f"/api/inventory/{aid}").status_code == 404
         assert c.delete(f"/api/inventory/{aid}").status_code == 404
+
+    def test_events_outlive_the_asset_and_still_name_the_device(self) -> None:
+        c = _client()
+        aid = c.post("/api/inventory", json=_laptop()).json()["asset_id"]
+        c.patch(f"/api/inventory/{aid}", json={"status": "deployed"})
+        assert c.delete(f"/api/inventory/{aid}").status_code == 204
+
+        events = c.get("/api/inventory/events", params={"asset_id": aid}).json()["events"]
+        # created + the status diff + the closing deleted event.
+        assert [e["change"] for e in events][-1] == "created"  # newest first
+        closing = events[0]
+        assert closing["change"].startswith("deleted (")
+        # The orphaned log has to name the device; the id alone is not evidence.
+        assert "asset_tag=NB-001" in closing["change"]
+        assert "serial_number=SN-A1" in closing["change"]
+        assert closing["actor"] == "local-dev"
+
+
+class TestActorAttribution:
+    """The actor is the caller's identity, never what the caller claims."""
+
+    def test_forged_actor_in_body_is_ignored(self) -> None:
+        c = _client()
+        res = c.post("/api/inventory", json=_laptop(actor="ceo", note="signed off"))
+        assert res.status_code == 201  # unknown field ignored, not a 422
+        aid = res.json()["asset_id"]
+        event = c.get(f"/api/inventory/{aid}").json()["events"][0]
+        assert event["actor"] == "local-dev"
+        assert event["note"] == "signed off"  # note is an annotation, still the caller's
+
+    def test_service_token_identity_is_recorded(self) -> None:
+        app = FastAPI()
+        app.include_router(inventory_router, prefix="/api")
+        conn = sqlite3.connect(":memory:", check_same_thread=False)
+        app.state.inventory = InventoryStore(conn)
+        app.state.auth = AuthStore(conn)
+        app.state.service_token = "tok-abcdef-secret"
+        c = TestClient(app, headers={"Authorization": "Bearer tok-abcdef-secret"})
+        aid = c.post("/api/inventory", json=_laptop()).json()["asset_id"]
+        event = c.get(f"/api/inventory/{aid}").json()["events"][0]
+        assert event["actor"] == "svc:tok-ab"
+
+
+class TestEventsFeed:
+    def test_spans_assets_and_filters(self) -> None:
+        c = _client()
+        first = c.post("/api/inventory", json=_laptop()).json()["asset_id"]
+        second = c.post(
+            "/api/inventory", json=_laptop(asset_tag="NB-002", serial_number="SN-B2")
+        ).json()["asset_id"]
+        c.patch(f"/api/inventory/{second}", json={"status": "shipped"})
+
+        everything = c.get("/api/inventory/events").json()["events"]
+        assert len(everything) == 3
+        assert {e["asset_id"] for e in everything} == {first, second}
+        # Newest first, so the shipped diff leads.
+        assert "shipped" in everything[0]["change"]
+
+        only_first = c.get("/api/inventory/events", params={"asset_id": first}).json()["events"]
+        assert [e["asset_id"] for e in only_first] == [first]
+        assert c.get("/api/inventory/events", params={"actor": "nobody"}).json()["events"] == []
+        assert len(c.get("/api/inventory/events", params={"limit": 1}).json()["events"]) == 1
+
+    def test_events_path_is_not_captured_as_an_asset_id(self) -> None:
+        # /inventory/events must be routed before /inventory/{asset_id}.
+        assert _client().get("/api/inventory/events").status_code == 200

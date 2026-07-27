@@ -51,6 +51,10 @@ FIELDS = (
 # Columns the free-text search (?q=) matches against.
 _SEARCH_FIELDS = ("asset_tag", "brand_model", "serial_number", "assignee", "handler", "vendor")
 
+# Identity fields stamped into the closing ``deleted`` event, so the log still
+# names the device once its row is gone.
+_SNAPSHOT_FIELDS = ("asset_tag", "serial_number", "category", "brand_model")
+
 # Procurement fields shared by a batch; a Procurement PATCH syncs them to
 # every member Asset (#87). A subset of FIELDS.
 PROCUREMENT_FIELDS = ("pr_number", "order_number", "tracking_number", "vendor", "cost")
@@ -154,6 +158,41 @@ class InventoryStore:
             "SELECT event_id, ts, actor, change, note FROM asset_events "
             "WHERE asset_id = ? ORDER BY event_id",
             (asset_id,),
+        )
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row, strict=True)) for row in cur.fetchall()]
+
+    def all_events(
+        self,
+        *,
+        asset_id: str = "",
+        actor: str = "",
+        since: str = "",
+        until: str = "",
+        limit: int = 200,
+    ) -> _Rows:
+        """Events across every Asset, newest first — including orphaned ones.
+
+        Events survive their Asset (see :meth:`delete`), so this is the only
+        read that can reach a deleted Asset's history: the per-asset detail
+        endpoint 404s once the row is gone, and by then the caller no longer
+        knows the id to ask for. Timestamps are RFC3339 UTC, which orders
+        lexicographically, so *since* / *until* compare as plain strings.
+        """
+        where, params = [], []
+        for column, value in (("asset_id", asset_id), ("actor", actor)):
+            if value:
+                where.append(f"{column} = ?")
+                params.append(value)
+        for op, value in ((">=", since), ("<=", until)):
+            if value:
+                where.append(f"ts {op} ?")
+                params.append(value)
+        clause = f"WHERE {' AND '.join(where)} " if where else ""
+        cur = self._conn.execute(
+            "SELECT event_id, asset_id, ts, actor, change, note FROM asset_events "
+            f"{clause}ORDER BY event_id DESC LIMIT ?",
+            (*params, limit),
         )
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row, strict=True)) for row in cur.fetchall()]
@@ -271,12 +310,25 @@ class InventoryStore:
         assert result is not None
         return result
 
-    def delete(self, asset_id: str) -> bool:
-        """Hard delete, for data-entry mistakes — retirement is a status."""
-        cur = self._conn.execute("DELETE FROM assets WHERE asset_id = ?", (asset_id,))
-        self._conn.execute("DELETE FROM asset_events WHERE asset_id = ?", (asset_id,))
+    def delete(self, asset_id: str, actor: str = "", note: str = "") -> bool:
+        """Hard delete, for data-entry mistakes — retirement is a status.
+
+        The row is a projection and the event log is the truth (ADR-0017), so
+        only the projection goes: the events outlive the Asset. A closing
+        ``deleted`` event carries a snapshot of the identity fields, because an
+        orphaned log that can only say ``ast_01H8X...`` cannot name the device
+        it is evidence about.
+        """
+        row = self.get(asset_id)
+        if row is None:
+            return False
+        snapshot = ", ".join(f"{f}={row[f]}" for f in _SNAPSHOT_FIELDS if row[f])
+        self._append_event(
+            asset_id, actor, f"deleted ({snapshot})" if snapshot else "deleted", note
+        )
+        self._conn.execute("DELETE FROM assets WHERE asset_id = ?", (asset_id,))
         self._conn.commit()
-        return cur.rowcount > 0
+        return True
 
     # ── procurements: optional grouping with batch field sync (#87) ────
 

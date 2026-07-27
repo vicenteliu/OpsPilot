@@ -37,7 +37,7 @@ def export_csv(store: InventoryStore, path: Path) -> int:
     return len(assets)
 
 
-def import_csv(store: InventoryStore, path: Path) -> ImportReport:
+def import_csv(store: InventoryStore, path: Path, actor: str = "") -> ImportReport:
     """Create one Asset per CSV row; bad rows are skipped, never abort the run.
 
     Columns map by exact field name; unrecognized headers are reported in
@@ -46,6 +46,10 @@ def import_csv(store: InventoryStore, path: Path) -> ImportReport:
     previous export re-imports losslessly (``updated_at`` is regenerated).
     Rows with a duplicate serial or an unknown status are recorded in
     :attr:`ImportReport.skipped` with their 1-based row number (header = row 1).
+
+    *actor* is stamped on every created event, and the source filename goes in
+    the event note — a bulk import is exactly where a wall of unattributed
+    rows would otherwise appear.
     """
     report = ImportReport()
     with path.open(newline="", encoding="utf-8") as fh:
@@ -59,6 +63,8 @@ def import_csv(store: InventoryStore, path: Path) -> ImportReport:
                     fields,
                     asset_id=row.get("asset_id") or None,
                     created_at=row.get("created_at") or None,
+                    actor=actor,
+                    note=f"imported from {path.name}",
                     event_change="imported",
                 )
             except (DuplicateSerialError, UnknownStatusError) as exc:
