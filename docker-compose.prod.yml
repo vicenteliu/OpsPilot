@@ -2,6 +2,9 @@
 # Usage:
 #   cp .env.example .env.prod  # fill in keys
 #   docker compose -f docker-compose.prod.yml up -d
+#
+# .env.prod must set OPSPILOT_API_TOKEN: the api service binds 0.0.0.0, and
+# that is fail-closed without a token (ADR-0011) — the container would exit.
 
 services:
   api:
@@ -9,14 +12,19 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: ["opspilot", "serve", "--host", "0.0.0.0", "--port", "8000",
+    # The image's ENTRYPOINT is already `opspilot` — command is its arguments.
+    command: ["serve", "--host", "0.0.0.0", "--port", "8000",
               "--workers", "2", "--json-logs"]
     env_file: .env.prod
     environment:
-      OPSPILOT_HOME: /data/opspilot
-      OLLAMA_BASE_URL: http://ollama:11434
+      # Set here (not left to .env.prod) so the state dir always matches the
+      # volume below. The image pre-creates this path owned by the non-root
+      # user — a named volume mounted anywhere else is root-owned and the
+      # server cannot create kb/ in it.
+      OPSPILOT_HOME: /home/opspilot/.opspilot
+      OPSPILOT_OLLAMA_BASE_URL: http://ollama:11434
     volumes:
-      - opspilot-data:/data/opspilot
+      - opspilot-data:/home/opspilot/.opspilot
       - ./playbooks:/home/opspilot/playbooks:ro
     expose:
       - "8000"
@@ -25,7 +33,10 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "sh", "-c", "curl -sf http://localhost:8000/health || exit 1"]
+      # python, not curl — the runtime image ships ca-certificates + sqlite3
+      # only. urlopen raises (non-zero exit) on anything but a 2xx.
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -54,17 +65,23 @@ services:
       context: .
       dockerfile: Dockerfile
     profiles: ["jsm"]
-    command: >
-      sh -c 'opspilot source jsm
-      --base-url "$$JSM_BASE_URL"
-      --email "$$JSM_EMAIL"
-      --jql "$$JSM_JQL"
-      --interval "$${JSM_POLL_INTERVAL:-60}"
-      --state /data/opspilot/intake_state.json
-      --api-url http://api:8000'
+    # A shell is needed to expand the JSM_* vars, so the `opspilot` ENTRYPOINT
+    # is replaced rather than extended.
+    entrypoint: ["sh", "-c"]
+    # One list item, not a plain string: a string command is split into argv,
+    # and `sh -c` would then run only its first word.
+    command:
+      - >
+        opspilot source jsm
+        --base-url "$$JSM_BASE_URL"
+        --email "$$JSM_EMAIL"
+        --jql "$$JSM_JQL"
+        --interval "$${JSM_POLL_INTERVAL:-60}"
+        --state /home/opspilot/.opspilot/intake_state.json
+        --api-url http://api:8000
     env_file: .env.prod
     volumes:
-      - opspilot-data:/data/opspilot
+      - opspilot-data:/home/opspilot/.opspilot
     depends_on:
       api:
         condition: service_healthy

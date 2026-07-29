@@ -88,9 +88,22 @@ once the account exists.
 For a multi-service setup (dedicated Ollama, nginx TLS termination):
 
 ```bash
-cp .env.example .env   # add API keys + auth env (see .env.example)
+cp .env.example .env.prod   # the compose file reads .env.prod, not .env
 docker compose -f docker-compose.prod.yml up -d
-curl http://localhost:8000/health
+curl http://localhost/health   # nginx on :80 — the API is internal-only
+```
+
+`.env.prod` must set `OPSPILOT_API_TOKEN` (the api service binds `0.0.0.0`,
+which is fail-closed without one) plus your provider keys, and
+`OPSPILOT_BOOTSTRAP_ADMIN` / `OPSPILOT_BOOTSTRAP_PASSWORD` for the first
+sign-in. `OPSPILOT_HOME` and the Ollama URL are set by the compose file —
+leave them commented out.
+
+The bundled Ollama starts with no models, so pull the embedder once (until
+then, embeddings fail unless `OPENAI_API_KEY` is set for the fallback):
+
+```bash
+docker compose -f docker-compose.prod.yml exec ollama ollama pull nomic-embed-text-v2-moe
 ```
 
 ## systemd (Linux)
