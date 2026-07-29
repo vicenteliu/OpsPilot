@@ -42,8 +42,8 @@ AI 正在重塑整个 IT Support 行业。OpsPilot 是对一个具体问题的�
 - **多模型支持** —— Anthropic Claude、OpenAI、OpenRouter、Gemini、xAI Grok
   或本地 Ollama；playbook 声明主模型 + 可选备选模型（含本地 Gemma），可在 UI
   按次切换、也可在后台设团队默认，provider 出错时自动降级；管理员还能在后台
-  直接编辑 playbook 的可选模型列表（增删、升级模型名）。嵌入默认走本地
-  Ollama，Ollama 不可用时回退到 OpenAI（并显著提示）。playbook 还可按复杂度
+  直接编辑 playbook 的可选模型列表（增删、升级模型名）。嵌入默认走 OpenAI，
+  想留在内网的团队改一个环境变量即可切到本地 Ollama。playbook 还可按复杂度
   分级路由，把占多数的简单任务交给便宜档位，只在需要时才升档
 - **工单接入（Intake）** —— 按 JQL 范围直接从 Jira Service Management 拉取
   工单，AI 建议以评论形式发回工单本身：纯轮询（无需公网入口）、只发评论
@@ -97,7 +97,8 @@ Web UI —— 暗色优先、侧边栏导航，每个回答都能溯源到知识
 ### 前置条件
 
 - Python 3.12+
-- [Ollama](https://ollama.com)（本地模型与向量嵌入）
+- 用于嵌入的 `OPENAI_API_KEY`，或用 [Ollama](https://ollama.com) 把嵌入留在
+  本地（见 [Embeddings](docs/deployment.md#embeddings)）
 - Node.js 18+ 与 [pnpm](https://pnpm.io)（Web UI 需要）
 
 ### 1. 克隆与安装
@@ -116,10 +117,12 @@ pip install -e ".[dev]"
 make rust-dev
 ```
 
-### 2. 拉取模型
+### 2. 拉取模型（仅本地推理需要）
+
+用云端模型 + OpenAI 嵌入的话，这一步可以跳过。
 
 ```bash
-ollama pull nomic-embed-text-v2-moe   # 嵌入模型（必需）
+ollama pull nomic-embed-text-v2-moe   # 嵌入模型；需配合 OPSPILOT_EMBED_PROVIDER=ollama
 ollama pull gemma4:e4b                 # 本地对话模型（可选 fallback）
 ```
 

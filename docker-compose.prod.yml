@@ -5,6 +5,8 @@
 #
 # .env.prod must set OPSPILOT_API_TOKEN: the api service binds 0.0.0.0, and
 # that is fail-closed without a token (ADR-0011) — the container would exit.
+# Embeddings default to OpenAI, so OPENAI_API_KEY is what the default stack
+# needs; Ollama is behind the `ollama` profile.
 
 services:
   api:
@@ -28,9 +30,6 @@ services:
       - ./playbooks:/home/opspilot/playbooks:ro
     expose:
       - "8000"
-    depends_on:
-      ollama:
-        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       # python, not curl — the runtime image ships ca-certificates + sqlite3
@@ -42,8 +41,17 @@ services:
       retries: 3
       start_period: 20s
 
+  # Local models — opt-in via profile:
+  #   docker compose -f docker-compose.prod.yml --profile ollama up -d
+  # Embeddings default to OpenAI, so the stack runs without this. Start it for
+  # local chat models, or with OPSPILOT_EMBED_PROVIDER=ollama in .env.prod for
+  # local embeddings — and pull the model first:
+  #   docker compose ... exec ollama ollama pull nomic-embed-text-v2-moe
+  # The api service has no depends_on here: it must start whether or not this
+  # profile is enabled.
   ollama:
     image: ollama/ollama:latest
+    profiles: ["ollama"]
     volumes:
       - ollama-data:/root/.ollama
     expose:

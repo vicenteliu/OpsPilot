@@ -14,11 +14,15 @@ make rust-dev            # optional: Rust extensions (requires rustup)
 cd web && pnpm install   # optional: web UI
 ```
 
-Local models and embeddings need [Ollama](https://ollama.com):
+Embeddings default to OpenAI (`OPENAI_API_KEY`). To run them locally instead,
+install [Ollama](https://ollama.com) and select it:
 
 ```bash
 ollama pull nomic-embed-text-v2-moe
+export OPSPILOT_EMBED_PROVIDER=ollama
 ```
+
+The `requires_ollama` test suite needs Ollama either way.
 
 ## Quality gates
 

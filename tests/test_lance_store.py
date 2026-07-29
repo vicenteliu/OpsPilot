@@ -24,6 +24,7 @@ from opspilot.memory.lance_store import (  # noqa: E402
     AnnHit,
     LanceStore,
     VectorRecord,
+    normalize_embedding_model,
 )
 
 DIM = 4
@@ -82,6 +83,72 @@ def test_dim_mismatch_on_reopen_raises(tmp_path: Path) -> None:
     LanceStore.open_or_create(p, dim=DIM, embedding_model=EMBED_MODEL)
     with pytest.raises(ValueError, match="dim"):
         LanceStore.open_or_create(p, dim=8, embedding_model=EMBED_MODEL)
+
+
+# ── Embedder mismatch guard ──────────────────────────────────────────
+#
+# Equal dimensions are not enough: nomic-embed-text-v2-moe and OpenAI's
+# text-embedding-3-small are both 768-wide, so a KB built by one would open
+# happily under the other and return noise rather than an error.
+
+
+def test_embedder_mismatch_on_reopen_raises(tmp_path: Path) -> None:
+    p = tmp_path / "lancedb"
+    s = LanceStore.open_or_create(p, dim=DIM, embedding_model=EMBED_MODEL)
+    s.upsert_vectors([_rec("chk_aaaaaaaa", [1, 0, 0, 0])])
+
+    with pytest.raises(ValueError, match="not comparable") as exc:
+        LanceStore.open_or_create(p, dim=DIM, embedding_model="openai/text-embedding-3-small")
+    # Both sides named, so the operator can tell which one to rebuild under.
+    assert EMBED_MODEL in str(exc.value)
+    assert "text-embedding-3-small" in str(exc.value)
+
+
+def test_embedder_mismatch_can_be_overridden(tmp_path: Path) -> None:
+    p = tmp_path / "lancedb"
+    s = LanceStore.open_or_create(p, dim=DIM, embedding_model=EMBED_MODEL)
+    s.upsert_vectors([_rec("chk_aaaaaaaa", [1, 0, 0, 0])])
+
+    reopened = LanceStore.open_or_create(
+        p,
+        dim=DIM,
+        embedding_model="openai/text-embedding-3-small",
+        allow_model_mismatch=True,
+    )
+    assert reopened.count() == 1
+
+
+def test_same_model_written_two_ways_is_not_a_mismatch(tmp_path: Path) -> None:
+    """CLI ingest writes the full reference, the API server the bare name."""
+    p = tmp_path / "lancedb"
+    s = LanceStore.open_or_create(p, dim=DIM, embedding_model=EMBED_MODEL)
+    s.upsert_vectors([_rec("chk_aaaaaaaa", [1, 0, 0, 0])])
+
+    reopened = LanceStore.open_or_create(p, dim=DIM, embedding_model="nomic-embed-text")
+    assert reopened.count() == 1
+
+
+def test_empty_table_has_no_embedder_to_mismatch(tmp_path: Path) -> None:
+    """A created-but-unpopulated KB is not yet committed to an embedder."""
+    p = tmp_path / "lancedb"
+    LanceStore.open_or_create(p, dim=DIM, embedding_model=EMBED_MODEL)
+    reopened = LanceStore.open_or_create(
+        p, dim=DIM, embedding_model="openai/text-embedding-3-small"
+    )
+    assert reopened.count() == 0
+
+
+@pytest.mark.parametrize(
+    ("ref", "expected"),
+    [
+        ("ollama-local/nomic-embed-text-v2-moe@2026-04", "nomic-embed-text-v2-moe"),
+        ("nomic-embed-text-v2-moe", "nomic-embed-text-v2-moe"),
+        ("openai/text-embedding-3-small", "text-embedding-3-small"),
+        ("  OpenAI/Text-Embedding-3-Small  ", "text-embedding-3-small"),
+    ],
+)
+def test_normalize_embedding_model(ref: str, expected: str) -> None:
+    assert normalize_embedding_model(ref) == expected
 
 
 # ── Upsert ────────────────────────────────────────────────────────────
