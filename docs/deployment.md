@@ -99,12 +99,18 @@ which is fail-closed without one) plus your provider keys, and
 sign-in. `OPSPILOT_HOME` and the Ollama URL are set by the compose file —
 leave them commented out.
 
-The bundled Ollama starts with no models, so pull the embedder once (until
-then, embeddings fail unless `OPENAI_API_KEY` is set for the fallback):
+Ollama is **optional** — embeddings default to OpenAI, so the stack above
+runs on `OPENAI_API_KEY` alone. Start it only if you want local embeddings or
+local chat models:
 
 ```bash
+docker compose -f docker-compose.prod.yml --profile ollama up -d
 docker compose -f docker-compose.prod.yml exec ollama ollama pull nomic-embed-text-v2-moe
+# then set OPSPILOT_EMBED_PROVIDER=ollama in .env.prod and restart the api
 ```
+
+Switching embedders on an existing KB is refused at startup rather than
+silently degrading retrieval — see [Embeddings](#embeddings) below.
 
 ## systemd (Linux)
 
@@ -115,6 +121,42 @@ sudo systemctl daemon-reload && sudo systemctl enable --now opspilot
 
 See [`deploy/systemd/README.md`](../deploy/systemd/README.md) for full setup
 instructions.
+
+## Embeddings
+
+OpenAI is the default embedder; Ollama is opt-in. With
+`OPSPILOT_EMBED_PROVIDER` unset, a configured `OPENAI_API_KEY` selects OpenAI
+and its absence falls back to a local Ollama:
+
+| `OPSPILOT_EMBED_PROVIDER` | `OPENAI_API_KEY` | Active embedder |
+|---|---|---|
+| unset | set | `openai/text-embedding-3-small` |
+| unset | — | local Ollama, with a notice in the UI |
+| `openai` | set | `openai/text-embedding-3-small` |
+| `openai` | — | none — embedding calls fail with the reason |
+| `ollama` | either | local Ollama (an explicit choice is never overridden) |
+
+An explicit choice is honoured even when it cannot be served: asking for
+Ollama and finding it down does **not** fall through to OpenAI. The two
+produce incomparable vectors, so a silent swap would poison the KB rather
+than degrade it.
+
+For the same reason the server **refuses to start** against a KB built by a
+different embedder. Both defaults are 768-dimensional, so nothing else would
+catch it — retrieval would simply return noise:
+
+```
+LanceDB table 'chunks' at ~/.opspilot/kb/lancedb was built with embedding
+model 'ollama-local/nomic-embed-text-v2-moe@2026-04', but the active embedder
+is 'openai/text-embedding-3-small'. Vectors from different embedders are not
+comparable, so retrieval would return noise instead of failing. Re-ingest the
+KB under the current embedder, or set OPSPILOT_ALLOW_EMBED_MISMATCH=1 to open
+it anyway.
+```
+
+Re-ingesting is the correct fix. `OPSPILOT_ALLOW_EMBED_MISMATCH=1` exists for
+the case where you know the vectors are in fact comparable; it does not make
+a mixed KB searchable.
 
 ## Observability
 
@@ -144,6 +186,9 @@ variables. See `.env.example` for the full list.
 | `OPENAI_API_KEY` | — | OpenAI API key |
 | `OPENROUTER_API_KEY` | — | OpenRouter API key |
 | `GEMINI_API_KEY` | — | Google Gemini API key |
+| `OPSPILOT_EMBED_PROVIDER` | — | `openai` / `ollama`. Unset: OpenAI if a key is set, else Ollama. See [Embeddings](#embeddings). |
+| `OPSPILOT_OPENAI_EMBED_MODEL` | `text-embedding-3-small` | OpenAI embedding model, requested at 768-dim |
+| `OPSPILOT_ALLOW_EMBED_MISMATCH` | — | `1` opens a KB built by a different embedder instead of refusing |
 | `OPSPILOT_OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama base URL |
 | `OPSPILOT_OLLAMA_TIMEOUT_S` | `300` | Ollama request timeout (s). Raise for large local models that are slow to cold-load. |
 | `OPSPILOT_HOME` | `~/.opspilot` | State directory (KB, sessions, audit) |

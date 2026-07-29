@@ -139,8 +139,17 @@ class LanceStore:
         *,
         dim: int,
         embedding_model: str,
+        allow_model_mismatch: bool = False,
     ) -> LanceStore:
-        """Open the LanceDB dataset at ``path``; create ``chunks`` table if absent."""
+        """Open the LanceDB dataset at ``path``; create ``chunks`` table if absent.
+
+        Refuses to open a dataset whose rows were written by a different
+        embedder. Matching dimensions are not enough: Ollama's
+        nomic-embed-text-v2-moe and OpenAI's text-embedding-3-small are both
+        768-wide, so without this check a KB built by one is silently searched
+        with the other's query vectors and returns noise rather than an error.
+        ``allow_model_mismatch`` opts out for a caller that knows better.
+        """
         path.mkdir(parents=True, exist_ok=True)
         db = lancedb.connect(str(path))
 
@@ -152,6 +161,21 @@ class LanceStore:
                     f"LanceDB table '{TABLE_NAME}' at {path} was created with "
                     f"dim={existing_dim}; refusing to mix with dim={dim}. "
                     "Switching embedding models requires a new dataset."
+                )
+            stored_model = _detect_embedding_model(table)
+            if (
+                stored_model
+                and not allow_model_mismatch
+                and normalize_embedding_model(stored_model)
+                != normalize_embedding_model(embedding_model)
+            ):
+                raise ValueError(
+                    f"LanceDB table '{TABLE_NAME}' at {path} was built with embedding "
+                    f"model {stored_model!r}, but the active embedder is "
+                    f"{embedding_model!r}. Vectors from different embedders are not "
+                    "comparable, so retrieval would return noise instead of failing. "
+                    "Re-ingest the KB under the current embedder, or set "
+                    "OPSPILOT_ALLOW_EMBED_MISMATCH=1 to open it anyway."
                 )
         else:
             schema = _build_schema(dim)
@@ -289,6 +313,33 @@ def _build_schema(dim: int) -> pa.Schema:
             ),
         ]
     )
+
+
+def normalize_embedding_model(ref: str) -> str:
+    """Reduce a model reference to what actually decides vector comparability.
+
+    ``ollama-local/nomic-embed-text-v2-moe@2026-04`` and
+    ``nomic-embed-text-v2-moe`` name the same embedder — the provider serving
+    it and the version tag do not move the vector space. Callers disagree on
+    which form they write (CLI ingest uses the full reference, the API server
+    the bare name), so comparisons normalise first.
+    """
+    base = ref.rsplit("/", 1)[-1]
+    return base.split("@", 1)[0].strip().lower()
+
+
+def _detect_embedding_model(table: lancedb.table.Table) -> str | None:
+    """Read the embedder recorded on an existing row; None if the table is empty.
+
+    Projects a single column of a single row, so it stays cheap on a large KB.
+    """
+    if int(table.count_rows()) == 0:
+        return None
+    scanned = table.to_lance().scanner(columns=["embedding_model"], limit=1).to_table()
+    if scanned.num_rows == 0:
+        return None
+    value = scanned.column("embedding_model")[0].as_py()
+    return str(value) if value else None
 
 
 def _detect_dim(table: lancedb.table.Table) -> int:

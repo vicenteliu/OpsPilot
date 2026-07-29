@@ -48,8 +48,8 @@ practical work-assistance layer for IT support look like?**
   as a team default in the admin module, with automatic fallback when a
   provider errors. Admins can curate the selectable list itself — remove or
   upgrade models — from the admin module, editing the playbook in place.
-  Embeddings default to local Ollama and fall back to
-  OpenAI (with a visible notice) when Ollama is unavailable. Playbooks can
+  Embeddings default to OpenAI, with local Ollama a one-variable switch away
+  for teams that keep them in-house. Playbooks can
   route by complexity, sending the easy majority to a cheap tier and
   escalating only what needs it
 - **Work-item intake** — pull tickets straight from Jira Service Management
@@ -118,7 +118,8 @@ The terminal UI — a REPL with slash commands over the same backend:
 ### Prerequisites
 
 - Python 3.12+
-- [Ollama](https://ollama.com) (for local models and embeddings)
+- An `OPENAI_API_KEY` for embeddings, or [Ollama](https://ollama.com) to keep
+  them local (see [Embeddings](docs/deployment.md#embeddings))
 - Node.js 18+ and [pnpm](https://pnpm.io) (for the web UI)
 
 ### 1. Clone and install
@@ -137,10 +138,12 @@ requires [rustup](https://rustup.rs)):
 make rust-dev
 ```
 
-### 2. Pull models
+### 2. Pull models (only for local inference)
+
+Skip this if you are using cloud models with OpenAI embeddings.
 
 ```bash
-ollama pull nomic-embed-text-v2-moe   # embedding model (required)
+ollama pull nomic-embed-text-v2-moe   # embeddings; needs OPSPILOT_EMBED_PROVIDER=ollama
 ollama pull gemma4:e4b                 # local chat model (optional fallback)
 ```
 

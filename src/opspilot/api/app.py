@@ -33,7 +33,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from ..auth import AuthStore
 from ..config import load_config
-from ..embedding import resolve_embedding
+from ..embedding import EMBED_DIM, resolve_embedding
 from ..inventory import InventoryStore
 from ..log_buffer import install as install_log_buffer
 from ..mcp import McpRegistry, load_mcp_config
@@ -107,10 +107,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if bootstrap_admin and bootstrap_pw:
         auth.bootstrap_admin(bootstrap_admin, bootstrap_pw)
 
+    # Embeddings: OpenAI by default, Ollama when asked for or when no OpenAI
+    # key is set — chosen once at startup, with a user-facing notice (ADR-0020
+    # posture: surface, don't silently degrade). See opspilot.embedding. It is
+    # resolved before the vector store so the KB is opened, and tagged, with
+    # the embedder actually in use.
+    embed_fn, embed_status = resolve_embedding(cfg)
+
     lance = LanceStore.open_or_create(
         kb_dir / "lancedb",
-        dim=768,
-        embedding_model=cfg.embed_model,
+        dim=EMBED_DIM,
+        embedding_model=embed_status.model,
+        allow_model_mismatch=os.environ.get("OPSPILOT_ALLOW_EMBED_MISMATCH") == "1",
     )
 
     # Chat provider is determined by the playbook's model config.
@@ -124,11 +132,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         kind=vendor_doc_pb.model.kind,
         api_key=cfg.anthropic_api_key,
     )
-
-    # Embeddings: Ollama by default, OpenAI fallback if Ollama is down and a
-    # key is set — chosen once at startup, with a user-facing notice (ADR-0020
-    # posture: surface, don't silently degrade). See opspilot.embedding.
-    embed_fn, embed_status = resolve_embedding(cfg)
 
     session_mgr = SessionManager(home=cfg.home)
     redactor = Redactor.from_yaml()
