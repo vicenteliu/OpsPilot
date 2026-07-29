@@ -265,6 +265,7 @@ export interface KBHit {
   rank_fts: number | null;
   valid_from: string | null;
   has_open_conflicts: boolean;
+  source_authority: string | null;
   content: string;
 }
 
@@ -316,11 +317,16 @@ export async function searchKB(query: string, topK = 5): Promise<KBHit[]> {
   return data.hits;
 }
 
-export async function ingestKB(paths: string[]): Promise<{ docs_succeeded: number; docs_failed: number; chunks_total: number }> {
+export type SourceAuthority = 'official' | 'vendor' | 'internal' | 'unverified';
+
+export async function ingestKB(
+  paths: string[],
+  sourceAuthority: SourceAuthority = 'internal'
+): Promise<{ docs_succeeded: number; docs_failed: number; chunks_total: number }> {
   const res = await apiFetch('/api/kb/ingest', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ paths })
+    body: JSON.stringify({ paths, source_authority: sourceAuthority })
   });
   if (!res.ok) throw new Error(`KB ingest failed: ${res.status}`);
   return res.json();
