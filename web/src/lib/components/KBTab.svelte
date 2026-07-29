@@ -156,7 +156,7 @@
       <p class="section-error">{kbSearchError}</p>
     {:else if kbSearchResults.length > 0}
       <table class="data-table">
-        <thead><tr><th>Chunk</th><th>Doc</th><th>Score</th><th>Valid From</th><th>Snippet</th><th></th></tr></thead>
+        <thead><tr><th>Chunk</th><th>Doc</th><th>Source</th><th>Score</th><th>Valid From</th><th>Snippet</th><th></th></tr></thead>
         <tbody>
           {#each kbSearchResults as h}
             <tr class="{h.has_open_conflicts ? 'row-conflict' : ''}">
@@ -164,6 +164,12 @@
               <td class="mono">
                 {h.document_id.slice(0, 20)}
                 {#if h.has_open_conflicts}<span class="warn-badge" title="Source document has open conflicts">⚠</span>{/if}
+              </td>
+              <td>
+                <span class="authority"
+                  title="How much this source is trusted. Recorded at ingest; does not affect ranking.">
+                  {h.source_authority ?? 'internal'}
+                </span>
               </td>
               <td class="num">{h.score.toFixed(4)}</td>
               <td class="dim">{h.valid_from ? h.valid_from.slice(0, 10) : '—'}</td>

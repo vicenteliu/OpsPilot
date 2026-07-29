@@ -38,7 +38,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Final
+from typing import Final, Literal, get_args
 
 from ..errors import OpsPilotError
 from ..ids import new_ulid_id
@@ -72,6 +72,15 @@ class IngestionError(OpsPilotError):
 # ── Public dataclasses ────────────────────────────────────────────────
 
 
+# How much a document's origin is trusted. Mirrors the CHECK constraint on
+# kb_documents.source_authority — the DB rejects anything else, so callers
+# validate against this rather than discovering it as a sqlite error. It is
+# descriptive provenance today and does not affect retrieval ordering; see
+# issue #150.
+SourceAuthority = Literal["official", "vendor", "internal", "unverified"]
+SOURCE_AUTHORITIES: Final[tuple[str, ...]] = get_args(SourceAuthority)
+
+
 @dataclass(frozen=True)
 class IngestConfig:
     """Defaults for one ingestion run.
@@ -89,7 +98,7 @@ class IngestConfig:
     redaction_rules_version: str = "1.0.0"
     chunk_config: ChunkConfig = field(default_factory=ChunkConfig)
     detect_conflicts: bool = True  # run conflict detection after each doc
-    source_authority: str = "internal"  # official | vendor | internal | unverified
+    source_authority: SourceAuthority = "internal"
     conflict_similarity_threshold: float = 0.82
 
 

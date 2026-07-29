@@ -46,7 +46,7 @@ from .harness.reporter import render_result_table
 from .iteration.engine import IterationEngine
 from .iteration.types import IterationPolicy
 from .memory.conflict import resolve_conflict
-from .memory.ingestion import IngestConfig
+from .memory.ingestion import SOURCE_AUTHORITIES, IngestConfig, SourceAuthority
 from .memory.ingestion import ingest as run_ingest
 from .memory.kb_loader import load_kb_fixture
 from .memory.lance_store import LanceStore
@@ -274,6 +274,11 @@ def ingest(
         "--classification",
         help="public | internal | confidential | restricted (restricted skips vector path).",
     ),
+    source_authority: str = typer.Option(
+        "internal",
+        "--source-authority",
+        help="official | vendor | internal | unverified — how much this source is trusted.",
+    ),
     embedding_model: str = typer.Option(
         "ollama-local/nomic-embed-text-v2-moe@2026-04",
         "--embedding-model",
@@ -289,6 +294,15 @@ def ingest(
     ),
 ) -> None:
     """Ingest one or more files into the KB."""
+    if source_authority not in SOURCE_AUTHORITIES:
+        # The column has a CHECK constraint; catching it here beats a sqlite
+        # error raised part-way through a batch.
+        _err.print(
+            f"[red]--source-authority must be one of "
+            f"{' | '.join(SOURCE_AUTHORITIES)}; got {source_authority!r}[/red]"
+        )
+        raise typer.Exit(code=1)
+
     cfg = load_config()
     sqlite, lance = _open_kb_stores(
         home=cfg.home,
@@ -307,6 +321,7 @@ def ingest(
         classification=classification,
         embedding_model=embedding_model,
         embedding_dim=embedding_dim,
+        source_authority=cast("SourceAuthority", source_authority),
     )
     stats = run_ingest(
         paths,

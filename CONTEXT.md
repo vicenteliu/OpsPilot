@@ -70,6 +70,10 @@ _Avoid_: passage, segment, document fragment
 The pipeline that converts raw documents (markdown, PDF, DOCX) → redact PII → split into chunks → embed → upsert into KB.
 _Avoid_: index, import, upload
 
+**Source authority**:
+How far a KB document's origin is trusted — `official` (your own signed-off SOPs), `vendor` (the manufacturer's documentation), `internal` (default: written by someone on the team), `unverified` (a forum answer, a scraped page). Recorded per document at ingest and returned on every **Hit**, so a reader can see what a citation rests on. It is *descriptive only*: retrieval ordering is relevance, and a lower tier is never demoted. Whether it should influence ranking is open — see issue #150.
+_Avoid_: trust level, source quality, confidence (that is the model's, not the document's)
+
 **Conflict**:
 Two **Chunks** the detector believes cannot both be trusted — one of `temporal_supersede` (one doc is clearly newer), `scope_overlap` (near-duplicates), or `direct_contradiction` (opposing claims). Detected automatically, settled by a human: a **Resolution** (`a_wins` / `b_wins` / `merged` / `dismissed`) marks the losing Chunk superseded. Until settled it is *open*, and answers citing either Chunk are flagged.
 _Avoid_: duplicate, contradiction (that is one of the three types), error

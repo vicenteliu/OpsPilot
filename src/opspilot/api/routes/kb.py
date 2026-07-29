@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel
 
 from ...auth import Identity, require_role
+from ...memory.ingestion import SourceAuthority
 
 router = APIRouter()
 
@@ -73,6 +74,10 @@ class IngestRequest(BaseModel):
     kb_id: str = "opspilot:public-kb"
     namespace: str | None = None
     classification: str = "internal"
+    # Provenance recorded on every document in this batch. Validated here so a
+    # bad value is a 422 naming the four choices, not a sqlite CHECK failure
+    # after half the batch has been written.
+    source_authority: SourceAuthority = "internal"
 
 
 @router.post("/kb/ingest")
@@ -95,6 +100,7 @@ async def ingest_docs(body: IngestRequest, request: Request) -> dict[str, Any]:
         # write still commits, leaving keyword-only chunks with no vectors.
         embedding_model=state.lance.embedding_model,
         embedding_dim=state.lance.dim,
+        source_authority=body.source_authority,
     )
 
     loop = asyncio.get_event_loop()
@@ -168,6 +174,10 @@ async def search_kb(
                 "rank_fts": h.rank_fts,
                 "valid_from": h.valid_from,
                 "has_open_conflicts": h.has_open_conflicts,
+                # Provenance of the citation. Retrieval has always resolved it
+                # onto the Hit; it just never reached the caller, which is why
+                # no interface could show what an answer rested on.
+                "source_authority": h.source_authority,
                 "content": (h.content or "")[:500],
             }
             for h in hits
