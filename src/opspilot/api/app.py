@@ -33,7 +33,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from ..auth import AuthStore
 from ..config import load_config
-from ..embedding import resolve_embedding
+from ..embedding import EMBED_DIM, resolve_embedding
 from ..inventory import InventoryStore
 from ..log_buffer import install as install_log_buffer
 from ..mcp import McpRegistry, load_mcp_config
@@ -116,7 +116,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     lance = LanceStore.open_or_create(
         kb_dir / "lancedb",
-        dim=768,
+        dim=EMBED_DIM,
         embedding_model=embed_status.model,
         allow_model_mismatch=os.environ.get("OPSPILOT_ALLOW_EMBED_MISMATCH") == "1",
     )

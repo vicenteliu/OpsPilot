@@ -35,6 +35,7 @@ from rich.console import Console
 from rich.table import Table
 
 if TYPE_CHECKING:
+    from .config import Config
     from .sandbox.types import ActionRequest
 
 from . import __version__
@@ -2151,6 +2152,34 @@ def _remote_binding_error(host: str, token: str | None) -> str | None:
     )
 
 
+def _kb_open_error(cfg: Config) -> str | None:
+    """Preflight the KB open that the API server does at startup.
+
+    The store refuses to open a dataset built by a different embedder (or at a
+    different width), but inside uvicorn's lifespan that surfaces as a
+    traceback ending in "Application startup failed". Doing it here first
+    turns a configuration problem back into a one-line refusal, like the API
+    token guard above.
+    """
+    from .embedding import EMBED_DIM, resolve_embedding
+
+    kb_path = cfg.home / "kb" / "lancedb"
+    if not kb_path.exists():
+        return None  # nothing to conflict with yet
+
+    _embed_fn, status = resolve_embedding(cfg)
+    try:
+        LanceStore.open_or_create(
+            kb_path,
+            dim=EMBED_DIM,
+            embedding_model=status.model,
+            allow_model_mismatch=os.environ.get("OPSPILOT_ALLOW_EMBED_MISMATCH") == "1",
+        )
+    except ValueError as exc:  # the store's own refusals; message is self-explanatory
+        return str(exc)
+    return None
+
+
 @app.command("serve")
 def serve(
     host: str = typer.Option("127.0.0.1", "--host", "-H", help="Bind host."),
@@ -2187,9 +2216,15 @@ def serve(
 
     from .api.middleware import configure_json_logging
 
-    binding_error = _remote_binding_error(host, load_config().api_token)
+    cfg = load_config()
+    binding_error = _remote_binding_error(host, cfg.api_token)
     if binding_error:
         _err.print(f"[red]{binding_error}[/red]")
+        raise typer.Exit(code=1)
+
+    kb_error = _kb_open_error(cfg)
+    if kb_error:
+        _err.print(f"[red]{kb_error}[/red]")
         raise typer.Exit(code=1)
 
     if json_logs:

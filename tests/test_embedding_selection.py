@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 
+from opspilot.cli import _kb_open_error
 from opspilot.embedding import EMBED_DIM, resolve_embedding
+from opspilot.memory.lance_store import LanceStore, VectorRecord
 
 
 def _cfg() -> SimpleNamespace:
@@ -156,3 +159,68 @@ def test_ollama_health_probe_exception_treated_as_down() -> None:
     ):
         _fn, status = resolve_embedding(_cfg())
     assert status.warning is not None  # degraded, surfaced
+
+
+# ── serve preflight ──────────────────────────────────────────────────
+#
+# The store's refusal happens inside uvicorn's lifespan, where it reaches the
+# operator as a traceback. `serve` checks first so a misconfiguration reads
+# like the API-token guard: one line, exit 1.
+
+
+def _kb_built_by_ollama(home: Path) -> None:
+    ref = "ollama-local/nomic-embed-text-v2-moe@2026-04"
+    store = LanceStore.open_or_create(home / "kb" / "lancedb", dim=EMBED_DIM, embedding_model=ref)
+    store.upsert_vectors(
+        [
+            VectorRecord(
+                vector_id="vec_chk_seed0001",
+                embedding=[0.01] * EMBED_DIM,
+                document_id="doc_seed0001",
+                chunk_id="chk_seed0001",
+                namespace="opspilot:public-kb",
+                classification="internal",
+                language="en",
+                tags=[],
+                embedding_model=ref,
+            )
+        ]
+    )
+
+
+def test_preflight_reports_an_embedder_mismatch(tmp_path: Path) -> None:
+    _kb_built_by_ollama(tmp_path)
+    cfg = SimpleNamespace(
+        home=tmp_path, ollama_base_url="http://ollama:11434", embed_model="nomic-embed-text-v2-moe"
+    )
+    with (
+        patch.dict(os.environ, {"OPENAI_API_KEY": "sk-x"}, clear=True),
+        patch.dict("sys.modules", {"openai": _fake_openai_module()}),
+    ):
+        message = _kb_open_error(cfg)
+    assert message and "not comparable" in message
+
+
+def test_preflight_respects_the_override(tmp_path: Path) -> None:
+    _kb_built_by_ollama(tmp_path)
+    cfg = SimpleNamespace(
+        home=tmp_path, ollama_base_url="http://ollama:11434", embed_model="nomic-embed-text-v2-moe"
+    )
+    env = {"OPENAI_API_KEY": "sk-x", "OPSPILOT_ALLOW_EMBED_MISMATCH": "1"}
+    with (
+        patch.dict(os.environ, env, clear=True),
+        patch.dict("sys.modules", {"openai": _fake_openai_module()}),
+    ):
+        assert _kb_open_error(cfg) is None
+
+
+def test_preflight_is_silent_without_a_kb(tmp_path: Path) -> None:
+    """A first start has nothing to conflict with, and must not be blocked."""
+    cfg = SimpleNamespace(
+        home=tmp_path, ollama_base_url="http://ollama:11434", embed_model="nomic-embed-text-v2-moe"
+    )
+    with (
+        patch.dict(os.environ, {"OPENAI_API_KEY": "sk-x"}, clear=True),
+        patch.dict("sys.modules", {"openai": _fake_openai_module()}),
+    ):
+        assert _kb_open_error(cfg) is None
