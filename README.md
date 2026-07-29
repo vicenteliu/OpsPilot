@@ -151,10 +151,16 @@ ollama pull gemma4:e4b                 # local chat model (optional fallback)
 
 ```bash
 cp .env.example .env
-# Edit .env — add ANTHROPIC_API_KEY or other cloud keys if using cloud providers.
-# No cloud key? Pick the local Gemma model from the UI dropdown — retrieval
-# switches to prefetch automatically so weak models still cite the KB.
+# Edit .env — two independent choices:
+#   Chat      ANTHROPIC_API_KEY (or another cloud key). No cloud key? Pick the
+#             local Gemma model from the UI dropdown — retrieval switches to
+#             prefetch automatically so weak models still cite the KB.
+#   Embedding OPENAI_API_KEY, used by default. To keep embeddings local
+#             instead, set OPSPILOT_EMBED_PROVIDER=ollama (step 2).
 ```
+
+Step 4 needs a working embedder: with neither an OpenAI key nor a reachable
+Ollama, ingest fails and says so.
 
 ### 4. Ingest a knowledge base
 
@@ -196,11 +202,18 @@ docker run -p 8000:8000 \
   -e OPSPILOT_API_TOKEN="$(openssl rand -hex 32)" \
   -e OPSPILOT_BOOTSTRAP_ADMIN=admin -e OPSPILOT_BOOTSTRAP_PASSWORD='<strong-pw>' \
   -e ANTHROPIC_API_KEY=sk-ant-... \
-  -e OPSPILOT_OLLAMA_BASE_URL=http://host.docker.internal:11434 \
+  -e OPENAI_API_KEY=sk-... \
   -v opspilot-data:/home/opspilot/.opspilot \
   opspilot:latest serve --host 0.0.0.0 --port 8000
 # → http://localhost:8000, sign in as the bootstrap admin
 ```
+
+The container needs no Ollama: `ANTHROPIC_API_KEY` answers chat and
+`OPENAI_API_KEY` embeds. To use a host Ollama instead, add
+`-e OPSPILOT_EMBED_PROVIDER=ollama -e OPSPILOT_OLLAMA_BASE_URL=http://host.docker.internal:11434`.
+
+For a multi-service deployment (nginx TLS termination, JSM intake, optional
+Ollama), see [Docker Compose](docs/deployment.md#docker-compose).
 
 ## Architecture
 

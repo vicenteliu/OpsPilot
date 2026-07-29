@@ -130,10 +130,16 @@ ollama pull gemma4:e4b                 # 本地对话模型（可选 fallback）
 
 ```bash
 cp .env.example .env
-# 编辑 .env —— 使用云端模型时填入 ANTHROPIC_API_KEY 等。
-# 没有云端 key？在 UI 下拉框选择本地 Gemma 模型即可——检索会自动切到
-# prefetch 模式，弱模型也能正确引用知识库。
+# 编辑 .env —— 两个互相独立的选择：
+#   对话  ANTHROPIC_API_KEY（或其他云端 key）。没有云端 key？在 UI 下拉框
+#         选本地 Gemma 模型即可——检索会自动切到 prefetch 模式，弱模型也能
+#         正确引用知识库。
+#   嵌入  OPENAI_API_KEY，默认走它。想把嵌入留在本地，改设
+#         OPSPILOT_EMBED_PROVIDER=ollama（见第 2 步）。
 ```
+
+第 4 步需要一个可用的 embedder：既没有 OpenAI key、也连不上 Ollama 时，
+摄取会失败并说明原因。
 
 ### 4. 摄取知识库
 
@@ -174,11 +180,18 @@ docker run -p 8000:8000 \
   -e OPSPILOT_API_TOKEN="$(openssl rand -hex 32)" \
   -e OPSPILOT_BOOTSTRAP_ADMIN=admin -e OPSPILOT_BOOTSTRAP_PASSWORD='<强密码>' \
   -e ANTHROPIC_API_KEY=sk-ant-... \
-  -e OPSPILOT_OLLAMA_BASE_URL=http://host.docker.internal:11434 \
+  -e OPENAI_API_KEY=sk-... \
   -v opspilot-data:/home/opspilot/.opspilot \
   opspilot:latest serve --host 0.0.0.0 --port 8000
 # → http://localhost:8000，以 bootstrap 管理员登录
 ```
+
+容器本身不需要 Ollama：`ANTHROPIC_API_KEY` 负责对话，`OPENAI_API_KEY` 负责
+嵌入。要改用宿主机的 Ollama，加上
+`-e OPSPILOT_EMBED_PROVIDER=ollama -e OPSPILOT_OLLAMA_BASE_URL=http://host.docker.internal:11434`。
+
+多服务部署（nginx TLS 终结、JSM 接入、可选 Ollama）见
+[Docker Compose](docs/deployment.md#docker-compose)。
 
 ## 架构
 
