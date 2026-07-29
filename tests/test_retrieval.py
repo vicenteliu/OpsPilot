@@ -264,22 +264,41 @@ def test_rrf_constant_is_sixty() -> None:
 # ── source_authority tie-breaking tests ─────────────────────────────
 
 
+# The vector-favoured content's topic vector is exactly the query's (auth
+# terms only, no network term), so it takes rank 1 on the ANN side. The
+# keyword-favoured one repeats the query terms and so wins the trigram-BM25
+# side, but its "tunnel" pulls its vector off the query's direction (cosine
+# 0.90), leaving it at rank 2 there. Ranks 1 and 2 in opposite lists mean the
+# weighted RRF sums cancel exactly *when the two weights are equal* — see
+# _search_tied.
+_CONTENT_VECTOR_FAVOURED = (
+    "VPN authentication fails for remote staff after the sign-in policy change."
+)
+_CONTENT_KEYWORD_FAVOURED = (
+    "VPN authentication, VPN authentication, VPN authentication — restart the tunnel."
+)
+
+
 def _make_two_authority_stores(
     tmp_path: Path, authority_a: str, authority_b: str
 ) -> tuple[SqliteStore, LanceStore]:
-    """Create two docs with identical content but different source_authority.
+    """Create two docs that tie on RRF but differ in source_authority.
 
-    Both chunks get the same embedding so RRF scores are equal; the
-    authority rank should break the tie.
+    Chunk A (``authority_a``) gets the keyword-favoured content deliberately.
+    ``kb_search`` builds its candidate list ANN-first and sorts it stably, so
+    the vector-favoured chunk is already in front on arrival: giving chunk A
+    the other content means the tests below can only pass if the tie-breaker
+    actually moves it up. Hand chunk A the vector-favoured content instead and
+    they would pass with the tie-breaker deleted.
+
+    Query through :func:`_search_tied` to get the exact tie.
     """
     sqlite = SqliteStore(init_sqlite(tmp_path / "kb.db"))
     lance = LanceStore.open_or_create(tmp_path / "lancedb", dim=DIM, embedding_model=EMBED_MODEL)
 
-    content = "VPN authentication fails — please verify RADIUS credentials and retry"
-
-    for doc_id, cid, authority in (
-        ("doc_aaaaaaaa", "chk_aaaaaaaa", authority_a),
-        ("doc_bbbbbbbb", "chk_bbbbbbbb", authority_b),
+    for doc_id, cid, authority, content in (
+        ("doc_aaaaaaaa", "chk_aaaaaaaa", authority_a, _CONTENT_KEYWORD_FAVOURED),
+        ("doc_bbbbbbbb", "chk_bbbbbbbb", authority_b, _CONTENT_VECTOR_FAVOURED),
     ):
         sqlite.upsert_document(
             {
@@ -343,17 +362,37 @@ def _make_two_authority_stores(
     return sqlite, lance
 
 
-def test_official_ranks_above_internal_on_equal_rrf(tmp_path: Path) -> None:
-    """'official' source_authority should beat 'internal' as tie-breaker."""
-    sqlite, lance = _make_two_authority_stores(tmp_path, "official", "internal")
+def _search_tied(sqlite: SqliteStore, lance: LanceStore) -> list[Hit]:
+    """Query the authority fixture with weights that make the RRF sums tie.
+
+    The default weights (0.6 / 0.4) do **not** cancel — the vector-favoured
+    chunk wins on score alone and ``_AUTHORITY_RANK`` is never consulted,
+    which is how these tests came to pass without ever exercising the
+    tie-breaker (#148). Equal weights make the two rank contributions cancel
+    exactly, leaving authority as the only thing that can decide the order.
+
+    The equality assertion is the guard: if a change to the fixture, the RRF
+    formula or either store's ordering breaks the tie, this fails loudly
+    instead of silently going back to testing nothing.
+    """
     hits = kb_search(
         "VPN authentication",
         sqlite=sqlite,
         lance=lance,
         embed_fn=_topic_embed,
         top_k=2,
+        vector_weight=0.5,
+        keyword_weight=0.5,
     )
     assert len(hits) == 2
+    assert hits[0].score == hits[1].score, "fixture no longer produces an exact RRF tie"
+    return hits
+
+
+def test_official_ranks_above_internal_on_equal_rrf(tmp_path: Path) -> None:
+    """'official' source_authority should beat 'internal' as tie-breaker."""
+    sqlite, lance = _make_two_authority_stores(tmp_path, "official", "internal")
+    hits = _search_tied(sqlite, lance)
     assert hits[0].chunk_id == "chk_aaaaaaaa"  # official
     assert hits[0].source_authority == "official"
     assert hits[1].source_authority == "internal"
@@ -362,14 +401,7 @@ def test_official_ranks_above_internal_on_equal_rrf(tmp_path: Path) -> None:
 def test_official_ranks_above_unverified_on_equal_rrf(tmp_path: Path) -> None:
     """'official' should also beat 'unverified'."""
     sqlite, lance = _make_two_authority_stores(tmp_path, "official", "unverified")
-    hits = kb_search(
-        "VPN authentication",
-        sqlite=sqlite,
-        lance=lance,
-        embed_fn=_topic_embed,
-        top_k=2,
-    )
-    assert len(hits) == 2
+    hits = _search_tied(sqlite, lance)
     assert hits[0].chunk_id == "chk_aaaaaaaa"  # official
     assert hits[1].chunk_id == "chk_bbbbbbbb"  # unverified
 
@@ -377,15 +409,23 @@ def test_official_ranks_above_unverified_on_equal_rrf(tmp_path: Path) -> None:
 def test_vendor_ranks_above_unverified_on_equal_rrf(tmp_path: Path) -> None:
     """'vendor' should beat 'unverified'."""
     sqlite, lance = _make_two_authority_stores(tmp_path, "vendor", "unverified")
-    hits = kb_search(
-        "VPN authentication",
-        sqlite=sqlite,
-        lance=lance,
-        embed_fn=_topic_embed,
-        top_k=2,
-    )
-    assert len(hits) == 2
+    hits = _search_tied(sqlite, lance)
     assert hits[0].source_authority == "vendor"
+    assert hits[1].source_authority == "unverified"
+
+
+def test_higher_authority_wins_from_either_side_of_the_tie(tmp_path: Path) -> None:
+    """Control for the three tests above: swap the authorities, swap the winner.
+
+    Those all expect chunk A, the one that arrives *second* in the candidate
+    list, so an implementation that merely reversed the candidate order would
+    satisfy them. Here the higher authority sits on chunk B, which arrives
+    first, and it still has to win.
+    """
+    sqlite, lance = _make_two_authority_stores(tmp_path, "unverified", "official")
+    hits = _search_tied(sqlite, lance)
+    assert hits[0].chunk_id == "chk_bbbbbbbb"
+    assert hits[0].source_authority == "official"
     assert hits[1].source_authority == "unverified"
 
 
