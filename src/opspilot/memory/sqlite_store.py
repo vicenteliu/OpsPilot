@@ -221,8 +221,49 @@ class SqliteStore:
             """,
             rows,
         )
+        self._reapply_corrections([str(r["id"]) for r in rows])
         self._conn.commit()
         return len(rows)
+
+    def _reapply_corrections(self, chunk_ids: Sequence[str]) -> None:
+        """Re-assert the newest correction on any chunk that carries one.
+
+        A **Correction** overwrites a chunk's content in place while keeping
+        its id. Chunk ids are content-addressed, so a re-ingest that produces
+        the same id has produced the *same source text* — the text the
+        correction was made against — and writing it back would silently
+        revert the correction while its record still claimed to be in force.
+        A KB that reports a correction it is not serving is worse than one
+        that lost it outright.
+
+        A changed source yields a different id, so nothing is re-applied
+        there: that correction was about text which no longer exists, and the
+        superseded chunk is removed by :meth:`delete_chunks_not_in`.
+
+        See #157 and ADR-0023.
+        """
+        if not chunk_ids:
+            return
+        placeholders = ",".join("?" * len(chunk_ids))
+        # created_at is millisecond-resolution, so two corrections written in
+        # the same millisecond would tie and "newest" would be undefined.
+        # rowid breaks it: kb_corrections is append-only, so insertion order
+        # is a total order on the same instant.
+        cur = self._conn.execute(
+            f"""SELECT chunk_id, new_content FROM (
+                    SELECT chunk_id, new_content,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY chunk_id
+                               ORDER BY created_at DESC, rowid DESC
+                           ) AS rn
+                    FROM kb_corrections
+                    WHERE chunk_id IN ({placeholders})
+                ) WHERE rn = 1""",  # noqa: S608
+            tuple(chunk_ids),
+        )
+        latest = [(r["new_content"], r["chunk_id"]) for r in cur.fetchall()]
+        if latest:
+            self._conn.executemany("UPDATE kb_chunks SET content=? WHERE id=?", latest)
 
     def delete_chunks_not_in(self, document_id: str, keep_ids: Iterable[str]) -> int:
         """Drop the document's chunks that are not in ``keep_ids``.

@@ -157,8 +157,10 @@ class TestUpsertChunks:
         assert store.get_conflict(CONFLICT_ID) is not None
 
     def test_still_updates_content(self, store: SqliteStore) -> None:
-        store.upsert_chunks([_chunk(CHUNK_A, seq=0, content="rewritten")])
-        chunk = store.get_chunk(CHUNK_A)
+        """CHUNK_B carries no correction, so the new content stands. (On a
+        corrected chunk the correction wins — see TestCorrectionSurvivesReingest.)"""
+        store.upsert_chunks([_chunk(CHUNK_B, seq=1, content="rewritten")])
+        chunk = store.get_chunk(CHUNK_B)
         assert chunk is not None
         assert chunk["content"] == "rewritten"
 
@@ -194,6 +196,54 @@ class TestUpsertConflict:
             store.upsert_conflict(_conflict(status="not_a_status"))
 
 
+# ── a correction must survive the re-ingest that overwrites its chunk ──
+
+
+class TestCorrectionSurvivesReingest:
+    """#158 kept the correction *record* alive; without this it would still
+    have lost its *effect*, leaving the KB reporting a correction it was not
+    serving — worse than losing it outright."""
+
+    def test_reingest_does_not_revert_the_correction(self, store: SqliteStore) -> None:
+        store.add_correction(CHUNK_A, "vicente", "wrong port", "VPN auth failure - port 4500")
+        # Re-ingest: unchanged source, so the chunker yields the original text
+        # under the same content-addressed id.
+        store.upsert_chunks([_chunk(CHUNK_A, seq=0)])
+        chunk = store.get_chunk(CHUNK_A)
+        assert chunk is not None
+        assert chunk["content"] == "VPN auth failure - port 4500"
+
+    def test_the_newest_correction_wins(self, store: SqliteStore) -> None:
+        """Back-to-back corrections land in the same millisecond, so this
+        also pins the rowid tie-break — without it "newest" is undefined."""
+        store.add_correction(CHUNK_A, "vicente", "first", "first fix")
+        store.add_correction(CHUNK_A, "vicente", "second", "second fix")
+        store.upsert_chunks([_chunk(CHUNK_A, seq=0)])
+        chunk = store.get_chunk(CHUNK_A)
+        assert chunk is not None
+        assert chunk["content"] == "second fix"
+
+    def test_an_uncorrected_chunk_takes_the_new_content(self, store: SqliteStore) -> None:
+        """Re-application is scoped to chunks that carry a correction."""
+        store.upsert_chunks([_chunk(CHUNK_B, seq=1, content="fresh text")])
+        chunk = store.get_chunk(CHUNK_B)
+        assert chunk is not None
+        assert chunk["content"] == "fresh text"
+
+    def test_a_changed_source_is_a_different_chunk(self, store: SqliteStore) -> None:
+        """Content addressing does the deciding: different text is a new id,
+        so nothing is re-applied to it and the correction stays with the
+        chunk it was made against."""
+        store.add_correction(CHUNK_A, "vicente", "wrong port", "corrected")
+        store.upsert_chunks([_chunk("chk_cccc0003", seq=2, content="rewritten upstream")])
+        new_chunk = store.get_chunk("chk_cccc0003")
+        old_chunk = store.get_chunk(CHUNK_A)
+        assert new_chunk is not None
+        assert new_chunk["content"] == "rewritten upstream"
+        assert old_chunk is not None
+        assert old_chunk["content"] == "corrected"
+
+
 # ── the removal that used to be a side effect ──
 
 
@@ -211,6 +261,26 @@ class TestDeleteChunksNotIn:
     def test_a_kept_chunk_keeps_its_correction(self, store: SqliteStore) -> None:
         store.delete_chunks_not_in(DOC_ID, [CHUNK_A, CHUNK_B])
         assert _human_decisions(store) == (1, True)
+
+    def test_reslicing_a_document_needs_the_delete_first(self, store: SqliteStore) -> None:
+        """kb_chunks has UNIQUE(document_id, seq) and seq is positional, so a
+        re-chunked document collides with its own predecessor. Callers must
+        clear the stale set *before* writing the new one — the ordering that
+        the removed INSERT OR REPLACE cascade used to provide for free.
+        """
+        new_set = [
+            _chunk("chk_dddd0004", seq=0, content="reslice one"),
+            _chunk("chk_eeee0005", seq=1, content="reslice two"),
+        ]
+        keep = [str(c["id"]) for c in new_set]
+
+        with pytest.raises(Exception, match="UNIQUE constraint failed"):
+            store.upsert_chunks(new_set)
+
+        store.delete_chunks_not_in(DOC_ID, keep)
+        store.upsert_chunks(new_set)
+        assert store.get_chunk("chk_dddd0004") is not None
+        assert store.get_chunk(CHUNK_A) is None
 
     def test_a_stale_chunk_takes_its_conflict_with_it(self, store: SqliteStore) -> None:
         """Correct, not collateral: chunk ids are content-addressed, so a
