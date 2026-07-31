@@ -81,6 +81,13 @@ def load_kb_fixture(
         c = json.loads(line)
         c.pop("_comment", None)
         chunks.append(c)
+    # Drop chunks a previous load left behind, *before* writing the new set:
+    # kb_chunks has UNIQUE(document_id, seq) and seq is positional, so a
+    # re-chunked document collides with its own predecessor. This clearing
+    # used to happen as a side effect of upsert_document's INSERT OR REPLACE
+    # cascade, which also discarded the surviving chunks' conflicts and
+    # corrections (#144, #157); it is explicit and scoped now.
+    sqlite.delete_chunks_not_in(document_id, [str(c["id"]) for c in chunks])
     sqlite.upsert_chunks(chunks)
 
     # ── 3. Vectors (lance) — one embed call per chunk ───────────────────
