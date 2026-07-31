@@ -82,6 +82,11 @@ def load_kb_fixture(
         c.pop("_comment", None)
         chunks.append(c)
     sqlite.upsert_chunks(chunks)
+    # Drop chunks a previous load left behind. This used to happen as a
+    # side effect of upsert_document's INSERT OR REPLACE cascade, which also
+    # discarded the surviving chunks' conflicts and corrections (#144, #157);
+    # it is explicit and scoped now.
+    sqlite.delete_chunks_not_in(document_id, [str(c["id"]) for c in chunks])
 
     # ── 3. Vectors (lance) — one embed call per chunk ───────────────────
     # ``classification=restricted`` = FTS-only by design; skip embed to

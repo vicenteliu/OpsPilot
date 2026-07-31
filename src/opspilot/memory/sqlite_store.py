@@ -109,9 +109,14 @@ class SqliteStore:
             "source_authority": doc.get("source_authority", "internal"),
         }
 
+        # Updates in place rather than INSERT OR REPLACE: REPLACE deletes the
+        # conflicting row first, and kb_chunks cascades from kb_documents — so
+        # a plain metadata write (a title backfill, a re-classification) would
+        # empty the document, and the chunks' own children (kb_conflicts,
+        # kb_corrections) with it. See #144 and #157.
         self._conn.execute(
             """
-            INSERT OR REPLACE INTO kb_documents (
+            INSERT INTO kb_documents (
               id, source_path, source_url, title, classification,
               content_hash, version, ingested_at, last_modified, language,
               tags_json, namespace, chunk_strategy, chunk_count,
@@ -126,6 +131,28 @@ class SqliteStore:
               :redaction_rules_version, :license, :extensions_json,
               :valid_from, :source_authority
             )
+            ON CONFLICT(id) DO UPDATE SET
+              source_path = excluded.source_path,
+              source_url = excluded.source_url,
+              title = excluded.title,
+              classification = excluded.classification,
+              content_hash = excluded.content_hash,
+              version = excluded.version,
+              ingested_at = excluded.ingested_at,
+              last_modified = excluded.last_modified,
+              language = excluded.language,
+              tags_json = excluded.tags_json,
+              namespace = excluded.namespace,
+              chunk_strategy = excluded.chunk_strategy,
+              chunk_count = excluded.chunk_count,
+              embedding_model = excluded.embedding_model,
+              embedding_dim = excluded.embedding_dim,
+              redaction_passed = excluded.redaction_passed,
+              redaction_rules_version = excluded.redaction_rules_version,
+              license = excluded.license,
+              extensions_json = excluded.extensions_json,
+              valid_from = excluded.valid_from,
+              source_authority = excluded.source_authority
             """,
             row,
         )
@@ -143,15 +170,21 @@ class SqliteStore:
     def upsert_chunks(self, chunks: Iterable[dict[str, Any]]) -> int:
         """Batch-insert chunks. Returns number of rows written.
 
-        Wraps the loop in a single transaction. ``INSERT OR REPLACE`` so
-        re-ingesting the same chunk_id updates in place.
+        Wraps the loop in a single transaction and updates an existing
+        chunk in place.
+
+        Deliberately not ``INSERT OR REPLACE``: REPLACE deletes the row
+        before reinserting it, and both ``kb_conflicts`` (either side) and
+        ``kb_corrections`` cascade from ``kb_chunks`` — so re-writing an
+        unchanged chunk would discard the human decisions attached to it.
+        See #157.
         """
         rows = [_chunk_dict_to_row(c) for c in chunks]
         if not rows:
             return 0
         self._conn.executemany(
             """
-            INSERT OR REPLACE INTO kb_chunks (
+            INSERT INTO kb_chunks (
               id, document_id, seq, content, content_artifact_id,
               content_hash, char_start, char_end, line_start, line_end,
               heading_path_json, anchor, token_count, embedding_model,
@@ -164,11 +197,62 @@ class SqliteStore:
               :vector_id, :namespace, :classification, :language, :tags_json,
               :valid_from, :superseded_by
             )
+            ON CONFLICT(id) DO UPDATE SET
+              document_id = excluded.document_id,
+              seq = excluded.seq,
+              content = excluded.content,
+              content_artifact_id = excluded.content_artifact_id,
+              content_hash = excluded.content_hash,
+              char_start = excluded.char_start,
+              char_end = excluded.char_end,
+              line_start = excluded.line_start,
+              line_end = excluded.line_end,
+              heading_path_json = excluded.heading_path_json,
+              anchor = excluded.anchor,
+              token_count = excluded.token_count,
+              embedding_model = excluded.embedding_model,
+              vector_id = excluded.vector_id,
+              namespace = excluded.namespace,
+              classification = excluded.classification,
+              language = excluded.language,
+              tags_json = excluded.tags_json,
+              valid_from = excluded.valid_from,
+              superseded_by = excluded.superseded_by
             """,
             rows,
         )
         self._conn.commit()
         return len(rows)
+
+    def delete_chunks_not_in(self, document_id: str, keep_ids: Iterable[str]) -> int:
+        """Drop the document's chunks that are not in ``keep_ids``.
+
+        Callers that rewrite a document's whole chunk set need the stale
+        ones gone. That used to happen implicitly, as a cascade of the
+        ``INSERT OR REPLACE`` in :meth:`upsert_document` — which also took
+        the *surviving* chunks and their conflicts and corrections with it
+        (#144, #157). The removal is explicit now, and scoped to chunks the
+        new set no longer contains.
+
+        A genuinely stale chunk's conflicts and corrections still cascade
+        away with it, which is correct: chunk ids are content-addressed, so
+        a chunk absent from the new set holds text that no longer exists.
+
+        Returns the number of chunks removed.
+
+        Note: this clears SQLite only. LanceDB vectors for the removed
+        chunks are the caller's problem — see :meth:`LanceStore.delete_by_vector_ids`.
+        """
+        keep = list(keep_ids)
+        placeholders = ",".join("?" * len(keep))
+        sql = f"DELETE FROM kb_chunks WHERE document_id = ? AND id NOT IN ({placeholders})"  # noqa: S608
+        cur = (
+            self._conn.execute(sql, (document_id, *keep))
+            if keep
+            else self._conn.execute("DELETE FROM kb_chunks WHERE document_id = ?", (document_id,))
+        )
+        self._conn.commit()
+        return cur.rowcount
 
     def get_chunk(self, chunk_id: str) -> dict[str, Any] | None:
         cur = self._conn.execute("SELECT * FROM kb_chunks WHERE id = ?", (chunk_id,))
@@ -264,15 +348,24 @@ class SqliteStore:
     # ── KB conflicts ─────────────────────────────────────────────────
 
     def upsert_conflict(self, conflict: dict[str, Any]) -> None:
+        """Record a detected conflict; re-detecting the same id is a no-op.
+
+        ``ON CONFLICT(id) DO NOTHING`` rather than ``INSERT OR IGNORE``:
+        IGNORE also swallows CHECK and NOT NULL violations, so a mistyped
+        ``conflict_type`` wrote nothing and reported success — the KB would
+        look clean while holding contradictory content. Only a duplicate id
+        is a no-op now; anything else raises. See #143.
+        """
         self._conn.execute(
             """
-            INSERT OR IGNORE INTO kb_conflicts (
+            INSERT INTO kb_conflicts (
               id, chunk_a_id, chunk_b_id, doc_a_id, doc_b_id,
               conflict_type, similarity, status, detected_at
             ) VALUES (
               :id, :chunk_a_id, :chunk_b_id, :doc_a_id, :doc_b_id,
               :conflict_type, :similarity, :status, :detected_at
             )
+            ON CONFLICT(id) DO NOTHING
             """,
             conflict,
         )
