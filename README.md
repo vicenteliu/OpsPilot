@@ -167,8 +167,12 @@ Ollama, ingest fails and says so.
 ```bash
 # Sample English KB (SOPs and runbooks) shipped with the repo:
 opspilot ingest examples/sample_data_en/kb/
-# Or point it at your own directory of markdown/PDF/DOCX documents.
+# Or point it at your own directory of markdown and PDF documents.
 ```
+
+Markdown and PDF work out of the box. DOCX, PPTX, and XLSX are routed to
+markitdown but need its matching extras, which this repo does not pin
+(`markitdown[pdf]`) — without them the ingest fails with a converter error.
 
 ### 5. Run
 

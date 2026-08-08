@@ -99,5 +99,7 @@ that have not been run. Not development work; still unfinished business.
   deciding whether to invest in the mobile experience specifically. No separate
   codebase.
 - **Voice input** — ingest voice recordings and files from device storage →
-  transcription → KB-augmented answers. Nothing built.
+  transcription → KB-augmented answers. Nothing built. The engine is
+  undecided, but it will not be a source-built runtime
+  ([ADR-0025](docs/adr/0025-no-source-built-inference-runtimes.md)).
 - **A native app** remains exploratory and is not committed.
