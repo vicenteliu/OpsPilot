@@ -35,11 +35,53 @@ Run `gh issue view <number> --comments`.
 
 ## Wayfinding operations
 
-Used by `/wayfinder`. The **map** is a single issue with **child** issues as tickets.
+Used by `/wayfinder`. The **map** is a single issue; its **child tickets** are
+GitHub sub-issues of it. Everything below stays in issue-number space — `gh`
+resolves database ids itself, so no raw `gh api` call is needed.
 
-- **Map**: a single issue labelled `wayfinder:map`, holding the Notes / Decisions-so-far / Fog body. `gh issue create --label wayfinder:map`.
-- **Child ticket**: an issue linked to the map as a GitHub sub-issue (`gh api` on the sub-issues endpoint). Where sub-issues aren't enabled, add the child to a task list in the map body and put `Part of #<map>` at the top of the child body. Labels: `wayfinder:<type>` (`research`/`prototype`/`grilling`/`task`). Once claimed, the ticket is assigned to the driving dev.
-- **Blocking**: GitHub's **native issue dependencies** — the canonical, UI-visible representation. Add an edge with `gh api --method POST repos/<owner>/<repo>/issues/<child>/dependencies/blocked_by -F issue_id=<blocker-db-id>`, where `<blocker-db-id>` is the blocker's numeric **database id** (`gh api repos/<owner>/<repo>/issues/<n> --jq .id`, _not_ the `#number` or `node_id`). GitHub reports `issue_dependencies_summary.blocked_by` (open blockers only — the live gate). Where dependencies aren't available, fall back to a `Blocked by: #<n>, #<n>` line at the top of the child body. A ticket is unblocked when every blocker is closed.
-- **Frontier query**: list the map's open children (`gh issue list --state open`, scoped to the map's sub-issues / task list), drop any with an open blocker (`issue_dependencies_summary.blocked_by > 0`, or an open issue in the `Blocked by` line) or an assignee; first in map order wins.
-- **Claim**: `gh issue edit <n> --add-assignee @me` — the session's first write.
-- **Resolve**: `gh issue comment <n> --body "<answer>"`, then `gh issue close <n>`, then append a context pointer (gist + link) to the map's Decisions-so-far.
+**Prerequisite, once per repo.** `gh` rejects an unknown label rather than
+creating it, so create them before the first map:
+
+```bash
+gh label create wayfinder:map --force --description "Wayfinding map"
+for t in research prototype grilling task; do
+  gh label create "wayfinder:$t" --force
+done
+```
+
+- **Map**: `gh issue create --label wayfinder:map --title "..." --body "..."`.
+  The body holds the Notes / Decisions-so-far / Fog sections.
+- **Child ticket**: `gh issue create --parent <map-number> --label wayfinder:<type>`,
+  where `<type>` is `research` / `prototype` / `grilling` / `task`. Attach an
+  existing issue later with `gh issue edit <number> --parent <map-number>`.
+- **Blocking**: `gh issue edit <number> --add-blocked-by <blocker-number>`, or
+  `gh issue create --blocked-by <number>,<number>` at creation time. Remove an
+  edge with `--remove-blocked-by`.
+- **Frontier query**: the map's open children, minus the blocked and the
+  claimed. First list the children:
+
+  ```bash
+  gh issue view <map-number> --json subIssues \
+    --jq '.subIssues.nodes[] | select(.state == "OPEN") | .number'
+  ```
+
+  then keep a child only if it survives both filters:
+
+  ```bash
+  gh issue view <number> --json number,title,assignees,blockedBy \
+    --jq 'select((.assignees | length) == 0)
+          | select([.blockedBy.nodes[] | select(.state == "OPEN")] | length == 0)'
+  ```
+
+  **`blockedBy.totalCount` counts closed blockers too**, so it cannot answer
+  "is this unblocked" — always filter the nodes on `state == "OPEN"`. Take the
+  survivors in the order the map body lists them; do not rely on the order the
+  API returns them in.
+- **Claim**: `gh issue edit <number> --add-assignee @me` — the session's first
+  write. It does not fail when someone else has already claimed the ticket, so
+  re-read `assignees` straight after and stand down if you are not alone on it.
+- **Resolve**: `gh issue comment <number> --body "<answer>"`, then
+  `gh issue close <number>`, then record the decision on the map. `gh issue edit
+  --body` replaces the whole body, so read the map, append your pointer, and
+  write it back as one step — and re-read first if another session may have
+  resolved a ticket in the meantime.
