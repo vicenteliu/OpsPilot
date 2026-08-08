@@ -131,6 +131,9 @@ crates/
 - 音频（whisper，可选）
 - ZIP（递归解压）
 
+> **本仓库只启用了 PDF extra** —— `pyproject.toml` 钉的是 `markitdown[pdf]`，
+> 上面的 OCR / 音频 extra 都没装，依赖树里没有 whisper。
+
 ### 3.2 在 OpsPilot 中的位置
 
 ```
