@@ -1,7 +1,7 @@
 ---
 id: vsphere-cluster-faults
 name: vSphere cluster faults
-trigger: Something is wrong at the vSphere cluster level — a VM will not migrate, VMs did not restart after a host failure, the cluster looks unbalanced, hosts powered themselves off, or Fault Tolerance did not protect a workload.
+trigger: Something is wrong at the vSphere cluster level — a VM will not migrate or vMotion, a migration is blocked by CPU compatibility or EVC, VMs did not restart after a host failure (HA, admission control, affinity rules), the cluster looks unbalanced or DRS is not moving anything, hosts powered themselves off (DPM), or Fault Tolerance did not protect a workload.
 allowed_tools:
   - kb_search
 trust: internal
