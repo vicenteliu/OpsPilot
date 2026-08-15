@@ -49,7 +49,9 @@ A human-authored workflow spec that orchestrates one or more LLM calls. Defines 
 _Avoid_: pipeline, workflow, prompt template
 
 **Skill**:
-A reusable, self-contained troubleshooting/task package — a `SKILL.md` (a "use-when" trigger description + procedure + tool permissions) the assistant loads on demand to guide its work. **Hand-authored** Skills live in `agent_skills/<id>/` (git-reviewable, like a Playbook) and are loaded at runtime via a `load_skill` tool: the model sees a compact catalog (name + trigger) and pulls in the full `SKILL.md` when a problem matches (progressive disclosure); weak models fall back to retrieval-injection (mirrors **retrieval mode** `tool`/`prefetch`). Skills may *also* be **distilled** from high-scoring **Sessions** and evolved by the iteration engine (variant → harness-gated promotion → lineage) — a separate path, not wired into runs in v1. Has a lifecycle (draft → enabled → deprecated) and a trust level (internal / community / unknown).
+A reusable, self-contained troubleshooting/task package — a `SKILL.md` (a "use-when" trigger description + procedure + tool permissions) the assistant loads on demand to guide its work. **Hand-authored** Skills live in `agent_skills/<id>/` (git-reviewable, like a Playbook) and are loaded at runtime via a `load_skill` tool: the model sees a compact catalog (name + trigger) and pulls in the full `SKILL.md` when a problem matches (progressive disclosure); weak models fall back to retrieval-injection (mirrors **retrieval mode** `tool`/`prefetch`). **One Skill covers a subsystem, not a single failure and not a methodology.** "vSphere cluster troubleshooting" is the right size; "vMotion fails on an EVC mismatch" fragments the bank into hundreds of entries, and the `load_skill` catalog is carried in context — a long catalog spends the tokens progressive disclosure was meant to save and gives the model more chances to pick wrong. "Cross-layer fault isolation" is the opposite failure: true, and not executable.
+
+A Skill may be **drafted** by a model — from a description, or by **Distillation** from a Session whose resolution was loop-shaped — but it is admitted only by a human review and a commit (ADR-0027). **Admission is a pull request**, and the review has exactly two items: is the stopping condition present, and is `allowed_tools` right. The procedure's prose is not reviewed — it is the recoverable part. What the PR buys, even in a team of one, is a timestamp and a diff for every movement of the boundary. **Harness-gated automatic promotion is rejected, not deferred**: a Skill's load-bearing content is its stopping condition and its `allowed_tools`, and a Session that went well never exercised either, so neither a transcript nor a score can supply them. The iteration engine evolves *playbook* variants; Skills are outside it. Has a lifecycle (draft → enabled → deprecated) and a trust level (internal / community / unknown).
 _Avoid_: tool (a Skill *uses* tools; it is not one), capability, agent, Playbook (a Playbook is the pipeline spec for a Session; a Skill is loaded into a conversation)
 
 **Artifact**:
@@ -82,6 +84,14 @@ _Avoid_: duplicate, contradiction (that is one of the three types), error
 A human overriding a **Chunk**'s content in place, with a reason. The old content is kept on the correction record — the Chunk is what retrieval reads, the correction is why it changed.
 _Avoid_: edit, fix, update
 
+**Wiki page**:
+A written page under `wiki/pages/<kind>/<slug>.md` carrying its own lifecycle — `draft` → `reviewed` → `live` → `stale` → `archived` — plus an index and an append-only log. Distinct from a **Chunk** (retrieval's unit) and from a KB document (ingested from outside): a page is *authored here*, most often by distilling a **Session**. Holds **declarative** knowledge — what a thing is, why it exists, how it fits together.
+_Avoid_: doc, article, KB entry, note
+
+**Distillation**:
+Turning a qualifying **Session** into reusable knowledge. The target follows the shape of what was learned (ADR-0026): declarative → a **Wiki page**; procedural, meaning it has a stopping condition → a **Skill**. Both land as drafts; a human admits them. Distinct from **Ingest**, which brings documents in from outside, and from **Intake**, which brings Work items in.
+_Avoid_: extraction, learning, synthesis (that is one page *kind*), auto-improvement
+
 Both a **Resolution** and a **Correction** record who acted, taken from the caller's identity and never from what the caller claims — the same rule as an **Asset event**, and for the same reason: these are the decisions about which knowledge is trustworthy, so the one thing that must not be self-reported is who decided. Records written before this rule carry per-client placeholders (`web-user`, `cli-user`, `tui-user`, `api-user`) and are left as they are.
 
 ### Retrieval
@@ -105,6 +115,13 @@ _Avoid_: test suite, eval framework, benchmark
 **Fixture**:
 A frozen, versioned input package (KB docs + input ticket + expected ground truth) used to make harness runs reproducible.
 _Avoid_: test case, sample, example
+
+**Staged failure**:
+A fault introduced on purpose to exercise the system — the source of most **Fixtures**, reproducible, and safe to film or demo. Useful and honest as long as it is labelled: a run that handled a drill is evidence the pipeline works, not evidence it helps.
+
+**Wild failure**:
+A fault nobody arranged and nobody saw coming. The only kind that can demonstrate the system is worth running: the operator did not know where it would break, and OpsPilot still shortened the path. Cannot be scheduled, which is precisely why it counts.
+_Avoid_: real failure (a **Staged failure** is real too — the difference is foreknowledge), incident (that is a **Work item type**)
 
 **Golden test**:
 The Stage-level end-to-end harness run that must pass before a Stage is considered complete. Requires a live Ollama instance.
@@ -153,6 +170,14 @@ _Avoid_: security boundary, sandbox (the gate is not the sandbox)
 **Sandbox (L2)**:
 The ephemeral hardened Docker container an action runs inside: read-only rootfs, `cap-drop ALL`, no-new-privileges, seccomp, tmpfs workdir, no host mounts. This — not the **approval gate** — is what actually contains an action's blast radius.
 _Avoid_: container, jail, isolation layer
+
+**Proposed action**:
+An action a **Session** puts forward as part of its **Artifact** — the command, the target, the level, and why. It is surfaced with its dry-run preview and the **approval gate**'s verdict, and it runs only when a human presses execute; the request, verdict, actor, and outcome then append to the Session's trace (ADR-0028). Unattended execution is deliberately not part of this: the gate is a heuristic, and it is not what should decide that something runs unwatched. **The first batch is read-only diagnostics — collect state, run queries, pull logs — and contains no mutation at all**, because the thing being tuned first is proposal quality, and tuning that at the same time as blast radius makes a failure impossible to attribute.
+_Avoid_: auto-remediation, self-healing, action item (that is a **Task**)
+
+**Responsibility Shape**:
+Which of three forms a unit of work takes — **harness-shaped** (inputs, outputs, and acceptance definable up front), **loop-shaped** (converged on by repeated attempts; the human owns the stopping condition), **graph-shaped** (cross-system dependencies and genuinely conflicting goals; the decision stays human). Used here to decide a **Distillation** target (ADR-0026) and to reason about where a **Proposed action** stops. ⚠️ **Imported term** — defined in the `Operation_Undock` workspace's `CONTEXT.md`, which owns it; cited here, never re-defined here.
+_Avoid_: automation tier, complexity class
 
 ### Channels
 
@@ -208,7 +233,9 @@ _Avoid_: user (collides with system user), custodian, owner
 - A **Session** appends **trace events** (prompt / response / tool_call / tool_result / redaction / user_action / system) to an append-only log
 - A **Harness** run takes a **Fixture** as input and scores the resulting **Artifact**
 - A **Chunk** is the unit of both storage (in KB) and citation (in Artifact)
-- A **Skill** is either hand-authored (in `agent_skills/`) or distilled from high-scoring **Sessions**; the assistant loads a matching Skill on demand (`load_skill`) to guide troubleshooting. Distilled Skills are evolved by the iteration engine via harness-gated promotion (not wired into runs in v1)
+- A **Skill** is hand-authored in `agent_skills/`, or model-drafted and then admitted by a human review; the assistant loads a matching Skill on demand (`load_skill`) to guide troubleshooting. No Skill is promoted automatically (ADR-0027)
+- **Distillation** turns a qualifying **Session** into either a **Wiki page** (declarative) or a **Skill** (procedural, has a stopping condition), chosen by **Responsibility Shape** (ADR-0026); both land as drafts and a human admits them
+- A **Session** may emit a **Proposed action**; the **approval gate** verdict and dry-run preview are shown, a human presses execute, the **Sandbox** runs it, and the outcome appends to the Session's trace (ADR-0028)
 - A **Channel** fronts the KB chat in assist mode; Telegram also acts as a **Source** (message → Work item → suggestion reply, ADR-0014)
 - A notify-mode **Channel** receives a courtesy copy of each delivered **Intake** suggestion — best-effort; the comment on the **Source** remains the durable record
 - An **Asset** may reference the **Work item** (Service Request) that initiated its procurement via `work_item_ref` — optional: existing stock enters with no Work item
@@ -234,7 +261,9 @@ _Avoid_: user (collides with system user), custodian, owner
 - "session" in some LLM frameworks means a conversation window — in OpsPilot it means a single playbook run with its full audit trail, not a multi-turn conversation.
 - "ticket" was the catch-all for any inbound work — resolved: the umbrella is **Work item**, with subtypes **Incident** / **Service Request** / **Task**. "ticket" is colloquial and conflates them; avoid it in specs/schemas. The legacy code names `ticket_ref` / `ticket_summary_v1` are pre-Work-item and migrate toward `work_item_ref` / `incident_summary_*`.
 - "task" (lowercase: a step or next-action in prose) is **not** a **Task** work item. A **Task** is a first-class, assignable unit with a **Tier**; a summary's "next steps" only become **Tasks** once decomposed. (Note: a **Session** is also not a **Task** — see the Session entry's _Avoid_ list.)
-- "intake" vs "ingest" — near-homophones, never interchangeable: **Ingest** brings *documents* into the KB; **Intake** brings *Work items* from a **Source** into the pipeline.
+- "intake" vs "ingest" — near-homophones, never interchangeable: **Ingest** brings *documents* into the KB; **Intake** brings *Work items* from a **Source** into the pipeline. **Distillation** is a third: it makes knowledge *out of a Session that already ran here*, rather than bringing anything in.
+- "skills" — two directories, two unrelated meanings. `agent_skills/` holds runtime **Skills** the assistant loads (ADR-0022). The root `skills/` holds development skills for people working *on* OpsPilot (grilling, tdd, to-spec …) and has nothing to do with the product. Unresolved; renaming the root directory is the obvious fix and has not been done.
+- The `wiki/` module ships a page lifecycle, an index and log, a linter, session→page conversion, and API routes, but appears in neither `ROADMAP.md` nor — until **Wiki page** was added on 2026-08-14 — this glossary. The term is now defined; the module's full surface is still undocumented.
 - "PR" — in Inventory context always Purchase Requisition (`pr_number`), never pull request.
 - "user" — three different people: a **User** is an authenticated IT team member; an **Assignee** is whoever holds a device (often not a User); an end employee is neither — they reach OpsPilot through Channels/ITSM. Never interchange.
 - "signed" was used (in older README copy) for the **trace** and **artifact** — resolved: nothing is cryptographically signed. Artifacts are *content-addressed* (`art_<sha256[:16]>`); traces are *append-only, seq-stamped*. Both give tamper-evidence against accidental corruption, not signatures. Say "content-addressed" / "append-only", never "signed".
