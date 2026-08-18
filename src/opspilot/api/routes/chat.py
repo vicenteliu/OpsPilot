@@ -1,17 +1,29 @@
-"""POST /api/chat/stream — KB-augmented conversational chat."""
+"""POST /api/chat/stream — the **Consultation** surface (ADR-0032).
+
+A turn is persisted into a Consultation, and the caller's open **Working set**
+supplies the anchors that decide which recorded **Memory** applies (ADR-0031).
+The route used to be stateless — the client resent the whole history and nothing
+was kept — which is why nothing could be pinned to Memory and why anchored
+entries never reached an answer.
+"""
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 from collections.abc import AsyncGenerator, Callable
 from typing import Any, Literal, cast
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from ...auth import Identity, require_role
 from ...providers.types import Message, SamplingParams
+
+# Chat is an operator capability in the role model (ADR-0020): viewers read.
+_operator = Depends(require_role("operator"))
 
 router = APIRouter()
 
@@ -31,6 +43,22 @@ class ChatRequest(BaseModel):
     messages: list[ChatMessage]
     model_id: str | None = None
     deep_thinking: bool = False
+    consultation_id: str | None = None
+    # Explicit anchors win over the caller's Working set — asking about another
+    # site is not overruled by what you happen to be working on.
+    memory_scope: str | None = None
+    memory_asset_id: str | None = None
+
+
+def _persist(state: Any, consultation_id: str, question: str, answer: str) -> None:
+    """Append the turn. Never fatal: losing the transcript must not lose the answer."""
+    store = getattr(state, "consultations", None)
+    if store is None:
+        return
+    with contextlib.suppress(Exception):
+        if question:
+            store.append(consultation_id, role="user", content=question)
+        store.append(consultation_id, role="assistant", content=answer)
 
 
 def _sse(event: str, data: dict[str, Any]) -> str:
@@ -115,9 +143,41 @@ def answer_chat(state: Any, messages: list[dict[str, str]]) -> str:
     return str(resp.content)
 
 
+def _open_consultation(state: Any, body: ChatRequest, identity: Identity) -> str | None:
+    """The Consultation this turn belongs to, starting one if needed.
+
+    Returns ``None`` when no store is mounted, which keeps the route working for
+    callers that predate persistence. A Consultation the caller may not see is
+    refused rather than silently replaced: writing someone else's conversation is
+    worse than failing.
+    """
+    store = getattr(state, "consultations", None)
+    if store is None:
+        return None
+    if body.consultation_id:
+        existing = store.get(body.consultation_id)
+        if existing is None:
+            raise HTTPException(status_code=404, detail="consultation not found")
+        if not existing.visible_to(name=identity.name, role=identity.role):
+            raise HTTPException(status_code=403, detail="not your consultation")
+        return str(existing.id)
+    first_user = next((m.content for m in body.messages if m.role == "user"), "")
+    return str(store.start(author=identity.name, title=first_user[:80]).id)
+
+
 @router.post("/chat/stream")
-async def chat_stream(body: ChatRequest, request: Request) -> StreamingResponse:
+async def chat_stream(
+    body: ChatRequest, request: Request, identity: Identity = _operator
+) -> StreamingResponse:
     state = request.app.state
+    consultation_id = _open_consultation(state, body, identity)
+
+    # A Working set closed by the inactivity fallback owes its owner one notice,
+    # or they misread why the assistant lost the thread (ADR-0032).
+    working_sets = getattr(state, "working_sets", None)
+    notice = working_sets.take_announcement(identity.name) if working_sets is not None else None
+    if working_sets is not None:
+        working_sets.touch(identity.name)
 
     loop = asyncio.get_event_loop()
     queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
@@ -147,9 +207,24 @@ async def chat_stream(body: ChatRequest, request: Request) -> StreamingResponse:
                 )
                 if routing is not None:
                     on_step(routing)
-                return run_chat_agent(state, messages, model_id=model_id, on_step=on_step)
+                return run_chat_agent(
+                    state,
+                    messages,
+                    model_id=model_id,
+                    on_step=on_step,
+                    owner=identity.name,
+                    memory_scope=body.memory_scope,
+                    memory_asset_id=body.memory_asset_id,
+                )
 
             result = await loop.run_in_executor(None, _plan_and_run)
+            if consultation_id:
+                # Persisted after the answer, so a failed turn leaves no
+                # half-conversation: the question is only worth keeping with
+                # what it produced.
+                await loop.run_in_executor(
+                    None, _persist, state, consultation_id, last_user, result.content
+                )
             await queue.put(
                 {
                     "type": "result",
@@ -157,6 +232,7 @@ async def chat_stream(body: ChatRequest, request: Request) -> StreamingResponse:
                         "content": result.content,
                         "citations": result.citations,
                         "usage": result.usage,
+                        "consultation_id": consultation_id,
                     },
                 }
             )
@@ -164,6 +240,8 @@ async def chat_stream(body: ChatRequest, request: Request) -> StreamingResponse:
             await queue.put({"type": "error", "message": str(exc)})
 
     async def event_stream() -> AsyncGenerator[str, None]:
+        if notice:
+            yield _sse("notice", {"message": notice})
         task = asyncio.create_task(_run())
         while True:
             event = await queue.get()

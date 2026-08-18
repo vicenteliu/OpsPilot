@@ -127,9 +127,12 @@ supersede, archive, anchor filtering, pick-or-create scopes,
 Consultation, and **injection into a chat turn** — a labelled section of the
 system prompt on its own path, never joining hybrid search.
 
+REST: `GET/POST /api/memory`, `/memory/scopes`, `/memory/{id}/supersede`,
+`/memory/{id}/archive`.
+
 *Not yet:* answer-time Conflict detection against the KB as a recorded
 **Conflict** — the prompt already instructs the model to name both sides — and
-REST + UI.
+the web UI.
 
 **Consultation — the conversational surface**
 ([ADR-0032](docs/adr/0032-a-consultation-is-read-only-escalate-to-a-session-to-act.md)).
@@ -146,10 +149,16 @@ anchors that let a chat turn see *anchored* Memory at all, with an unconditional
 inactivity fallback that closes it and announces the closure once. `opspilot
 workingset open / status / close / sweep`.
 
-*Not yet:* wiring `/api/chat/stream` to persist into a Consultation, the REST +
-UI surface, escalation actually creating the Session, and the deferred context
-budget (trigger: when a stored Consultation's history can exceed the model's
-window — `docs/specs/session/templates/context-budget.template.yaml`).
+`POST /api/chat/stream` now persists each turn into a Consultation, resolves the
+turn's Memory anchors from the caller's Working set, and delivers the
+inactivity-closure notice as an SSE `notice` event. REST:
+`GET /api/consultations`, `GET /api/consultations/{id}`,
+`POST /api/consultations/{id}/messages/{mid}/pin`, and
+`GET/POST/DELETE /api/working-set`.
+
+*Not yet:* the web UI, escalation actually creating the Session, and the deferred
+context budget (trigger: when a stored Consultation's history can exceed the
+model's window — `docs/specs/session/templates/context-budget.template.yaml`).
 
 **Export and import for KB / Skills / Wiki / Memory**
 ([ADR-0033](docs/adr/0033-storage-posture-fix-the-defect-now-defer-postgres.md)).

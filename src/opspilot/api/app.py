@@ -61,6 +61,7 @@ from .routes.inventory import router as inventory_router
 from .routes.iteration import router as iteration_router
 from .routes.kb import router as kb_router
 from .routes.mcp import router as mcp_router
+from .routes.memory import router as memory_router
 from .routes.metrics import router as metrics_router
 from .routes.models import router as models_router
 from .routes.run import router as run_router
@@ -227,6 +228,7 @@ app.include_router(kb_router, prefix="/api")
 app.include_router(wiki_router, prefix="/api")
 app.include_router(harness_router, prefix="/api")
 app.include_router(mcp_router, prefix="/api")
+app.include_router(memory_router, prefix="/api", tags=["memory"])
 app.include_router(sandbox_router, prefix="/api")
 app.include_router(wecom_router, prefix="/api")
 
