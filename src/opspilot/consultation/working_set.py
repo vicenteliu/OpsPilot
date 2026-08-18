@@ -240,6 +240,15 @@ class WorkingSetStore:
         return ws.announcement()
 
     @_serialised
+    def get(self, working_set_id: str) -> WorkingSet | None:
+        cur = self._conn.execute(
+            "SELECT " + ", ".join(_COLS) + " FROM working_sets WHERE id = ?",  # noqa: S608
+            (working_set_id,),
+        )
+        row = cur.fetchone()
+        return _row(row) if row else None
+
+    @_serialised
     def history(self, owner: str, *, limit: int = 20) -> list[WorkingSet]:
         cur = self._conn.execute(
             "SELECT " + ", ".join(_COLS) + " FROM working_sets WHERE owner = ? "  # noqa: S608

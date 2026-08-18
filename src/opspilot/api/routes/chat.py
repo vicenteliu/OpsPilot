@@ -162,7 +162,17 @@ def _open_consultation(state: Any, body: ChatRequest, identity: Identity) -> str
             raise HTTPException(status_code=403, detail="not your consultation")
         return str(existing.id)
     first_user = next((m.content for m in body.messages if m.role == "user"), "")
-    return str(store.start(author=identity.name, title=first_user[:80]).id)
+    # Tag it with the open Working set, so a chain of conversations on one
+    # problem stays identifiable — that chain is what distillation reads.
+    working_sets = getattr(state, "working_sets", None)
+    current = working_sets.current(identity.name) if working_sets is not None else None
+    return str(
+        store.start(
+            author=identity.name,
+            title=first_user[:80],
+            working_set_id=current.id if current is not None else None,
+        ).id
+    )
 
 
 @router.post("/chat/stream")

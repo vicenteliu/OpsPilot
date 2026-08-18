@@ -52,7 +52,11 @@ CREATE TABLE IF NOT EXISTS consultations (
   updated_at    TEXT NOT NULL,
   pinned_at     TEXT,
   pinned_reason TEXT CHECK (pinned_reason IN ('escalated','memory_source')),
-  session_id    TEXT
+  session_id    TEXT,
+  -- The Working set open when this conversation started. Without it a chain of
+  -- Consultations on one problem is not identifiable, and the chain is what
+  -- Skill distillation reads (ADR-0036).
+  working_set_id TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_con_author  ON consultations(author, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_con_sweep   ON consultations(pinned_at, updated_at);
@@ -79,6 +83,7 @@ _CON_COLS: Final[tuple[str, ...]] = (
     "pinned_at",
     "pinned_reason",
     "session_id",
+    "working_set_id",
 )
 _MSG_COLS: Final[tuple[str, ...]] = (
     "id",
@@ -115,6 +120,7 @@ class Consultation:
     pinned_at: str | None = None
     pinned_reason: str | None = None
     session_id: str | None = None
+    working_set_id: str | None = None
 
     @property
     def is_pinned(self) -> bool:
@@ -149,7 +155,9 @@ class ConsultationStore:
     # ── writes ───────────────────────────────────────────────────────
 
     @_serialised
-    def start(self, *, author: str, title: str = "") -> Consultation:
+    def start(
+        self, *, author: str, title: str = "", working_set_id: str | None = None
+    ) -> Consultation:
         """Open a Consultation. ``author`` comes from the caller's Identity."""
         author = author.strip()
         if not author:
@@ -161,11 +169,12 @@ class ConsultationStore:
             title=title.strip(),
             created_at=now,
             updated_at=now,
+            working_set_id=working_set_id,
         )
         self._conn.execute(
-            "INSERT INTO consultations (id, author, title, created_at, updated_at) "
-            "VALUES (?,?,?,?,?)",
-            (con.id, con.author, con.title, con.created_at, con.updated_at),
+            "INSERT INTO consultations (id, author, title, created_at, updated_at, working_set_id) "
+            "VALUES (?,?,?,?,?,?)",
+            (con.id, con.author, con.title, con.created_at, con.updated_at, con.working_set_id),
         )
         self._conn.commit()
         return con
@@ -276,6 +285,21 @@ class ConsultationStore:
     @_serialised
     def get(self, consultation_id: str) -> Consultation | None:
         return self._get(consultation_id)
+
+    @_serialised
+    def for_working_set(self, working_set_id: str) -> list[Consultation]:
+        """The chain of Consultations worked under one Working set, oldest first.
+
+        This chain *is* the loop: a problem converged on by repeated attempts
+        across several conversations, which is what ADR-0026 asks for and what a
+        single Session — one playbook run over one input — never was.
+        """
+        cur = self._conn.execute(
+            "SELECT " + ", ".join(_CON_COLS) + " FROM consultations "  # noqa: S608
+            "WHERE working_set_id = ? ORDER BY created_at",
+            (working_set_id,),
+        )
+        return [Consultation(**dict(zip(_CON_COLS, tuple(r), strict=True))) for r in cur.fetchall()]
 
     @_serialised
     def messages(self, consultation_id: str) -> list[Message]:
