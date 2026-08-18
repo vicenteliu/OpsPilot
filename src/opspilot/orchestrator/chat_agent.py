@@ -136,15 +136,36 @@ def _skill_body(skill: Skill) -> str:
     return f"# Skill: {skill.name}\n\n{skill.body}"
 
 
-def _memory_prefix(state: Any, *, asset_id: str | None, scope: str | None) -> str:
-    """The Memory section for this turn, or ``""`` if the store is absent or empty.
+def turn_anchors(
+    state: Any,
+    *,
+    owner: str | None,
+    asset_id: str | None,
+    scope: str | None,
+) -> tuple[str | None, str | None]:
+    """Resolve the turn's anchors: what the caller gave, else their Working set.
 
-    Anchored entries need an address, and a turn only has one if the caller
-    supplies it. Until the **Working set** carries it automatically (ADR-0032),
-    an unanchored turn sees the global constraints and nothing else — which is
-    the right answer, not a degraded one: a constraint about another site has no
-    business steering this one.
+    A **Working set** is the problem someone is currently chasing, and it carries
+    the address that problem lives at (ADR-0032) — which is the whole reason a
+    chat turn can see anchored Memory at all. An explicit argument still wins:
+    asking about another site should not be overruled by what you happen to be
+    working on.
+
+    With neither, the turn sees the global constraints and nothing else. That is
+    right rather than degraded: a constraint about another site has no business
+    steering this answer.
     """
+    if asset_id or scope:
+        return asset_id, scope
+    store = getattr(state, "working_sets", None)
+    if store is None or not owner:
+        return None, None
+    current = store.current(owner)
+    return (current.asset_id, current.scope) if current is not None else (None, None)
+
+
+def _memory_prefix(state: Any, *, asset_id: str | None, scope: str | None) -> str:
+    """The Memory section for this turn, or ``""`` if the store is absent or empty."""
     store = getattr(state, "memory", None)
     if store is None:
         return ""
@@ -161,6 +182,7 @@ def run_chat_agent(
     on_step: StepCallback | None = None,
     memory_scope: str | None = None,
     memory_asset_id: str | None = None,
+    owner: str | None = None,
 ) -> ChatAgentResult:
     """Run the chat as a bounded ReAct loop; return the answer + KB citations.
 
@@ -169,10 +191,14 @@ def run_chat_agent(
     the final answer, deduped citations, and accumulated token usage.
 
     ``memory_scope`` / ``memory_asset_id`` are the turn's **anchors**: they decide
-    which recorded constraints apply here. Global entries apply regardless.
+    which recorded constraints apply here. Given neither, they are taken from
+    ``owner``'s open **Working set**. Global entries apply regardless.
     """
     provider, model = resolve_model(state, model_id)
-    memory_prefix = _memory_prefix(state, asset_id=memory_asset_id, scope=memory_scope)
+    anchor_asset, anchor_scope = turn_anchors(
+        state, owner=owner, asset_id=memory_asset_id, scope=memory_scope
+    )
+    memory_prefix = _memory_prefix(state, asset_id=anchor_asset, scope=anchor_scope)
     tool_def, tool_handler = make_kb_search_tool(
         sqlite=state.sqlite,
         lance=state.lance,

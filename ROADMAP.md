@@ -128,8 +128,8 @@ Consultation, and **injection into a chat turn** — a labelled section of the
 system prompt on its own path, never joining hybrid search.
 
 *Not yet:* answer-time Conflict detection against the KB as a recorded
-**Conflict** (the prompt already instructs the model to name both sides), the
-turn's anchor arriving automatically from a **Working set**, and REST + UI.
+**Conflict** — the prompt already instructs the model to name both sides — and
+REST + UI.
 
 **Consultation — the conversational surface**
 ([ADR-0032](docs/adr/0032-a-consultation-is-read-only-escalate-to-a-session-to-act.md)).
@@ -141,11 +141,15 @@ visibility (the repo's first), the 90-day sweep with pin-on-escalation and
 pin-on-cited, `pin_to_memory` (Memory's other admission path, ADR-0035), and
 `opspilot consultation list / show / purge`.
 
-*Not yet:* wiring `/api/chat/stream` to persist into one, the REST + UI surface,
-escalation actually creating the Session, the **Working set** with its
-inactivity fallback, and the deferred context budget (trigger: when a stored
-Consultation's history can exceed the model's window —
-`docs/specs/session/templates/context-budget.template.yaml`).
+The **Working set** ships with it: one open problem per person, carrying the
+anchors that let a chat turn see *anchored* Memory at all, with an unconditional
+inactivity fallback that closes it and announces the closure once. `opspilot
+workingset open / status / close / sweep`.
+
+*Not yet:* wiring `/api/chat/stream` to persist into a Consultation, the REST +
+UI surface, escalation actually creating the Session, and the deferred context
+budget (trigger: when a stored Consultation's history can exceed the model's
+window — `docs/specs/session/templates/context-budget.template.yaml`).
 
 **Export and import for KB / Skills / Wiki / Memory**
 ([ADR-0033](docs/adr/0033-storage-posture-fix-the-defect-now-defer-postgres.md)).
