@@ -79,14 +79,27 @@ UI, and a brand mark generated from a single SVG source.
 
 ## Open
 
-**SQLite concurrent-write defect** ([#166](https://github.com/vicenteliu/OpsPilot/issues/166)).
-`SqliteStore` shares one unguarded connection across the executor threads every
-API route uses. Measured: eight concurrent `upsert_document` calls raised three
-`InterfaceError`s and landed four rows, and concurrent corrections failed to read
-chunks that were present — writes and reads both. Present today, independent of
-`--workers`. Fixed by serialising every connection-touching method behind one
-reentrant lock, deliberately decoupled from any storage migration ([ADR-0033](docs/adr/0033-storage-posture-fix-the-defect-now-defer-postgres.md)).
-This is the first thing to do.
+**Model-comparison results that mean what they say.** Running the golden fixture
+across four models turned up three defects in a row, two fixed and one open:
+
+- `SqliteStore` shared one unguarded connection across the executor threads every
+  API route uses — eight concurrent `upsert_document` calls raised three
+  `InterfaceError`s and landed four rows, and concurrent corrections failed to
+  read chunks that were present. Independent of `--workers`; fixed by serialising
+  every connection-touching method behind one reentrant lock
+  ([#166](https://github.com/vicenteliu/OpsPilot/issues/166), deliberately
+  decoupled from any storage migration — [ADR-0033](docs/adr/0033-storage-posture-fix-the-defect-now-defer-postgres.md)).
+- Sampling params were sent unconditionally, so Sonnet 5 and Opus 5 — already in
+  six playbooks' `extra_models` — returned HTTP 400 on every run
+  ([#172](https://github.com/vicenteliu/OpsPilot/issues/172)). Extended thinking
+  had the same shape of bug against the same models
+  ([#170](https://github.com/vicenteliu/OpsPilot/issues/170)). Both fixed; the
+  posture behind them is [ADR-0034](docs/adr/0034-hosted-api-models-are-primary-local-inference-is-auxiliary.md).
+- **Open:** a `ProviderError` silently retries on `extra_models[0]`, so a
+  different model answers and the row keeps the primary's `model_ref`. Naming a
+  model that does not exist currently scores 0.903 and passes
+  ([#175](https://github.com/vicenteliu/OpsPilot/issues/175)). This is the next
+  thing to do — until it is fixed, no comparison table can be trusted.
 
 **Skill-shaped distillation targets.** The distillation *machinery* exists —
 `wiki/query_to_page.py` turns a qualifying Session into a draft wiki page, and

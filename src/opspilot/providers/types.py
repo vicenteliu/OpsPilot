@@ -51,13 +51,34 @@ class SamplingParams(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    temperature: float = Field(default=0.2, ge=0, le=2)
-    top_p: float = Field(default=0.9, ge=0, le=1)
-    max_tokens: int = Field(default=2000, ge=1)
+    # Unset means *not sent*. Current Anthropic models (Sonnet 5, Opus 5, Opus
+    # 4.7/4.8, Fable 5) reject `temperature` / `top_p` / `top_k` outright — a
+    # code-level default made it impossible for a model config to opt out, so a
+    # request that named one of them failed with HTTP 400 before it ran. The
+    # model config is the only thing that decides now (#172).
+    temperature: float | None = Field(default=None, ge=0, le=2)
+    top_p: float | None = Field(default=None, ge=0, le=1)
+    max_tokens: int = Field(default=2000, ge=1)  # required by every provider
     seed: int | None = None
     stop: list[str] | None = None
-    # Extended-thinking budget (Anthropic); providers that don't support it ignore it.
+    # Thinking comes in two shapes and the model config picks one; nothing is
+    # inferred from the model name (#170, same rule as the sampling knobs above).
+    #
+    #   thinking="adaptive" [+ effort]  — Sonnet 5, Opus 5, Opus 4.7/4.8, Fable 5.
+    #       Depth is `effort`; a token budget is rejected outright:
+    #       400 — "thinking.type.enabled" is not supported.
+    #   thinking_budget_tokens=N        — pre-4.6 models (e.g. Haiku 4.5), which
+    #       have no `effort` and require the budget instead.
+    #
+    # Providers that support neither ignore both.
+    thinking: Literal["adaptive"] | None = None
+    effort: Literal["low", "medium", "high", "xhigh", "max"] | None = None
     thinking_budget_tokens: int | None = None
+
+    @property
+    def thinks(self) -> bool:
+        """Whether this turn asks the model to reason, under either shape."""
+        return self.thinking is not None or bool(self.thinking_budget_tokens)
 
 
 class Usage(BaseModel):

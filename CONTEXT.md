@@ -149,7 +149,7 @@ A fault nobody arranged and nobody saw coming. The only kind that can demonstrat
 _Avoid_: real failure (a **Staged failure** is real too — the difference is foreknowledge), incident (that is a **Work item type**)
 
 **Golden test**:
-The Stage-level end-to-end harness run that must pass before a Stage is considered complete. Requires a live Ollama instance.
+The Stage-level end-to-end harness run that must pass before a Stage is considered complete. Needs the target chat provider's API key and an embedding provider — Ollama satisfies the second only when no `OPENAI_API_KEY` is set, and is required outright only by the `golden-ollama` variant.
 _Avoid_: integration test, smoke test, e2e test
 
 **Weighted score**:
@@ -292,6 +292,7 @@ _Avoid_: user (collides with system user), custodian, owner
 - "ticket" was the catch-all for any inbound work — resolved: the umbrella is **Work item**, with subtypes **Incident** / **Service Request** / **Task**. "ticket" is colloquial and conflates them; avoid it in specs/schemas. The legacy code names `ticket_ref` / `ticket_summary_v1` are pre-Work-item and migrate toward `work_item_ref` / `incident_summary_*`.
 - "task" (lowercase: a step or next-action in prose) is **not** a **Task** work item. A **Task** is a first-class, assignable unit with a **Tier**; a summary's "next steps" only become **Tasks** once decomposed. (Note: a **Session** is also not a **Task** — see the Session entry's _Avoid_ list.)
 - "intake" vs "ingest" — near-homophones, never interchangeable: **Ingest** brings *documents* into the KB; **Intake** brings *Work items* from a **Source** into the pipeline. **Distillation** is a third: it makes knowledge *out of a Session that already ran here*, rather than bringing anything in.
+- "tier" — two unrelated meanings. A **Tier** is the support line a **Task** is routed to (L1/L2/L3). ADR-0023's *model tiers* (`cheap` / `thinking`) are a chat-routing setting and have nothing to do with support lines; say "model tier" whenever both could be meant, and never bare "tier" in an ADR-0023 context.
 - "skills" — two directories, two unrelated meanings. `agent_skills/` holds runtime **Skills** the assistant loads (ADR-0022). The root `skills/` holds development skills for people working *on* OpsPilot (grilling, tdd, to-spec …) and has nothing to do with the product. Unresolved; renaming the root directory is the obvious fix and has not been done.
 - The `wiki/` module ships a page lifecycle, an index and log, a linter, session→page conversion, and API routes, but appears in neither `ROADMAP.md` nor — until **Wiki page** was added on 2026-08-14 — this glossary. The term is now defined; the module's full surface is still undocumented.
 - "PR" — in Inventory context always Purchase Requisition (`pr_number`), never pull request.

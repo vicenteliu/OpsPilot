@@ -20,6 +20,14 @@ two-tier routing scheme and the provider support for "thinking" models.
 - **A user "deep thinking" toggle overrides** the triage (force the thinking
   tier). Auto by default, manual when the User knows better; the override
   guards against mis-routing.
+> **Correction (2026-08-18).** The parenthetical below names `budget_tokens` as
+> Anthropic's mechanism. That is now true only of pre-4.6 models: Sonnet 5,
+> Opus 5, Opus 4.7/4.8, and Fable 5 reject it — `400 — "thinking.type.enabled"
+> is not supported` — and express depth as `effort` alongside
+> `thinking: {"type": "adaptive"}`. The decision itself is unchanged and was
+> right: *params-driven*, so the model config declares its shape and nothing is
+> inferred from a model name. Both shapes are supported (#170).
+
 - **Thinking support is added to providers, params-driven.** A "thinking
   model" is a model-list entry whose `params` enable it: Anthropic extended
   thinking (`thinking` / `budget_tokens`), OpenAI-family `reasoning_effort`,

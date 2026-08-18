@@ -26,12 +26,14 @@ Design notes
 from __future__ import annotations
 
 import contextlib
+import functools
 import json
 import secrets
 import sqlite3
-from collections.abc import Iterable, Sequence
+import threading
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 # ── Public dataclasses (DB-row mirrors) ──────────────────────────────
 
@@ -54,12 +56,43 @@ class FtsHit:
 # ── Store class ───────────────────────────────────────────────────────
 
 
+def _serialised[M: Callable[..., Any]](method: M) -> M:
+    """Hold the store's lock for the whole method.
+
+    Every method here drives one shared ``sqlite3.Connection`` — the API keeps a
+    single store on ``app.state.sqlite`` and reaches it from the default
+    multi-threaded executor. Neither a statement sequence nor an ``execute`` →
+    ``fetchone`` pair is atomic on that connection, and ``commit()`` is
+    connection-scoped rather than thread-scoped. Unserialised, concurrent callers
+    raise ``InterfaceError``, lose writes, and fail to read rows that are present
+    (#166).
+
+    The whole method is held, not each statement: locking individual calls would
+    still let a read land between another thread's write and its commit.
+    Reentrant because ``add_correction`` reads through ``get_chunk`` before
+    writing.
+    """
+
+    @functools.wraps(method)
+    def wrapper(self: SqliteStore, *args: Any, **kwargs: Any) -> Any:
+        with self._lock:
+            return method(self, *args, **kwargs)
+
+    return cast(M, wrapper)
+
+
 class SqliteStore:
-    """Thin wrapper over a sqlite3 connection."""
+    """Thin wrapper over a sqlite3 connection.
+
+    Serialised: one lock covers every method that touches the connection. See
+    :func:`_serialised`.
+    """
 
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn
+        self._lock = threading.RLock()
 
+    @_serialised
     def close(self) -> None:
         self._conn.close()
 
@@ -71,6 +104,7 @@ class SqliteStore:
 
     # ── KB documents ─────────────────────────────────────────────────
 
+    @_serialised
     def upsert_document(self, doc: dict[str, Any]) -> None:
         """Insert (or replace by id) a single ``kb_documents`` row.
 
@@ -158,6 +192,7 @@ class SqliteStore:
         )
         self._conn.commit()
 
+    @_serialised
     def get_document(self, doc_id: str) -> dict[str, Any] | None:
         cur = self._conn.execute("SELECT * FROM kb_documents WHERE id = ?", (doc_id,))
         r = cur.fetchone()
@@ -167,6 +202,7 @@ class SqliteStore:
 
     # ── KB chunks ────────────────────────────────────────────────────
 
+    @_serialised
     def upsert_chunks(self, chunks: Iterable[dict[str, Any]]) -> int:
         """Batch-insert chunks. Returns number of rows written.
 
@@ -265,6 +301,7 @@ class SqliteStore:
         if latest:
             self._conn.executemany("UPDATE kb_chunks SET content=? WHERE id=?", latest)
 
+    @_serialised
     def delete_chunks_not_in(self, document_id: str, keep_ids: Iterable[str]) -> int:
         """Drop the document's chunks that are not in ``keep_ids``.
 
@@ -295,6 +332,7 @@ class SqliteStore:
         self._conn.commit()
         return cur.rowcount
 
+    @_serialised
     def get_chunk(self, chunk_id: str) -> dict[str, Any] | None:
         cur = self._conn.execute("SELECT * FROM kb_chunks WHERE id = ?", (chunk_id,))
         r = cur.fetchone()
@@ -302,6 +340,7 @@ class SqliteStore:
             return None
         return _row_to_dict_with_json(r, json_fields=("heading_path_json", "tags_json"))
 
+    @_serialised
     def get_chunks_by_document_id(self, doc_id: str) -> list[dict[str, Any]]:
         """Return all chunks for *doc_id*, ordered by ``seq``."""
         cur = self._conn.execute(
@@ -313,6 +352,7 @@ class SqliteStore:
             for r in cur.fetchall()
         ]
 
+    @_serialised
     def get_chunks_by_vector_ids(self, vector_ids: Sequence[str]) -> dict[str, dict[str, Any]]:
         """Fetch chunks for a set of LanceDB vector_ids; returns {vector_id: row}.
 
@@ -335,6 +375,7 @@ class SqliteStore:
 
     # ── FTS5 keyword search ──────────────────────────────────────────
 
+    @_serialised
     def fts_search(
         self,
         query: str,
@@ -388,6 +429,7 @@ class SqliteStore:
 
     # ── KB conflicts ─────────────────────────────────────────────────
 
+    @_serialised
     def upsert_conflict(self, conflict: dict[str, Any]) -> None:
         """Record a detected conflict; re-detecting the same id is a no-op.
 
@@ -412,11 +454,13 @@ class SqliteStore:
         )
         self._conn.commit()
 
+    @_serialised
     def get_conflict(self, conflict_id: str) -> dict[str, Any] | None:
         cur = self._conn.execute("SELECT * FROM kb_conflicts WHERE id = ?", (conflict_id,))
         r = cur.fetchone()
         return dict(r) if r else None
 
+    @_serialised
     def list_conflicts(self, status: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
         """Return conflicts enriched with document titles."""
         where = "WHERE c.status = ?" if status else ""
@@ -440,6 +484,7 @@ class SqliteStore:
         )
         return [dict(r) for r in cur.fetchall()]
 
+    @_serialised
     def update_conflict_status(
         self,
         conflict_id: str,
@@ -459,6 +504,7 @@ class SqliteStore:
         )
         self._conn.commit()
 
+    @_serialised
     def mark_chunk_superseded(self, chunk_id: str, *, superseded_by: str) -> None:
         self._conn.execute(
             "UPDATE kb_chunks SET superseded_by=? WHERE id=?",
@@ -466,10 +512,12 @@ class SqliteStore:
         )
         self._conn.commit()
 
+    @_serialised
     def count_open_conflicts(self) -> int:
         cur = self._conn.execute("SELECT COUNT(*) FROM kb_conflicts WHERE status='open'")
         return int(cur.fetchone()[0])
 
+    @_serialised
     def get_docs_with_open_conflicts(self, doc_ids: list[str]) -> set[str]:
         """Return the subset of *doc_ids* that have at least one open conflict."""
         if not doc_ids:
@@ -485,6 +533,7 @@ class SqliteStore:
         )
         return {str(r["doc_id"]) for r in cur.fetchall()}
 
+    @_serialised
     def get_source_authorities(self, doc_ids: list[str]) -> dict[str, str]:
         """Return ``{doc_id: source_authority}`` for the given doc IDs."""
         if not doc_ids:
@@ -496,6 +545,7 @@ class SqliteStore:
         )
         return {str(r["id"]): str(r["source_authority"]) for r in cur.fetchall()}
 
+    @_serialised
     def get_superseded_chunk_ids(self, chunk_ids: list[str]) -> set[str]:
         """Return the subset of *chunk_ids* where ``superseded_by IS NOT NULL``."""
         if not chunk_ids:
@@ -509,6 +559,7 @@ class SqliteStore:
 
     # ── kb_corrections ───────────────────────────────────────────────
 
+    @_serialised
     def add_correction(
         self,
         chunk_id: str,
@@ -542,6 +593,7 @@ class SqliteStore:
         self._conn.commit()
         return corr_id
 
+    @_serialised
     def list_corrections(
         self,
         chunk_id: str | None = None,
@@ -563,6 +615,7 @@ class SqliteStore:
             )
         return [dict(r) for r in cur.fetchall()]
 
+    @_serialised
     def kb_stats(self) -> dict[str, int]:
         """Return aggregate KB health counts."""
         rows = self._conn.execute(
@@ -583,6 +636,7 @@ class SqliteStore:
 
     # ── memory_records (D3 — minimal CRUD) ───────────────────────────
 
+    @_serialised
     def write_memory(self, record: dict[str, Any]) -> None:
         """Insert (or replace by id) a single ``memory_records`` row.
 
@@ -634,6 +688,7 @@ class SqliteStore:
         )
         self._conn.commit()
 
+    @_serialised
     def get_memory(self, mem_id: str) -> dict[str, Any] | None:
         cur = self._conn.execute("SELECT * FROM memory_records WHERE id = ?", (mem_id,))
         r = cur.fetchone()

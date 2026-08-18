@@ -29,6 +29,12 @@ from .tools import make_kb_search_tool, render_tool_result
 
 CHAT_MAX_TURNS = 6  # tool-call rounds before we answer with what we have
 
+
+def _opt_float(value: Any) -> float | None:
+    """``None`` stays ``None`` — an unset knob must not become a sent one."""
+    return None if value is None else float(value)
+
+
 _LOAD_SKILL_TOOL = ToolDef(
     name="load_skill",
     description=(
@@ -191,9 +197,11 @@ def run_chat_agent(
 
     thinking_budget = int(model.params.get("thinking_budget_tokens") or 0)
     sampling = SamplingParams(
-        temperature=float(model.params.get("temperature", 0.5)),
-        top_p=float(model.params.get("top_p", 0.9)),
+        temperature=_opt_float(model.params.get("temperature")),
+        top_p=_opt_float(model.params.get("top_p")),
         max_tokens=int(model.params.get("max_tokens", 1024)),
+        thinking=model.params.get("thinking"),
+        effort=model.params.get("effort"),
         thinking_budget_tokens=thinking_budget or None,
     )
 
@@ -201,7 +209,7 @@ def run_chat_agent(
     # Extended thinking + multi-turn tool use needs thinking-block echo we don't
     # model, so a thinking turn does one deeply-reasoned call over injected KB +
     # skill instead of the tool loop.
-    if model.kind == "ollama" or thinking_budget > 0:
+    if model.kind == "ollama" or sampling.thinks:
         query = _last_user(messages)
         # Weak models can't drive load_skill — inject the best-matching skill.
         matched = registry.match(query) if registry is not None else None
