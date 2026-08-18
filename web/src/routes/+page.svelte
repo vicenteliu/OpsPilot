@@ -12,6 +12,7 @@
   import WikiTab from '$lib/components/WikiTab.svelte';
   import VendorDocTab from '$lib/components/VendorDocTab.svelte';
   import ChatTab from '$lib/components/ChatTab.svelte';
+  import MemoryTab from '$lib/components/MemoryTab.svelte';
   import InventoryTab from '$lib/components/InventoryTab.svelte';
   import KBTab from '$lib/components/KBTab.svelte';
   import RunTab from '$lib/components/RunTab.svelte';
@@ -51,7 +52,7 @@
   }
 
   // --- Active Tab ---
-  type Tab = 'run' | 'inventory' | 'kb' | 'wiki' | 'vendordoc' | 'mcp' | 'iteration' | 'chat' | 'admin' | 'guide';
+  type Tab = 'run' | 'inventory' | 'kb' | 'memory' | 'wiki' | 'vendordoc' | 'mcp' | 'iteration' | 'chat' | 'admin' | 'guide';
   let activeTab = $state<Tab>('run');
 
   // Nav indices mirror the TUI's 1-8 module keys.
@@ -60,6 +61,7 @@
     { id: 'chat', label: 'Chat' },
     { id: 'inventory', label: 'Inventory' },
     { id: 'kb', label: 'Knowledge Base' },
+    { id: 'memory', label: 'Memory' },
     { id: 'wiki', label: 'Wiki' },
     { id: 'vendordoc', label: 'Vendor Docs' },
     { id: 'mcp', label: 'MCP' },
@@ -201,6 +203,10 @@
     {/if}
 
     <!-- ══════════════════════════════ KB TAB ══════════════════════════════ -->
+    {#if activeTab === 'memory'}
+      <MemoryTab />
+    {/if}
+
     {#if activeTab === 'kb'}
       <KBTab />
     {/if}

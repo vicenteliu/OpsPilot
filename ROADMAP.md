@@ -130,9 +130,11 @@ system prompt on its own path, never joining hybrid search.
 REST: `GET/POST /api/memory`, `/memory/scopes`, `/memory/{id}/supersede`,
 `/memory/{id}/archive`.
 
+A `memory` UI module lists entries, admits them, supersedes and archives, with
+pick-or-create scopes and a due-for-review mark.
+
 *Not yet:* answer-time Conflict detection against the KB as a recorded
-**Conflict** — the prompt already instructs the model to name both sides — and
-the web UI.
+**Conflict** — the prompt already instructs the model to name both sides.
 
 **Consultation — the conversational surface**
 ([ADR-0032](docs/adr/0032-a-consultation-is-read-only-escalate-to-a-session-to-act.md)).
@@ -156,9 +158,13 @@ inactivity-closure notice as an SSE `notice` event. REST:
 `POST /api/consultations/{id}/messages/{mid}/pin`, and
 `GET/POST/DELETE /api/working-set`.
 
-*Not yet:* the web UI, escalation actually creating the Session, and the deferred
-context budget (trigger: when a stored Consultation's history can exceed the
-model's window — `docs/specs/session/templates/context-budget.template.yaml`).
+The Chat tab carries a working-set bar, delivers the inactivity notice, and puts
+a **Remember this** action on every assistant turn — the reason field is required,
+because it is what the review date later asks a reader to judge.
+
+*Not yet:* escalation actually creating the Session, and the deferred context
+budget (trigger: when a stored Consultation's history can exceed the model's
+window — `docs/specs/session/templates/context-budget.template.yaml`).
 
 **Export and import for KB / Skills / Wiki / Memory**
 ([ADR-0033](docs/adr/0033-storage-posture-fix-the-defect-now-defer-postgres.md)).
