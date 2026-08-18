@@ -54,6 +54,26 @@ from .types import PlaybookSpec, RunRequest, RunResult, TokenUsage
 # ── Public API ───────────────────────────────────────────────────────
 
 
+_PROPOSE_ACTIONS_PROMPT = """
+
+## Proposed actions (optional)
+
+You may add a `proposed_actions` array. Each entry is **one read-only diagnostic
+command** a human might run to learn something you could not determine from the
+input: collect state, run a query, pull a log.
+
+- `intent` is always `"diagnose"`. There is no way to propose a change here, and
+  you must not try to express one — a command that modifies anything is out of
+  scope for this field.
+- Propose only what genuinely narrows the problem. An empty array is the right
+  answer when the input already says enough.
+- `why` is read by the person deciding whether to run it. Say what the output
+  would tell them, not what the command does.
+
+Nothing you put here runs by itself. A person reads it, sees a dry-run preview,
+and decides."""
+
+
 def run_ticket_summary(
     request: RunRequest,
     *,
@@ -147,6 +167,8 @@ def run_ticket_summary(
             #     The trace still gets a tool_call + tool_result pair so the
             #     harness's _retrieved_chunks() walker can find the chunks.
             effective_system_prompt = pb.system_prompt
+            if pb.propose_actions:
+                effective_system_prompt += _PROPOSE_ACTIONS_PROMPT
             effective_tools: list[ToolDef] = [tool_def, *mcp_tool_defs]
             effective_max_turns = pb.limits.max_turns
             prefetch_hits: list[dict[str, Any]] = []
@@ -387,6 +409,16 @@ def run_ticket_summary(
                     source="model:assistant",
                 )
                 artifact_id = meta.artifact_id
+                proposals = summary.get("proposed_actions") or []
+                if proposals:
+                    # Proposing is not doing, and it is still worth a record: a
+                    # proposal nobody acted on is evidence about proposal
+                    # quality, which is what this first batch exists to tune
+                    # (ADR-0028).
+                    from ..sandbox.proposals import record_proposals
+
+                    with contextlib.suppress(Exception):
+                        record_proposals(tw, list(proposals))
                 tw.write(
                     TraceEvent.user_action(
                         action="approve",

@@ -49,6 +49,7 @@ from ..session.manager import SessionManager
 from ..settings_store import SettingsStore
 from ..skills import SkillRegistry
 from .middleware import AuthMiddleware, ObservabilityMiddleware
+from .routes.actions import router as actions_router
 from .routes.admin import router as admin_router
 from .routes.auth import router as auth_router
 from .routes.chat import router as chat_router
@@ -225,6 +226,7 @@ app.include_router(intake_router, prefix="/api")
 app.include_router(inventory_router, prefix="/api")
 app.include_router(doc_router, prefix="/api")
 app.include_router(sessions_router, prefix="/api")
+app.include_router(actions_router, prefix="/api", tags=["actions"])
 app.include_router(iteration_router, prefix="/api")
 app.include_router(kb_router, prefix="/api")
 app.include_router(wiki_router, prefix="/api")
