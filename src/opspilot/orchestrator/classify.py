@@ -64,8 +64,8 @@ def classify_work_item(
         messages,
         model=playbook.model.name,
         params=SamplingParams(
-            temperature=playbook.model.params.get("temperature", 0.0),
-            top_p=playbook.model.params.get("top_p", 0.9),
+            temperature=playbook.model.params.get("temperature"),
+            top_p=playbook.model.params.get("top_p"),
             max_tokens=playbook.model.params.get("max_tokens", 512),
         ),
     )

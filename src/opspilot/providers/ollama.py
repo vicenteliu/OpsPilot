@@ -112,11 +112,13 @@ class OllamaProvider:
         body: dict[str, Any] = {
             "model": model,
             "messages": [self._serialize_message(m) for m in messages],
-            "temperature": params.temperature,
-            "top_p": params.top_p,
             "max_tokens": params.max_tokens,
             "stream": False,
         }
+        if params.temperature is not None:
+            body["temperature"] = params.temperature
+        if params.top_p is not None:
+            body["top_p"] = params.top_p
         if params.seed is not None:
             body["seed"] = params.seed
         if params.stop:
