@@ -100,7 +100,7 @@
         "type": { "const": "system" },
         "event": {
           "type": "string",
-          "enum": ["state_change", "error", "policy_violation", "retention_marker"]
+          "enum": ["state_change", "error", "policy_violation", "retention_marker", "model_fallback"]
         },
         "details": { "type": "object" }
       },

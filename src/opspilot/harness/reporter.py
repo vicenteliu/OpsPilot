@@ -72,6 +72,12 @@ def render_result_table(result: EvalResult, *, console: Console | None = None) -
             failure,
         )
     console.print(table)
+    answered_by = result.extensions.get("answered_by")
+    if answered_by:
+        console.print(
+            f"\n[yellow]answered by {answered_by}[/yellow], not {result.model_ref} — "
+            "this row does not measure the model it names."
+        )
     if failure is not None:
         console.print(f"\n[red]run failed:[/red] {failure}")
         console.print("[dim]no score — this run produced no artifact to evaluate.[/dim]")

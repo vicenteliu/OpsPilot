@@ -66,8 +66,15 @@ def run_ticket_summary(
     mcp_registry: McpRegistry | None = None,
     user_msg_fn: Callable[[dict[str, Any]], str] | None = None,
     on_progress: Callable[[str], None] | None = None,
+    allow_model_fallback: bool = True,
 ) -> RunResult:
-    """Run the playbook end-to-end. Returns a :class:`RunResult`."""
+    """Run the playbook end-to-end. Returns a :class:`RunResult`.
+
+    ``allow_model_fallback`` keeps the production behaviour of retrying a
+    refused call on ``extra_models[0]`` so a Work item still gets processed when
+    the primary provider is down. A **comparison** run must measure the model it
+    names, so the harness turns it off (#175).
+    """
     _prog = on_progress or (lambda _: None)
     _t0 = time.monotonic()
     pb = request.playbook
@@ -117,6 +124,7 @@ def run_ticket_summary(
     summary: dict[str, Any] = {}
     schema_valid = False
     error: str | None = None
+    answered_by: str | None = None
     total_input_tokens = 0
     total_output_tokens = 0
     total_cost_usd = 0.0
@@ -187,7 +195,9 @@ def run_ticket_summary(
             ]
 
             # Build fallback provider lazily — uses the first extra_model if available.
-            auto_fallback_model = pb.extra_models[0] if pb.extra_models else None
+            auto_fallback_model = (
+                pb.extra_models[0] if pb.extra_models and allow_model_fallback else None
+            )
             fallback_provider: ProviderProtocol | None = None
             if auto_fallback_model is not None:
                 with contextlib.suppress(Exception):  # unavailable fallback is non-fatal
@@ -209,9 +219,24 @@ def run_ticket_summary(
                         ),
                         tools=effective_tools,
                     )
-                except ProviderError:
+                except ProviderError as primary_error:
                     if fallback_provider is None or auto_fallback_model is None:
                         raise
+                    # A different model is about to answer. Say so — in the
+                    # trace and on the result — or the row ends up attributed to
+                    # the model that refused (#175).
+                    answered_by = f"{auto_fallback_model.provider_id}/{auto_fallback_model.name}"
+                    tw.write(
+                        TraceEvent.system(
+                            event="model_fallback",
+                            details={
+                                "from": f"{pb.model.provider_id}/{pb.model.name}",
+                                "to": answered_by,
+                                "reason": str(primary_error)[:500],
+                            },
+                            actor="system",
+                        )
+                    )
                     resp = fallback_provider.chat(
                         messages,
                         model=auto_fallback_model.name,
@@ -427,6 +452,7 @@ def run_ticket_summary(
             output_tokens=total_output_tokens,
             cost_usd=total_cost_usd,
         ),
+        answered_by=answered_by,
     )
 
 
