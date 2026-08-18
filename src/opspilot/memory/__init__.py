@@ -4,12 +4,16 @@ Not to be confused with the **KB**, which lives in :mod:`opspilot.kb` and was
 called ``memory`` until #167.
 """
 
+from .conflict import RESOLUTIONS, MemoryConflict, MemoryConflictStore
 from .inject import memory_block, render_entry
 from .store import GLOBAL_ENTRY_CAP, AdmissionError, MemoryEntry, MemoryStore
 
 __all__ = [
     "GLOBAL_ENTRY_CAP",
+    "RESOLUTIONS",
     "AdmissionError",
+    "MemoryConflict",
+    "MemoryConflictStore",
     "MemoryEntry",
     "MemoryStore",
     "memory_block",
