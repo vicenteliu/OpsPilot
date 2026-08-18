@@ -134,6 +134,10 @@ def run_harness(
         extensions["orchestrator"] = {
             "schema_valid": run_result.schema_valid,
             "error": run_result.error,
+            # Zero output tokens with an error means the model never answered —
+            # a refused request, not a bad one. The reporter needs the two
+            # apart; scoring them the same is what #171 is about.
+            "output_tokens": run_result.usage.output_tokens,
         }
 
     record_harness(provider=playbook.model.provider_id, passed=passed)

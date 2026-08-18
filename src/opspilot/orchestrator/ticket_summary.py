@@ -387,6 +387,18 @@ def run_ticket_summary(
         raise
     except Exception as e:  # noqa: BLE001
         error = f"{type(e).__name__}: {e}"
+        # Record *why*, not just that it stopped. Every other failure path here
+        # writes an error event; this one did not, so a run that died before the
+        # first prompt — a provider 400, an upstream 429 — left a trace holding
+        # only the initial state change, with the cause nowhere (#171).
+        with contextlib.suppress(Exception), session_manager.trace(sess.id) as tw_err:
+            tw_err.write(
+                TraceEvent.system(
+                    event="error",
+                    details={"reason": "run_failed", "message": error},
+                    actor="system",
+                )
+            )
     finally:
         # Best-effort transition; ignore if illegal (e.g. already aborted).
         target = "archived" if schema_valid else "aborted"
