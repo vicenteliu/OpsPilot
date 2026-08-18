@@ -33,7 +33,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from ..auth import AuthStore
 from ..config import load_config
-from ..consultation import ConsultationStore
+from ..consultation import ConsultationStore, WorkingSetStore
 from ..embedding import EMBED_DIM, resolve_embedding
 from ..inventory import InventoryStore
 from ..kb.lance_store import LanceStore
@@ -104,6 +104,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     inventory = InventoryStore(conn)  # idempotent schema; shares the KB db file
     memory = MemoryStore(conn)  # second owned domain (ADR-0031/0035); same file
     consultations = ConsultationStore(conn)  # the conversational surface (ADR-0032)
+    working_sets = WorkingSetStore(conn)  # carries a turn's Memory anchors
     auth = AuthStore(conn)  # multi-user identity (ADR-0020)
     settings = SettingsStore(conn)  # non-secret admin config (e.g. default model)
     bootstrap_admin = os.environ.get("OPSPILOT_BOOTSTRAP_ADMIN")
@@ -167,6 +168,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.inventory = inventory
     app.state.memory = memory
     app.state.consultations = consultations
+    app.state.working_sets = working_sets
     app.state.auth = auth
     app.state.settings = settings
     app.state.service_token = cfg.api_token  # ADR-0011 bearer → Service token (ADR-0020)

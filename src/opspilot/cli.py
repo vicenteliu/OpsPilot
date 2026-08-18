@@ -2072,6 +2072,88 @@ def source_jsm(
 #  inventory (ADR-0017)
 # ──────────────────────────────────────────────────────────────────────────
 
+workingset_app = typer.Typer(
+    name="workingset",
+    help="Working set — the problem you are currently chasing (ADR-0032).",
+    no_args_is_help=True,
+)
+app.add_typer(workingset_app)
+
+
+def _working_sets() -> Any:
+    from .consultation import WorkingSetStore
+
+    return WorkingSetStore(init_sqlite(load_config().home / "kb" / "sqlite.db"))
+
+
+@workingset_app.command("open")
+def workingset_open(
+    title: str = typer.Argument(..., help="What you are chasing."),
+    scope: str = typer.Option("", "--scope", help="Site / environment it lives at."),
+    asset: str = typer.Option("", "--asset", help="Asset it is about (ast_...)."),
+) -> None:
+    """Start chasing a problem. Any set already open is closed as a deliberate switch.
+
+    The anchors given here are what lets a chat turn see *anchored* Memory —
+    without them a turn sees the global constraints and nothing else.
+    """
+    ws = _working_sets().open(
+        owner=_cli_actor(), title=title, scope=scope or None, asset_id=asset or None
+    )
+    where = ws.scope or ws.asset_id or "no anchor — global constraints only"
+    _console.print(f"[green]{ws.id}[/green] open — {ws.title} · {where}")
+
+
+@workingset_app.command("status")
+def workingset_status() -> None:
+    """Show the open Working set, and any closure not yet announced."""
+    store = _working_sets()
+    owner = _cli_actor()
+    notice = store.take_announcement(owner)
+    if notice:
+        _console.print(f"[yellow]{notice}[/yellow]\n")
+    current = store.current(owner)
+    if current is None:
+        _console.print("[dim]No working set open — chat turns see global Memory only.[/dim]")
+        return
+    where = current.scope or current.asset_id or "no anchor"
+    _console.print(
+        f"[bold]{current.id}[/bold] — {current.title}\n"
+        f"anchor: {where} · last active {current.last_active_at[:19]}"
+    )
+
+
+@workingset_app.command("close")
+def workingset_close() -> None:
+    """Close the open Working set — the problem is done."""
+    store = _working_sets()
+    current = store.current(_cli_actor())
+    if current is None:
+        _console.print("[dim]Nothing open.[/dim]")
+        return
+    store.close(current.id)
+    _console.print(f"[green]{current.id}[/green] closed — {current.title}")
+
+
+@workingset_app.command("sweep")
+def workingset_sweep(
+    days: int = typer.Option(None, "--days", help="Override the idle window."),
+) -> None:
+    """Close every Working set idle past the window, for everyone.
+
+    Unconditional by design: nobody returns to press close at the moment a
+    problem is solved, and a set that never expires quietly injects the wrong
+    context into every later conversation without ever raising an error.
+    """
+    from .consultation import IDLE_DAYS
+
+    window = days if days is not None else IDLE_DAYS
+    closed = _working_sets().sweep(idle_days=window)
+    for ws in closed:
+        _console.print(f"[yellow]{ws.id}[/yellow] closed ({ws.owner}) — {ws.title}")
+    _console.print(f"[green]{len(closed)}[/green] working set(s) closed (idle > {window}d)")
+
+
 consultation_app = typer.Typer(
     name="consultation",
     help="Consultation — the conversational surface (ADR-0032).",
