@@ -20,6 +20,7 @@ from typing import Any
 
 import pytest
 
+from opspilot.errors import ProviderError
 from opspilot.memory.lance_store import LanceStore, VectorRecord
 from opspilot.memory.sqlite_store import SqliteStore
 from opspilot.memory.storage_init import init_sqlite
@@ -913,3 +914,64 @@ def test_strip_redaction_placeholders_removes_nested() -> None:
     )
     assert _strip_redaction_placeholders("a [REDACTED:x:1] b [REDACTED:y:2] c") == "a b c"
     assert _strip_redaction_placeholders("plain text") == "plain text"
+
+
+# ── A refused run must record why (#171) ─────────────────────────────
+
+
+class _RefusingProvider:
+    """Stands in for a provider that rejects the request outright — a 400 for a
+    parameter the model removed, or an upstream 429."""
+
+    provider_id = "refusing-test"
+    kind = "ollama"
+
+    def chat(self, messages: list[Message], **kwargs: Any) -> ChatResponse:
+        raise ProviderError("HTTP 429: rate-limited upstream")
+
+    def embed(self, texts: list[str], *, model: str) -> list[list[float]]:
+        return [_topic_embed(t) for t in texts]
+
+    def health_probe(self) -> bool:
+        return True
+
+
+def test_a_refused_run_records_its_cause_in_the_trace(
+    session_manager: SessionManager,
+    populated_kb: tuple[SqliteStore, LanceStore],
+    redactor: Redactor,
+) -> None:
+    """The catch-all used to set ``RunResult.error`` and write nothing.
+
+    Every other failure path here writes a ``system(event="error")`` event, so a
+    run that died before the first prompt left a trace holding only its opening
+    ``state_change`` — status ``aborted``, cause nowhere.
+    """
+    sqlite, lance = populated_kb
+    # No extra_models: the orchestrator otherwise retries the first one on a
+    # ProviderError, and that fallback constructs a *real* provider.
+    request = dataclasses.replace(
+        _request(SAMPLE_TICKET),
+        playbook=dataclasses.replace(_request(SAMPLE_TICKET).playbook, extra_models=[]),
+    )
+
+    result = run_ticket_summary(
+        request,
+        session_manager=session_manager,
+        provider=_RefusingProvider(),
+        redactor=redactor,
+        embed_fn=_topic_embed,
+        sqlite_store=sqlite,
+        lance_store=lance,
+    )
+
+    assert result.error is not None and "429" in result.error
+    assert result.usage.output_tokens == 0
+
+    trace = session_manager.session_dir(result.session_id) / "trace.jsonl"
+    events = [json.loads(line) for line in trace.read_text().splitlines() if line.strip()]
+    errors = [e for e in events if e.get("event") == "error"]
+    assert errors, (
+        f"no error event; trace holds {[e.get('event') or e.get('type') for e in events]}"
+    )
+    assert "429" in json.dumps(errors[-1]["details"])
