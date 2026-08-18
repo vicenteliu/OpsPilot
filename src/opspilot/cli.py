@@ -2072,6 +2072,87 @@ def source_jsm(
 #  inventory (ADR-0017)
 # ──────────────────────────────────────────────────────────────────────────
 
+consultation_app = typer.Typer(
+    name="consultation",
+    help="Consultation — the conversational surface (ADR-0032).",
+    no_args_is_help=True,
+)
+app.add_typer(consultation_app)
+
+
+def _consultations() -> Any:
+    from .consultation import ConsultationStore
+
+    return ConsultationStore(init_sqlite(load_config().home / "kb" / "sqlite.db"))
+
+
+@consultation_app.command("list")
+def consultation_list(
+    limit: int = typer.Option(20, "--limit", "-n"),
+) -> None:
+    """List Consultations.
+
+    Over HTTP a Consultation is visible to its author and to admins. There is no
+    auth context on the CLI, so this reads as an admin would — the same
+    concession ``_cli_actor()`` makes: anyone who can run this can read the file.
+    """
+    from .consultation import RETENTION_DAYS
+
+    rows = _consultations().list_for(name=_cli_actor(), role="admin", limit=limit)
+    if not rows:
+        _console.print("[green]No Consultations.[/green]")
+        return
+    table = Table(title=f"Consultations (swept after {RETENTION_DAYS}d idle unless pinned)")
+    for col in ("ID", "Author", "Title", "Updated", "State"):
+        table.add_column(col, overflow="fold")
+    for c in rows:
+        state = f"pinned ({c.pinned_reason})" if c.is_pinned else "live"
+        if c.session_id:
+            state += f" → {c.session_id}"
+        table.add_row(c.id, c.author, c.title or "—", c.updated_at[:19], state)
+    _console.print(table)
+
+
+@consultation_app.command("show")
+def consultation_show(
+    consultation_id: str = typer.Argument(..., help="Consultation id (con_xxxxxxxx)."),
+) -> None:
+    """Print a Consultation's turns in order."""
+    store = _consultations()
+    con = store.get(consultation_id)
+    if con is None:
+        _err.print(f"[red]not found:[/red] {consultation_id}")
+        raise typer.Exit(code=1)
+    _console.print(f"[bold]{con.id}[/bold] — {con.title or '(untitled)'} · by {con.author}")
+    for m in store.messages(con.id):
+        who = "[cyan]you[/cyan]" if m.role == "user" else "[magenta]assistant[/magenta]"
+        _console.print(f"\n[{m.seq}] {who}  [dim]{m.id}[/dim]\n{m.content}")
+
+
+@consultation_app.command("purge")
+def consultation_purge(
+    days: int = typer.Option(None, "--days", help="Override the retention window."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Report what would go, delete nothing."),
+) -> None:
+    """Sweep Consultations idle past the retention window.
+
+    Pinned ones are never swept: something permanent cites them — a Session they
+    escalated into, or a Memory entry admitted from them.
+    """
+    from .consultation import RETENTION_DAYS
+
+    store = _consultations()
+    window = days if days is not None else RETENTION_DAYS
+    if dry_run:
+        pinned = sum(
+            1 for c in store.list_for(name=_cli_actor(), role="admin", limit=10_000) if c.is_pinned
+        )
+        _console.print(f"[dim]window {window}d · {pinned} pinned Consultation(s) are exempt[/dim]")
+        return
+    removed = store.purge(older_than_days=window)
+    _console.print(f"[green]{len(removed)}[/green] Consultation(s) swept (window {window}d)")
+
+
 memory_app = typer.Typer(
     name="memory",
     help="Memory — standing environment facts that have no table (ADR-0031).",
