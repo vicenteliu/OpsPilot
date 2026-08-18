@@ -136,20 +136,43 @@ def _skill_body(skill: Skill) -> str:
     return f"# Skill: {skill.name}\n\n{skill.body}"
 
 
+def _memory_prefix(state: Any, *, asset_id: str | None, scope: str | None) -> str:
+    """The Memory section for this turn, or ``""`` if the store is absent or empty.
+
+    Anchored entries need an address, and a turn only has one if the caller
+    supplies it. Until the **Working set** carries it automatically (ADR-0032),
+    an unanchored turn sees the global constraints and nothing else — which is
+    the right answer, not a degraded one: a constraint about another site has no
+    business steering this one.
+    """
+    store = getattr(state, "memory", None)
+    if store is None:
+        return ""
+    from ..memory import memory_block
+
+    return memory_block(store, asset_id=asset_id, scope=scope)
+
+
 def run_chat_agent(
     state: Any,
     messages: list[dict[str, str]],
     *,
     model_id: str | None = None,
     on_step: StepCallback | None = None,
+    memory_scope: str | None = None,
+    memory_asset_id: str | None = None,
 ) -> ChatAgentResult:
     """Run the chat as a bounded ReAct loop; return the answer + KB citations.
 
     ``on_step`` (optional) receives progress dicts — ``status`` /
     ``tool_call`` / ``tool_result`` — for streaming; the return value carries
     the final answer, deduped citations, and accumulated token usage.
+
+    ``memory_scope`` / ``memory_asset_id`` are the turn's **anchors**: they decide
+    which recorded constraints apply here. Global entries apply regardless.
     """
     provider, model = resolve_model(state, model_id)
+    memory_prefix = _memory_prefix(state, asset_id=memory_asset_id, scope=memory_scope)
     tool_def, tool_handler = make_kb_search_tool(
         sqlite=state.sqlite,
         lance=state.lance,
@@ -224,7 +247,9 @@ def run_chat_agent(
         pf_msgs = [
             Message(
                 role="system",
-                content=_SYSTEM_PROMPT_BASE + skill_block + _render_context(payload),
+                content=(
+                    _SYSTEM_PROMPT_BASE + memory_prefix + skill_block + _render_context(payload)
+                ),
             )
         ] + _history(messages)
         emit({"type": "status", "message": "Generating response…"})
@@ -257,7 +282,7 @@ def run_chat_agent(
         domain_tools.append(web_tool)
     domain_tools += mcp_tool_defs
 
-    system_prompt = _SYSTEM_PROMPT_BASE + _TOOL_HINT
+    system_prompt = _SYSTEM_PROMPT_BASE + _TOOL_HINT + memory_prefix
     if has_skills and registry is not None:
         system_prompt += _catalog_prompt(registry)
     provider_msgs: list[Message] = [Message(role="system", content=system_prompt)] + _history(
