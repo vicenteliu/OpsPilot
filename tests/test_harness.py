@@ -37,9 +37,9 @@ from opspilot.harness.types import (
     Fixture,
     Golden,
 )
-from opspilot.memory.lance_store import LanceStore, VectorRecord
-from opspilot.memory.sqlite_store import SqliteStore
-from opspilot.memory.storage_init import init_sqlite
+from opspilot.kb.lance_store import LanceStore, VectorRecord
+from opspilot.kb.sqlite_store import SqliteStore
+from opspilot.kb.storage_init import init_sqlite
 from opspilot.orchestrator import load_playbook
 from opspilot.orchestrator.types import PlaybookRetrieval, PlaybookSpec
 from opspilot.providers.types import (
@@ -630,7 +630,7 @@ def test_kb_search_tool_no_warning_after_resolve(
     populated_kb_with_open_conflict: tuple[SqliteStore, LanceStore],
 ) -> None:
     """After resolve(a_wins), _conflict_warning disappears from tool result."""
-    from opspilot.memory.conflict import resolve_conflict
+    from opspilot.kb.conflict import resolve_conflict
     from opspilot.orchestrator.tools import make_kb_search_tool
 
     sqlite, lance = populated_kb_with_open_conflict
@@ -686,7 +686,7 @@ def test_run_harness_no_conflict_warning_after_resolve(
     tmp_path: Path,
 ) -> None:
     """After resolving the conflict, no _conflict_warning appears in tool result."""
-    from opspilot.memory.conflict import resolve_conflict
+    from opspilot.kb.conflict import resolve_conflict
 
     sqlite, lance = populated_kb_with_open_conflict
     resolve_conflict("conf_a1b2c3d4", resolution="a_wins", resolved_by="tester", sqlite=sqlite)

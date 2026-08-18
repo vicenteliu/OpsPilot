@@ -19,7 +19,7 @@ SAMPLE = REPO_ROOT / "examples" / "scn_ticket_summary_zh" / "kb" / "sop_vpn_zh.m
 REPEATS = 200
 text = SAMPLE.read_text(encoding="utf-8") * REPEATS
 
-from opspilot.memory.chunker import ChunkConfig, _py_chunk_markdown
+from opspilot.kb.chunker import ChunkConfig, _py_chunk_markdown
 
 try:
     import opspilot_chunker as _rs_mod

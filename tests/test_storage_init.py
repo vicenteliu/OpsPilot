@@ -1,4 +1,4 @@
-"""Tests for ``opspilot.memory.storage_init``.
+"""Tests for ``opspilot.kb.storage_init``.
 
 Covers:
 * Schema is applied on a fresh DB (tables and triggers exist).
@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from opspilot.memory.storage_init import (
+from opspilot.kb.storage_init import (
     SCHEMA_SQL_PATH,
     init_sqlite,
     open_sqlite,

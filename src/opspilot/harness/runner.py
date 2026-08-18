@@ -26,8 +26,8 @@ from pathlib import Path
 from typing import Any
 
 from ..ids import new_ulid_id
-from ..memory.lance_store import LanceStore
-from ..memory.sqlite_store import SqliteStore
+from ..kb.lance_store import LanceStore
+from ..kb.sqlite_store import SqliteStore
 from ..observability import record_harness
 from ..orchestrator import RunRequest, RunResult, run_ticket_summary
 from ..orchestrator.types import PlaybookSpec

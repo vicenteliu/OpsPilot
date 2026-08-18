@@ -159,7 +159,7 @@ and it is the mechanism keeping Memory from becoming a junk drawer.
 - Conflict detection gains a second *path*, running at answer time rather than at
   ingest. The existing chunk-to-chunk path (cosine similarity in LanceDB) is
   unchanged, and the two share only the Conflict and Resolution records.
-- `src/opspilot/memory/` is the KB implementation and now collides with a domain
+- `src/opspilot/kb/` is the KB implementation and now collides with a domain
   term. Renaming it to `kb/` is issue #167.
 - Two owned domains means ADR-0006 is now a rule with two exceptions rather than
   one. A third should be argued against this pattern, not against ADR-0006 alone.

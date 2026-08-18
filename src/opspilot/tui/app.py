@@ -258,9 +258,9 @@ class OpsPilotApp(App[None]):
         w = self._wt
         try:
             from ..config import load_config
-            from ..memory.lance_store import LanceStore
-            from ..memory.sqlite_store import SqliteStore
-            from ..memory.storage_init import init_sqlite
+            from ..kb.lance_store import LanceStore
+            from ..kb.sqlite_store import SqliteStore
+            from ..kb.storage_init import init_sqlite
             from ..orchestrator import RunRequest, load_playbook, run_ticket_summary
             from ..providers import make_provider
             from ..redaction import Redactor
@@ -340,10 +340,10 @@ class OpsPilotApp(App[None]):
         w(f"[dim]› kb_search q={query!r} top_k={top_k}[/dim]")
         try:
             from ..config import load_config
-            from ..memory.lance_store import LanceStore
-            from ..memory.retrieval import kb_search
-            from ..memory.sqlite_store import SqliteStore
-            from ..memory.storage_init import init_sqlite
+            from ..kb.lance_store import LanceStore
+            from ..kb.retrieval import kb_search
+            from ..kb.sqlite_store import SqliteStore
+            from ..kb.storage_init import init_sqlite
             from ..providers import make_provider
 
             cfg = load_config()
@@ -424,8 +424,8 @@ class OpsPilotApp(App[None]):
         w = self._wt
         try:
             from ..config import load_config
-            from ..memory.sqlite_store import SqliteStore
-            from ..memory.storage_init import init_sqlite
+            from ..kb.sqlite_store import SqliteStore
+            from ..kb.storage_init import init_sqlite
 
             cfg = load_config()
             db_path = cfg.home / "kb" / "sqlite.db"
@@ -602,9 +602,9 @@ class OpsPilotApp(App[None]):
         try:
             from ..config import load_config
             from ..harness import load_fixture, load_golden, run_harness
-            from ..memory.lance_store import LanceStore
-            from ..memory.sqlite_store import SqliteStore
-            from ..memory.storage_init import init_sqlite
+            from ..kb.lance_store import LanceStore
+            from ..kb.sqlite_store import SqliteStore
+            from ..kb.storage_init import init_sqlite
             from ..orchestrator import load_playbook
             from ..providers import make_provider
             from ..redaction import Redactor

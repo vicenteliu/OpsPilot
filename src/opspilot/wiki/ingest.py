@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from ..errors import OpsPilotError
-from ..memory.sqlite_store import SqliteStore
+from ..kb.sqlite_store import SqliteStore
 from ..providers.base import ProviderProtocol
 from ..providers.types import Message, SamplingParams
 from ..timeutil import now_rfc3339

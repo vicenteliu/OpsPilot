@@ -100,8 +100,8 @@ class WikiTreeScreen(Widget):
     def do_wiki_ingest(self, doc_id: str) -> None:
         try:
             from ...config import load_config
-            from ...memory.sqlite_store import SqliteStore
-            from ...memory.storage_init import init_sqlite
+            from ...kb.sqlite_store import SqliteStore
+            from ...kb.storage_init import init_sqlite
             from ...providers.ollama import OllamaProvider
             from ...wiki.ingest import WikiIngestConfig
             from ...wiki.ingest import ingest as run_wiki_ingest

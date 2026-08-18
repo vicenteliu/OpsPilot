@@ -45,14 +45,14 @@ from .harness import load_fixture, load_golden, run_harness
 from .harness.reporter import render_result_table
 from .iteration.engine import IterationEngine
 from .iteration.types import IterationPolicy
-from .memory.conflict import resolve_conflict
-from .memory.ingestion import SOURCE_AUTHORITIES, IngestConfig, SourceAuthority
-from .memory.ingestion import ingest as run_ingest
-from .memory.kb_loader import load_kb_fixture
-from .memory.lance_store import LanceStore
-from .memory.retrieval import kb_search
-from .memory.sqlite_store import SqliteStore
-from .memory.storage_init import init_sqlite
+from .kb.conflict import resolve_conflict
+from .kb.ingestion import SOURCE_AUTHORITIES, IngestConfig, SourceAuthority
+from .kb.ingestion import ingest as run_ingest
+from .kb.kb_loader import load_kb_fixture
+from .kb.lance_store import LanceStore
+from .kb.retrieval import kb_search
+from .kb.sqlite_store import SqliteStore
+from .kb.storage_init import init_sqlite
 from .orchestrator import RunRequest, load_playbook, run_ticket_summary
 from .orchestrator.ticket_summary import _format_doc_request
 from .providers import make_provider

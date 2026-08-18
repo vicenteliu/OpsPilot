@@ -23,8 +23,8 @@ from typing import Any
 
 import pytest
 
-from opspilot.memory.sqlite_store import SqliteStore
-from opspilot.memory.storage_init import init_sqlite
+from opspilot.kb.sqlite_store import SqliteStore
+from opspilot.kb.storage_init import init_sqlite
 
 DOC_ID = "doc_88a277cf"
 CHUNK_A = "chk_aaaa0001"

@@ -11,7 +11,7 @@ import pytest
 
 from opspilot.cli import _kb_open_error
 from opspilot.embedding import EMBED_DIM, resolve_embedding
-from opspilot.memory.lance_store import LanceStore, VectorRecord
+from opspilot.kb.lance_store import LanceStore, VectorRecord
 
 
 def _cfg() -> SimpleNamespace:

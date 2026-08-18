@@ -212,7 +212,7 @@ class OllamaProvider:
 ### 2.2 `memory/` — 知识层
 
 ```python
-# src/opspilot/memory/types.py
+# src/opspilot/kb/types.py
 class KbDocument(BaseModel):  # ↔ memory/schemas/kb-document.schema.json
     id: str  # doc_<sha8>
     source_path: str
@@ -241,7 +241,7 @@ class RetrievalResponse(BaseModel):
 ```
 
 ```python
-# src/opspilot/memory/retrieval.py
+# src/opspilot/kb/retrieval.py
 def kb_search(
     query: str,
     *,

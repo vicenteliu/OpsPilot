@@ -23,10 +23,10 @@ from typing import Any
 
 import pytest
 
-from opspilot.memory.lance_store import LanceStore, VectorRecord
-from opspilot.memory.retrieval import RRF_K, Hit, kb_search
-from opspilot.memory.sqlite_store import SqliteStore
-from opspilot.memory.storage_init import init_sqlite
+from opspilot.kb.lance_store import LanceStore, VectorRecord
+from opspilot.kb.retrieval import RRF_K, Hit, kb_search
+from opspilot.kb.sqlite_store import SqliteStore
+from opspilot.kb.storage_init import init_sqlite
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 KB_DIR = REPO_ROOT / "examples" / "scn_ticket_summary_zh" / "kb"

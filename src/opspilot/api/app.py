@@ -35,11 +35,11 @@ from ..auth import AuthStore
 from ..config import load_config
 from ..embedding import EMBED_DIM, resolve_embedding
 from ..inventory import InventoryStore
+from ..kb.lance_store import LanceStore
+from ..kb.sqlite_store import SqliteStore
+from ..kb.storage_init import init_sqlite
 from ..log_buffer import install as install_log_buffer
 from ..mcp import McpRegistry, load_mcp_config
-from ..memory.lance_store import LanceStore
-from ..memory.sqlite_store import SqliteStore
-from ..memory.storage_init import init_sqlite
 from ..orchestrator.types import load_playbook
 from ..providers.registry import make_provider
 from ..redaction import Redactor

@@ -1,4 +1,4 @@
-"""Tests for ``opspilot.memory.markitdown_adapter``."""
+"""Tests for ``opspilot.kb.markitdown_adapter``."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from opspilot.memory.markitdown_adapter import (
+from opspilot.kb.markitdown_adapter import (
     AdapterError,
     AdapterResult,
     to_markdown,

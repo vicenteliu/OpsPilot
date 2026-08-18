@@ -121,11 +121,11 @@ class KBBrowserScreen(Widget):
         from pathlib import Path as _Path
 
         from ...config import load_config
-        from ...memory.ingestion import IngestConfig
-        from ...memory.ingestion import ingest as run_ingest
-        from ...memory.lance_store import LanceStore
-        from ...memory.sqlite_store import SqliteStore
-        from ...memory.storage_init import init_sqlite
+        from ...kb.ingestion import IngestConfig
+        from ...kb.ingestion import ingest as run_ingest
+        from ...kb.lance_store import LanceStore
+        from ...kb.sqlite_store import SqliteStore
+        from ...kb.storage_init import init_sqlite
         from ...providers import make_provider
         from ...redaction import Redactor
 
@@ -177,10 +177,10 @@ class KBBrowserScreen(Widget):
     @work(thread=True)
     def run_search(self, query: str) -> None:
         from ...config import load_config
-        from ...memory.lance_store import LanceStore
-        from ...memory.retrieval import kb_search
-        from ...memory.sqlite_store import SqliteStore
-        from ...memory.storage_init import init_sqlite
+        from ...kb.lance_store import LanceStore
+        from ...kb.retrieval import kb_search
+        from ...kb.sqlite_store import SqliteStore
+        from ...kb.storage_init import init_sqlite
         from ...providers import make_provider
 
         cfg = load_config()
@@ -274,8 +274,8 @@ class KBBrowserScreen(Widget):
     @work(thread=True)
     def show_conflicts(self) -> None:
         from ...config import load_config
-        from ...memory.sqlite_store import SqliteStore
-        from ...memory.storage_init import init_sqlite
+        from ...kb.sqlite_store import SqliteStore
+        from ...kb.storage_init import init_sqlite
 
         cfg = load_config()
         db_path = cfg.home / "kb" / "sqlite.db"
@@ -316,8 +316,8 @@ class KBBrowserScreen(Widget):
     @work(thread=True)
     def do_correct(self, chunk_id: str, reason: str, new_content: str) -> None:
         from ...config import load_config
-        from ...memory.sqlite_store import SqliteStore
-        from ...memory.storage_init import init_sqlite
+        from ...kb.sqlite_store import SqliteStore
+        from ...kb.storage_init import init_sqlite
 
         cfg = load_config()
         db_path = cfg.home / "kb" / "sqlite.db"

@@ -8,15 +8,15 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from opspilot.memory.conflict import (
+from opspilot.kb.conflict import (
     _classify_conflict,
     _has_contradiction,
     detect_and_store_conflicts,
     resolve_conflict,
 )
-from opspilot.memory.lance_store import AnnHit
-from opspilot.memory.sqlite_store import SqliteStore
-from opspilot.memory.storage_init import init_sqlite
+from opspilot.kb.lance_store import AnnHit
+from opspilot.kb.sqlite_store import SqliteStore
+from opspilot.kb.storage_init import init_sqlite
 
 DIM = 3
 EMBED_MODEL = "test/mock"
@@ -481,8 +481,8 @@ def test_kb_search_sets_has_open_conflicts(tmp_path: Path) -> None:
     """kb_search marks hits whose source doc has an open conflict."""
     import math
 
-    from opspilot.memory.lance_store import LanceStore, VectorRecord
-    from opspilot.memory.retrieval import kb_search
+    from opspilot.kb.lance_store import LanceStore, VectorRecord
+    from opspilot.kb.retrieval import kb_search
 
     DIM = 3
     MODEL = "test/mock"

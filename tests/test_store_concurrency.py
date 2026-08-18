@@ -21,8 +21,8 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from opspilot.memory.sqlite_store import SqliteStore
-from opspilot.memory.storage_init import init_sqlite
+from opspilot.kb.sqlite_store import SqliteStore
+from opspilot.kb.storage_init import init_sqlite
 
 WRITERS = 16
 

@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Final
 
 # Path to the spec schema. In the repo the package lives at
-# ``src/opspilot/memory/`` so we walk up four parents to reach repo root and
+# ``src/opspilot/kb/`` so we walk up four parents to reach repo root and
 # descend into ``docs/specs``. When pip-installed outside the repo (the Docker
 # image), ``OPSPILOT_SPECS_DIR`` points at the shipped ``docs/specs`` dir.
 _THIS_FILE = Path(__file__).resolve()

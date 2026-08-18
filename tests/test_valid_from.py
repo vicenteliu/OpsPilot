@@ -7,7 +7,7 @@ import time
 from datetime import UTC
 from pathlib import Path
 
-from opspilot.memory.ingestion import _extract_valid_from, _normalize_date
+from opspilot.kb.ingestion import _extract_valid_from, _normalize_date
 
 # ISO8601 timestamp pattern — accepts optional fractional seconds
 _ISO_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$")

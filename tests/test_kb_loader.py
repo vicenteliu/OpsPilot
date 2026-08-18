@@ -1,4 +1,4 @@
-"""Tests for ``opspilot.memory.kb_loader`` (PR-8.5).
+"""Tests for ``opspilot.kb.kb_loader`` (PR-8.5).
 
 The kb_loader bypasses the chunker / redactor / markitdown pipeline and
 upserts a frozen KB fixture verbatim into SQLite + LanceDB. This guards
@@ -13,10 +13,10 @@ from pathlib import Path
 
 import pytest
 
-from opspilot.memory.kb_loader import KBLoadStats, load_kb_fixture
-from opspilot.memory.lance_store import LanceStore
-from opspilot.memory.sqlite_store import SqliteStore
-from opspilot.memory.storage_init import init_sqlite
+from opspilot.kb.kb_loader import KBLoadStats, load_kb_fixture
+from opspilot.kb.lance_store import LanceStore
+from opspilot.kb.sqlite_store import SqliteStore
+from opspilot.kb.storage_init import init_sqlite
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EXAMPLES = REPO_ROOT / "examples" / "scn_ticket_summary_zh" / "kb"

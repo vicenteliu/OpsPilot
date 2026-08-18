@@ -18,7 +18,7 @@ SAMPLE = REPO_ROOT / "examples" / "scn_ticket_summary_zh" / "kb" / "sop_vpn_zh.m
 REPEATS = 500
 text = SAMPLE.read_text(encoding="utf-8") * REPEATS
 
-from opspilot.memory.tokenizer import _py_count_tokens
+from opspilot.kb.tokenizer import _py_count_tokens
 
 try:
     import opspilot_tokenizer as _rs_mod
