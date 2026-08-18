@@ -2072,6 +2072,79 @@ def source_jsm(
 #  inventory (ADR-0017)
 # ──────────────────────────────────────────────────────────────────────────
 
+_STAGING_OPT = typer.Option(None, "--staging", help="Where to unpack; default ~/.opspilot/import.")
+
+bundle_app = typer.Typer(
+    name="bundle",
+    help="Export / import a knowledge bundle — KB, Skills, Wiki, Memory (ADR-0033).",
+    no_args_is_help=True,
+)
+app.add_typer(bundle_app)
+
+
+@bundle_app.command("export")
+def bundle_export(
+    destination: Path = typer.Argument(..., help="Where to write the .tar.gz."),  # noqa: B008
+) -> None:
+    """Write a bundle of everything that is meant to travel.
+
+    Sessions and Consultations are deliberately absent. A Session is an
+    append-only ledger whose value is that it was not edited, and a Consultation
+    holds pasted logs that never passed a Work item's redaction; both travel only
+    by whole-directory cold backup.
+    """
+    from . import __version__
+    from .kb.sqlite_store import SqliteStore
+    from .memory import MemoryStore
+    from .portability import export_bundle
+
+    cfg = load_config()
+    conn = init_sqlite(cfg.home / "kb" / "sqlite.db")
+    stats = export_bundle(
+        destination,
+        sqlite=SqliteStore(conn),
+        memory=MemoryStore(conn),
+        skills_dir=Path("agent_skills"),
+        wiki_root=cfg.home / "wiki",
+        embedding_model=cfg.embed_model,
+        opspilot_version=__version__,
+    )
+    _console.print(
+        f"[green]{destination}[/green] — "
+        f"{stats.kb_documents} KB doc(s), {stats.skills} skill file(s), "
+        f"{stats.wiki_pages} wiki page(s), {stats.memory_entries} memory entr(y/ies)"
+    )
+
+
+@bundle_app.command("import")
+def bundle_import(
+    source: Path = typer.Argument(..., exists=True, help="The .tar.gz to unpack."),  # noqa: B008
+    staging: Path = _STAGING_OPT,
+) -> None:
+    """Unpack a bundle. Memory is restored; everything else is staged for review.
+
+    A tar unpacked onto disk produces no commit and no diff, so a Skill cannot be
+    admitted by arriving (ADR-0027) — moving it into ``agent_skills/`` is the
+    commit, and that commit is the admission.
+    """
+    from .memory import MemoryStore
+    from .portability import import_bundle
+
+    cfg = load_config()
+    conn = init_sqlite(cfg.home / "kb" / "sqlite.db")
+    target = staging or (cfg.home / "import" / source.stem)
+    try:
+        stats = import_bundle(
+            source, staging_dir=target, memory=MemoryStore(conn), actor=_cli_actor()
+        )
+    except ValueError as e:
+        _err.print(f"[red]not a usable bundle:[/red] {e}")
+        raise typer.Exit(code=1) from e
+    _console.print(f"[green]unpacked to {target}[/green]")
+    for note in stats.notes:
+        _console.print(f"  · {note}")
+
+
 workingset_app = typer.Typer(
     name="workingset",
     help="Working set — the problem you are currently chasing (ADR-0032).",
