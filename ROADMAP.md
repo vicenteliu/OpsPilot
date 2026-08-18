@@ -172,11 +172,21 @@ because it is what the review date later asks a reader to judge.
 budget (trigger: when a stored Consultation's history can exceed the model's
 window — `docs/specs/session/templates/context-budget.template.yaml`).
 
-**Export and import for KB / Skills / Wiki / Memory**
+**Export and import for KB / Skills / Wiki / Memory** — shipped
 ([ADR-0033](docs/adr/0033-storage-posture-fix-the-defect-now-defer-postgres.md)).
-A tar of per-domain native formats plus a manifest; KB exports source documents
-and the receiver re-ingests, because vectors are bound to an embedding model.
-Sessions and Consultations get no export interface, by decision.
+`opspilot bundle export / import`: a tar of per-domain native formats plus a
+manifest. Skills and Wiki pages stay files, because ADR-0027 admits a Skill
+through a pull request and a pull request has to read as a diff. No vectors
+travel — the receiver re-ingests under its own embedder.
+
+Sessions and Consultations get no export interface, by decision, and the manifest
+says why. On import, Memory is restored with its original actors (a restore is not
+a second admission); Skills, Wiki pages and KB documents are **staged**, never
+installed — a tar unpacked onto disk produces no commit and no diff.
+
+One deviation from the ADR's letter: the KB travels as documents reassembled from
+its **redacted chunks**, not from `source_path`. The KB never kept the source
+files, and the files it points at are not redacted.
 
 **Live verification of the identity and channel integrations.** LDAP, OIDC, the
 all-in-one image, and WeCom assist are implemented and covered by offline tests,
