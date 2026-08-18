@@ -317,7 +317,15 @@ class TraceEvent:
     def system(
         cls,
         *,
-        event: Literal["state_change", "error", "policy_violation", "retention_marker"],
+        event: Literal[
+            "state_change",
+            "error",
+            "policy_violation",
+            "retention_marker",
+            # A different model answered than the one the playbook named. Not an
+            # error — the run continued — but it must not be silent (#175).
+            "model_fallback",
+        ],
         details: dict[str, Any] | None = None,
         actor: str | None = None,
     ) -> TraceEvent:

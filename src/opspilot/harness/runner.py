@@ -84,6 +84,12 @@ def run_harness(
     )
     run_result: RunResult = run_ticket_summary(
         request,
+        # A comparison run measures the model it names. With the production
+        # fallback on, a refused primary is silently answered by
+        # ``extra_models[0]`` and the row still carries the primary's
+        # ``model_ref`` — so naming a model that does not exist scored 0.903 and
+        # passed (#175).
+        allow_model_fallback=False,
         session_manager=session_manager,
         provider=provider,
         redactor=redactor,
@@ -129,6 +135,9 @@ def run_harness(
     # the schema for an otherwise-valid (failing) run.
     flags: list[str] = []
     extensions: dict[str, Any] = {}
+    if run_result.answered_by:
+        flags.append("nondeterministic")
+        extensions["answered_by"] = run_result.answered_by
     if not run_result.schema_valid or run_result.error:
         flags.append("manual_review_pending")
         extensions["orchestrator"] = {

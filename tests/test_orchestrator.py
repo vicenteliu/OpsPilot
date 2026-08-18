@@ -975,3 +975,91 @@ def test_a_refused_run_records_its_cause_in_the_trace(
         f"no error event; trace holds {[e.get('event') or e.get('type') for e in events]}"
     )
     assert "429" in json.dumps(errors[-1]["details"])
+
+
+# ── A model swap must never be silent (#175) ─────────────────────────
+
+
+class _SwappingProvider:
+    """Refuses once as the primary, so the automatic fallback takes over."""
+
+    provider_id = "swapping-test"
+    kind = "ollama"
+
+    def chat(self, messages: list[Message], **kwargs: Any) -> ChatResponse:
+        raise ProviderError("HTTP 404: model not found")
+
+    def embed(self, texts: list[str], *, model: str) -> list[list[float]]:
+        return [_topic_embed(t) for t in texts]
+
+    def health_probe(self) -> bool:
+        return True
+
+
+def test_model_fallback_is_recorded_not_silent(
+    session_manager: SessionManager,
+    populated_kb: tuple[SqliteStore, LanceStore],
+    redactor: Redactor,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The swap used to leave no trace event, no flag, and no field.
+
+    The row then carried the primary's ``model_ref``, so a run answered by a
+    different model was written down as that primary's result.
+    """
+    sqlite, lance = populated_kb
+    base = _request(SAMPLE_TICKET)
+    fallback_model = base.playbook.extra_models[0]
+    stand_in = _ScriptedProvider(_scripted_two_round())
+    monkeypatch.setattr(
+        "opspilot.orchestrator.ticket_summary.make_provider",
+        lambda *a, **kw: stand_in,
+    )
+
+    result = run_ticket_summary(
+        base,
+        session_manager=session_manager,
+        provider=_SwappingProvider(),
+        redactor=redactor,
+        embed_fn=_topic_embed,
+        sqlite_store=sqlite,
+        lance_store=lance,
+    )
+
+    assert result.answered_by == f"{fallback_model.provider_id}/{fallback_model.name}"
+
+    events = [
+        json.loads(line)
+        for line in (session_manager.session_dir(result.session_id) / "trace.jsonl")
+        .read_text()
+        .splitlines()
+        if line.strip()
+    ]
+    swaps = [e for e in events if e.get("event") == "model_fallback"]
+    assert swaps, "the swap left no trace event"
+    assert swaps[0]["details"]["to"] == result.answered_by
+    assert "404" in swaps[0]["details"]["reason"]
+
+
+def test_fallback_can_be_turned_off(
+    session_manager: SessionManager,
+    populated_kb: tuple[SqliteStore, LanceStore],
+    redactor: Redactor,
+) -> None:
+    """A comparison run must measure the model it names, so it opts out."""
+    sqlite, lance = populated_kb
+
+    result = run_ticket_summary(
+        _request(SAMPLE_TICKET),
+        session_manager=session_manager,
+        provider=_SwappingProvider(),
+        redactor=redactor,
+        embed_fn=_topic_embed,
+        sqlite_store=sqlite,
+        lance_store=lance,
+        allow_model_fallback=False,
+    )
+
+    assert result.answered_by is None
+    assert result.error is not None and "404" in result.error
+    assert result.usage.output_tokens == 0

@@ -1208,6 +1208,11 @@ def harness_golden_provider(
     model_version: str = typer.Option(
         "current", "--model-version", help="Model version tag (provenance only)."
     ),
+    temperature: float | None = typer.Option(
+        None, "--temperature", help="Sent only when given; current Anthropic models reject it."
+    ),
+    top_p: float | None = typer.Option(None, "--top-p", help="Sent only when given."),
+    max_tokens: int = typer.Option(4096, "--max-tokens"),
     embedding_model: str = typer.Option(
         "ollama-local/nomic-embed-text-v2-moe@2026-04", "--embedding-model"
     ),
@@ -1232,12 +1237,21 @@ def harness_golden_provider(
         _err.print(f"[red]golden fixture not found:[/red] {GOLDEN_FIXTURE_PATH}")
         raise typer.Exit(code=1)
     resolved_kind: Any = kind or _infer_model_kind(provider)
+    # Sampling knobs are sent only when asked for. Hardcoding temperature=0.2
+    # here meant `--model claude-sonnet-5` swapped the name but kept a parameter
+    # that model rejects: the primary 400'd and the fallback quietly answered,
+    # so the row measured a different model than the one on the flag (#175).
+    params: dict[str, Any] = {"max_tokens": max_tokens}
+    if temperature is not None:
+        params["temperature"] = temperature
+    if top_p is not None:
+        params["top_p"] = top_p
     model_override = Model(
         provider_id=provider,
         kind=resolved_kind,
         name=model,
         version=model_version,
-        params={"temperature": 0.2, "top_p": 0.9, "max_tokens": 4096},
+        params=params,
     )
     code = _harness_dispatch(
         fixture_path=GOLDEN_FIXTURE_PATH,

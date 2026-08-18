@@ -222,3 +222,8 @@ class RunResult:
     schema_valid: bool = False
     error: str | None = None
     usage: TokenUsage = field(default_factory=TokenUsage)
+    # Set only when the automatic fallback answered instead of the playbook's
+    # primary model. ``None`` means the primary did. Without it a swap left no
+    # trace at all, and the result was attributed to the model that refused
+    # (#175).
+    answered_by: str | None = None
