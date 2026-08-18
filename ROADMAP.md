@@ -126,16 +126,23 @@ supersede, archive, anchor filtering, pick-or-create scopes, and
 `opspilot memory add / list / supersede / scopes`.
 
 *Not yet:* injection into a chat turn, answer-time Conflict detection against the
-KB, REST + UI, and the `pin_to_memory` path — which needs a persisted
-**Consultation** to pin a message in.
+KB, and REST + UI.
 
 **Consultation — the conversational surface**
 ([ADR-0032](docs/adr/0032-a-consultation-is-read-only-escalate-to-a-session-to-act.md)).
-`POST /api/chat/stream` is its stateless ancestor. What it needs: server-side
-persistence, an author, per-user visibility (the repo's first), a 90-day
-retention job, the Working set with its inactivity fallback, and escalation into
-a Session carrying a Work item description and nothing else. Read-only by
-decision — no proposed actions, no distillation.
+`POST /api/chat/stream` is its stateless ancestor. Read-only by decision — no
+proposed actions, no distillation.
+
+*Shipped:* the store (`opspilot/consultation/`) — turns, an author, per-user
+visibility (the repo's first), the 90-day sweep with pin-on-escalation and
+pin-on-cited, `pin_to_memory` (Memory's other admission path, ADR-0035), and
+`opspilot consultation list / show / purge`.
+
+*Not yet:* wiring `/api/chat/stream` to persist into one, the REST + UI surface,
+escalation actually creating the Session, the **Working set** with its
+inactivity fallback, and the deferred context budget (trigger: when a stored
+Consultation's history can exceed the model's window —
+`docs/specs/session/templates/context-budget.template.yaml`).
 
 **Export and import for KB / Skills / Wiki / Memory**
 ([ADR-0033](docs/adr/0033-storage-posture-fix-the-defect-now-defer-postgres.md)).
