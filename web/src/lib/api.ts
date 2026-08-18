@@ -572,6 +572,8 @@ export interface ChatResult {
   content: string;
   citations: ChatCitation[];
   usage: { input_tokens: number; output_tokens: number; cost_usd: number };
+  // The Consultation this turn was written into — pass it back on the next turn.
+  consultation_id?: string | null;
 }
 
 export type ChatStreamEvent =
@@ -580,18 +582,27 @@ export type ChatStreamEvent =
   | { type: 'tool_result'; tool: string; hits: number }
   | { type: 'skill_loaded'; skill: string }
   | { type: 'routing'; tier: string }
+  // A Working set closed by the inactivity fallback owes its owner one notice,
+  // or they misread why the assistant lost the thread (ADR-0032).
+  | { type: 'notice'; message: string }
   | { type: 'result'; data: ChatResult }
   | { type: 'error'; message: string };
 
 export async function* chatStream(
   messages: ChatMessage[],
   modelId?: string,
-  deepThinking = false
+  deepThinking = false,
+  consultationId?: string | null
 ): AsyncGenerator<ChatStreamEvent> {
   const res = await apiFetch('/api/chat/stream', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages, model_id: modelId ?? null, deep_thinking: deepThinking })
+    body: JSON.stringify({
+      messages,
+      model_id: modelId ?? null,
+      deep_thinking: deepThinking,
+      consultation_id: consultationId ?? null
+    })
   });
   if (!res.ok) throw new Error(`Chat stream failed: ${res.status}`);
 
@@ -623,6 +634,8 @@ export async function* chatStream(
           yield { type: 'skill_loaded', skill: payload.skill };
         } else if (currentEvent === 'routing') {
           yield { type: 'routing', tier: payload.tier };
+        } else if (currentEvent === 'notice') {
+          yield { type: 'notice', message: payload.message };
         } else if (currentEvent === 'result') {
           yield { type: 'result', data: payload };
         } else if (currentEvent === 'error') {
@@ -632,6 +645,148 @@ export async function* chatStream(
       }
     }
   }
+}
+
+// ── Memory, Consultation, Working set ────────────────────────────────────────
+//
+// Memory is OpsPilot's second owned domain (ADR-0031/0035): standing facts about
+// the environment that have no table of their own. An entry is *admitted* — a
+// human writes the sentence and the reason — and the actor comes from the
+// session, never from anything sent here.
+
+export interface MemoryEntry {
+  id: string;
+  statement: string;
+  reason: string;
+  actor: string;
+  created_at: string;
+  review_after: string | null;
+  scope: string | null;
+  asset_id: string | null;
+  source_ref: string | null;
+  superseded_by: string | null;
+  archived_at: string | null;
+  is_live: boolean;
+}
+
+export async function listMemory(opts: {
+  scope?: string;
+  assetId?: string;
+  includeRetired?: boolean;
+} = {}): Promise<MemoryEntry[]> {
+  const q = new URLSearchParams();
+  if (opts.scope) q.set('scope', opts.scope);
+  if (opts.assetId) q.set('asset_id', opts.assetId);
+  if (opts.includeRetired) q.set('include_retired', 'true');
+  const res = await apiFetch(`/api/memory?${q}`);
+  if (!res.ok) throw new Error(`List memory failed: ${res.status}`);
+  return (await res.json()).entries;
+}
+
+export async function listMemoryScopes(): Promise<string[]> {
+  const res = await apiFetch('/api/memory/scopes');
+  if (!res.ok) throw new Error(`List scopes failed: ${res.status}`);
+  return (await res.json()).scopes;
+}
+
+export async function admitMemory(body: {
+  statement: string;
+  reason: string;
+  scope?: string | null;
+  asset_id?: string | null;
+  review_after?: string | null;
+}): Promise<MemoryEntry> {
+  const res = await apiFetch('/api/memory', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) throw new Error((await res.json()).detail ?? `Admit failed: ${res.status}`);
+  return res.json();
+}
+
+export async function supersedeMemory(
+  id: string,
+  body: { statement: string; reason: string }
+): Promise<MemoryEntry> {
+  const res = await apiFetch(`/api/memory/${id}/supersede`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) throw new Error((await res.json()).detail ?? `Supersede failed: ${res.status}`);
+  return res.json();
+}
+
+export async function archiveMemory(id: string): Promise<void> {
+  const res = await apiFetch(`/api/memory/${id}/archive`, { method: 'POST' });
+  if (!res.ok) throw new Error(`Archive failed: ${res.status}`);
+}
+
+export interface WorkingSet {
+  id: string;
+  title: string;
+  scope: string | null;
+  asset_id: string | null;
+  opened_at: string;
+  last_active_at: string;
+}
+
+export async function getWorkingSet(): Promise<{
+  working_set: WorkingSet | null;
+  notice: string | null;
+}> {
+  const res = await apiFetch('/api/working-set');
+  if (!res.ok) throw new Error(`Working set failed: ${res.status}`);
+  return res.json();
+}
+
+export async function openWorkingSet(body: {
+  title: string;
+  scope?: string | null;
+  asset_id?: string | null;
+}): Promise<WorkingSet> {
+  const res = await apiFetch('/api/working-set', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) throw new Error((await res.json()).detail ?? `Open failed: ${res.status}`);
+  return res.json();
+}
+
+export async function closeWorkingSet(): Promise<void> {
+  const res = await apiFetch('/api/working-set', { method: 'DELETE' });
+  if (!res.ok) throw new Error(`Close failed: ${res.status}`);
+}
+
+export async function pinMessage(
+  consultationId: string,
+  messageId: string,
+  body: { reason: string; statement?: string; scope?: string | null }
+): Promise<MemoryEntry> {
+  const res = await apiFetch(
+    `/api/consultations/${consultationId}/messages/${messageId}/pin`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+  );
+  if (!res.ok) throw new Error((await res.json()).detail ?? `Pin failed: ${res.status}`);
+  return res.json();
+}
+
+export interface ConsultationMessage {
+  id: string;
+  seq: number;
+  role: string;
+  content: string;
+  at: string;
+}
+
+export async function getConsultation(
+  id: string
+): Promise<{ id: string; title: string; messages: ConsultationMessage[] }> {
+  const res = await apiFetch(`/api/consultations/${id}`);
+  if (!res.ok) throw new Error(`Consultation failed: ${res.status}`);
+  return res.json();
 }
 
 // ── MCP ──────────────────────────────────────────────────────────────────────
@@ -823,6 +978,7 @@ export interface Me {
 export const MODULE_MIN_ROLE: Record<string, Me['role']> = {
   run: 'operator',
   chat: 'operator',
+  memory: 'viewer',
   inventory: 'viewer',
   kb: 'viewer',
   wiki: 'viewer',
