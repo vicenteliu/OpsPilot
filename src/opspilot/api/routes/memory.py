@@ -21,7 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from ...auth import Identity, require_role
-from ...memory import AdmissionError
+from ...memory import RESOLUTIONS, AdmissionError
 
 router = APIRouter()
 
@@ -131,6 +131,53 @@ async def archive_memory(
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     return {"id": entry_id, "archived": True}
+
+
+# ── Memory ↔ KB conflicts ─────────────────────────────────────────────
+
+
+class ResolveConflictRequest(BaseModel):
+    resolution: str
+    note: str = ""
+
+
+def _conflicts(request: Request) -> Any:
+    store = getattr(request.app.state, "memory_conflicts", None)
+    if store is None:
+        raise HTTPException(status_code=503, detail="conflict store unavailable")
+    return store
+
+
+@router.get("/memory/conflicts")
+async def list_memory_conflicts(
+    request: Request, status: str = Query("open"), identity: Identity = _viewer
+) -> dict[str, Any]:
+    """Disagreements between a recorded constraint and an ingested document."""
+    rows = _conflicts(request).list_conflicts(status=status or None)
+    return {"conflicts": [_conflict(c) for c in rows], "total": len(rows)}
+
+
+@router.patch("/memory/conflicts/{conflict_id}/resolve")
+async def resolve_memory_conflict(
+    conflict_id: str,
+    body: ResolveConflictRequest,
+    request: Request,
+    identity: Identity = _operator,
+) -> dict[str, Any]:
+    """Settle one. Detecting was automatic; deciding which side loses is not.
+
+    ``merged`` is deliberately not offered: merging would mean editing a Memory
+    entry in place, and an entry is superseded by appending.
+    """
+    if body.resolution not in RESOLUTIONS:
+        raise HTTPException(status_code=400, detail=f"resolution must be one of {RESOLUTIONS}")
+    try:
+        _conflicts(request).resolve(
+            conflict_id, resolution=body.resolution, resolved_by=identity.name, note=body.note
+        )
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    return {"id": conflict_id, "status": body.resolution}
 
 
 # ── Consultations ─────────────────────────────────────────────────────
@@ -290,6 +337,20 @@ def _entry(e: Any) -> dict[str, Any]:
         "superseded_by": e.superseded_by,
         "archived_at": e.archived_at,
         "is_live": e.is_live,
+    }
+
+
+def _conflict(c: Any) -> dict[str, Any]:
+    return {
+        "id": c.id,
+        "memory_id": c.memory_id,
+        "chunk_id": c.chunk_id,
+        "note": c.note,
+        "detected_in": c.detected_in,
+        "detected_at": c.detected_at,
+        "status": c.status,
+        "resolved_by": c.resolved_by,
+        "resolution_note": c.resolution_note,
     }
 
 

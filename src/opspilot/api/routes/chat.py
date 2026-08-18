@@ -215,6 +215,7 @@ async def chat_stream(
                     owner=identity.name,
                     memory_scope=body.memory_scope,
                     memory_asset_id=body.memory_asset_id,
+                    consultation_ref=consultation_id,
                 )
 
             result = await loop.run_in_executor(None, _plan_and_run)

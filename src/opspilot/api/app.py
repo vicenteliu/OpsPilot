@@ -41,7 +41,7 @@ from ..kb.sqlite_store import SqliteStore
 from ..kb.storage_init import init_sqlite
 from ..log_buffer import install as install_log_buffer
 from ..mcp import McpRegistry, load_mcp_config
-from ..memory import MemoryStore
+from ..memory import MemoryConflictStore, MemoryStore
 from ..orchestrator.types import load_playbook
 from ..providers.registry import make_provider
 from ..redaction import Redactor
@@ -104,6 +104,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     sqlite = SqliteStore(conn)
     inventory = InventoryStore(conn)  # idempotent schema; shares the KB db file
     memory = MemoryStore(conn)  # second owned domain (ADR-0031/0035); same file
+    memory_conflicts = MemoryConflictStore(conn)  # Memory ↔ KB disagreements
     consultations = ConsultationStore(conn)  # the conversational surface (ADR-0032)
     working_sets = WorkingSetStore(conn)  # carries a turn's Memory anchors
     auth = AuthStore(conn)  # multi-user identity (ADR-0020)
@@ -168,6 +169,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.sqlite = sqlite
     app.state.inventory = inventory
     app.state.memory = memory
+    app.state.memory_conflicts = memory_conflicts
     app.state.consultations = consultations
     app.state.working_sets = working_sets
     app.state.auth = auth

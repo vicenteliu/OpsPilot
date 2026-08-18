@@ -50,6 +50,37 @@ _LOAD_SKILL_TOOL = ToolDef(
     },
 )
 
+_REPORT_CONFLICT_TOOL = ToolDef(
+    name="report_conflict",
+    description=(
+        "Report that a Memory entry and a knowledge-base chunk contradict each other. "
+        "Call this the moment you notice it, then still answer the question and say "
+        "which you followed. Reporting does not settle anything — it opens a record "
+        "for a human to decide which side loses."
+    ),
+    parameters={
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["memory_id", "chunk_id", "note"],
+        "properties": {
+            "memory_id": {
+                "type": "string",
+                "description": "The mem_... id from the Memory section.",
+            },
+            "chunk_id": {"type": "string", "description": "The chk_... id from a kb_search hit."},
+            "note": {
+                "type": "string",
+                "description": "One sentence: what each side claims, and how they disagree.",
+            },
+        },
+    },
+)
+
+_CONFLICT_HINT = (
+    " If a Memory entry contradicts a knowledge-base chunk, call report_conflict "
+    "with both ids before you answer."
+)
+
 _SYSTEM_PROMPT_BASE = (
     "You are OpsPilot, an intelligent IT operations assistant. "
     "Answer questions concisely and accurately using the knowledge base when relevant. "
@@ -183,6 +214,7 @@ def run_chat_agent(
     memory_scope: str | None = None,
     memory_asset_id: str | None = None,
     owner: str | None = None,
+    consultation_ref: str | None = None,
 ) -> ChatAgentResult:
     """Run the chat as a bounded ReAct loop; return the answer + KB citations.
 
@@ -308,7 +340,16 @@ def run_chat_agent(
         domain_tools.append(web_tool)
     domain_tools += mcp_tool_defs
 
+    # Only offered when there is Memory to contradict — a tool for a section of
+    # the prompt that is not there is a tool the model will misuse.
+    conflicts = getattr(state, "memory_conflicts", None)
+    conflict_tool_on = bool(memory_prefix) and conflicts is not None
+    if conflict_tool_on:
+        domain_tools.append(_REPORT_CONFLICT_TOOL)
+
     system_prompt = _SYSTEM_PROMPT_BASE + _TOOL_HINT + memory_prefix
+    if conflict_tool_on:
+        system_prompt += _CONFLICT_HINT
     if has_skills and registry is not None:
         system_prompt += _catalog_prompt(registry)
     provider_msgs: list[Message] = [Message(role="system", content=system_prompt)] + _history(
@@ -394,6 +435,27 @@ def run_chat_agent(
                         }
                     )
                     rendered = render_tool_result(payload)
+                elif tc.name == "report_conflict" and conflicts is not None:
+                    memory_id = str(tc.arguments.get("memory_id", ""))
+                    chunk_id = str(tc.arguments.get("chunk_id", ""))
+                    emit({"type": "tool_call", "tool": "report_conflict", "query": memory_id})
+                    try:
+                        conflict = conflicts.open_conflict(
+                            memory_id=memory_id,
+                            chunk_id=chunk_id,
+                            note=str(tc.arguments.get("note", "")),
+                            detected_in=consultation_ref,
+                        )
+                        # Detecting is not settling: the model opens the record,
+                        # a human decides which side loses.
+                        rendered = (
+                            f"Conflict {conflict.id} recorded between {memory_id} and "
+                            f"{chunk_id}; a human will settle it. Answer the question now, "
+                            f"and say which side you followed."
+                        )
+                        emit({"type": "conflict_reported", "conflict_id": conflict.id})
+                    except Exception as e:  # noqa: BLE001 — surface tool errors to the model
+                        rendered = f"Could not record the conflict: {type(e).__name__}: {e}"
                 elif tc.name in mcp_names and mcp_registry is not None:
                     emit({"type": "tool_call", "tool": tc.name, "query": ""})
                     try:
