@@ -33,6 +33,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from ..auth import AuthStore
 from ..config import load_config
+from ..consultation import ConsultationStore
 from ..embedding import EMBED_DIM, resolve_embedding
 from ..inventory import InventoryStore
 from ..kb.lance_store import LanceStore
@@ -40,6 +41,7 @@ from ..kb.sqlite_store import SqliteStore
 from ..kb.storage_init import init_sqlite
 from ..log_buffer import install as install_log_buffer
 from ..mcp import McpRegistry, load_mcp_config
+from ..memory import MemoryStore
 from ..orchestrator.types import load_playbook
 from ..providers.registry import make_provider
 from ..redaction import Redactor
@@ -100,6 +102,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     conn = init_sqlite(sqlite_db_path)
     sqlite = SqliteStore(conn)
     inventory = InventoryStore(conn)  # idempotent schema; shares the KB db file
+    memory = MemoryStore(conn)  # second owned domain (ADR-0031/0035); same file
+    consultations = ConsultationStore(conn)  # the conversational surface (ADR-0032)
     auth = AuthStore(conn)  # multi-user identity (ADR-0020)
     settings = SettingsStore(conn)  # non-secret admin config (e.g. default model)
     bootstrap_admin = os.environ.get("OPSPILOT_BOOTSTRAP_ADMIN")
@@ -161,6 +165,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.active_model_ref = active_model_ref
     app.state.sqlite = sqlite
     app.state.inventory = inventory
+    app.state.memory = memory
+    app.state.consultations = consultations
     app.state.auth = auth
     app.state.settings = settings
     app.state.service_token = cfg.api_token  # ADR-0011 bearer → Service token (ADR-0020)

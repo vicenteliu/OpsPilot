@@ -122,11 +122,14 @@ review date. Team-global, superseded by appending rather than overwriting,
 retrieved on its own anchor-filtered path rather than through hybrid search.
 
 *Shipped:* the store (`opspilot/memory/`), admission with the global cap,
-supersede, archive, anchor filtering, pick-or-create scopes, and
-`opspilot memory add / list / supersede / scopes`.
+supersede, archive, anchor filtering, pick-or-create scopes,
+`opspilot memory add / list / supersede / scopes`, `pin_to_memory` from a
+Consultation, and **injection into a chat turn** — a labelled section of the
+system prompt on its own path, never joining hybrid search.
 
-*Not yet:* injection into a chat turn, answer-time Conflict detection against the
-KB, and REST + UI.
+*Not yet:* answer-time Conflict detection against the KB as a recorded
+**Conflict** (the prompt already instructs the model to name both sides), the
+turn's anchor arriving automatically from a **Working set**, and REST + UI.
 
 **Consultation — the conversational surface**
 ([ADR-0032](docs/adr/0032-a-consultation-is-read-only-escalate-to-a-session-to-act.md)).
