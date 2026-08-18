@@ -2072,6 +2072,110 @@ def source_jsm(
 #  inventory (ADR-0017)
 # ──────────────────────────────────────────────────────────────────────────
 
+memory_app = typer.Typer(
+    name="memory",
+    help="Memory — standing environment facts that have no table (ADR-0031).",
+    no_args_is_help=True,
+)
+app.add_typer(memory_app)
+
+
+@memory_app.command("add")
+def memory_add(
+    statement: str = typer.Argument(..., help="The fact, as one sentence."),
+    reason: str = typer.Option(..., "--reason", "-m", help="Why it is worth recording."),
+    scope: str = typer.Option("", "--scope", help="Site / environment / system it applies at."),
+    asset: str = typer.Option("", "--asset", help="Asset this applies to (ast_...)."),
+    review_after: str = typer.Option("", "--review-after", help="RFC3339 date to re-check it."),
+) -> None:
+    """Admit one Memory entry.
+
+    Writing it yourself is the strongest form of admission: author and admitter
+    are the same person, and the judgement rests on their own knowledge
+    (ADR-0030). The actor is the OS user — never taken from an argument.
+    """
+    from .memory import AdmissionError, MemoryStore
+
+    cfg = load_config()
+    store = MemoryStore(init_sqlite(cfg.home / "kb" / "sqlite.db"))
+    try:
+        entry = store.admit(
+            statement=statement,
+            reason=reason,
+            actor=_cli_actor(),
+            asset_id=asset or None,
+            scope=scope or None,
+            review_after=review_after or None,
+        )
+    except AdmissionError as e:
+        _err.print(f"[red]not admitted:[/red] {e}")
+        raise typer.Exit(code=1) from e
+    where = entry.scope or entry.asset_id or "everywhere"
+    _console.print(f"[green]{entry.id}[/green] admitted by {entry.actor} — applies at {where}")
+
+
+@memory_app.command("list")
+def memory_list(
+    scope: str = typer.Option("", "--scope", help="Only what applies at this scope."),
+    asset: str = typer.Option("", "--asset", help="Only what applies to this Asset."),
+    retired: bool = typer.Option(False, "--retired", help="Include superseded and archived."),
+) -> None:
+    """List Memory entries; with --scope/--asset, only what applies there."""
+    from .memory import MemoryStore
+    from .timeutil import now_rfc3339
+
+    cfg = load_config()
+    store = MemoryStore(init_sqlite(cfg.home / "kb" / "sqlite.db"))
+    entries = (
+        store.applicable(asset_id=asset or None, scope=scope or None)
+        if (scope or asset)
+        else store.list_entries(include_retired=retired)
+    )
+    if not entries:
+        _console.print("[green]No Memory entries.[/green]")
+        return
+    now = now_rfc3339()
+    table = Table(title="Memory")
+    for col in ("ID", "Statement", "Applies at", "By", "State"):
+        table.add_column(col, overflow="fold")
+    for e in entries:
+        state = "superseded" if e.superseded_at else "archived" if e.archived_at else "live"
+        if e.is_live and e.review_overdue_at(now):
+            state = "live [yellow](review overdue)[/yellow]"
+        table.add_row(e.id, e.statement, e.scope or e.asset_id or "everywhere", e.actor, state)
+    _console.print(table)
+
+
+@memory_app.command("supersede")
+def memory_supersede(
+    entry_id: str = typer.Argument(..., help="The entry that no longer holds (mem_xxxxxxxx)."),
+    statement: str = typer.Option(..., "--statement", "-s", help="What is true now."),
+    reason: str = typer.Option(..., "--reason", "-m", help="Why it changed."),
+) -> None:
+    """Replace an entry by appending a new one; the old one is kept, marked superseded."""
+    from .memory import AdmissionError, MemoryStore
+
+    cfg = load_config()
+    store = MemoryStore(init_sqlite(cfg.home / "kb" / "sqlite.db"))
+    try:
+        new = store.supersede(entry_id, statement=statement, reason=reason, actor=_cli_actor())
+    except (AdmissionError, KeyError) as e:
+        _err.print(f"[red]not superseded:[/red] {e}")
+        raise typer.Exit(code=1) from e
+    _console.print(f"[green]{new.id}[/green] supersedes {entry_id}")
+
+
+@memory_app.command("scopes")
+def memory_scopes() -> None:
+    """List the scopes already in use — pick one before inventing another."""
+    from .memory import MemoryStore
+
+    cfg = load_config()
+    store = MemoryStore(init_sqlite(cfg.home / "kb" / "sqlite.db"))
+    scopes = store.scopes()
+    _console.print("\n".join(scopes) if scopes else "[green]No scopes yet.[/green]")
+
+
 inventory_app = typer.Typer(
     name="inventory",
     help="Asset inventory — CSV import/export (ADR-0017).",

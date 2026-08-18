@@ -114,13 +114,20 @@ automatic promotion is rejected, not deferred
 the iteration engine keeps evolving playbook variants and Skills stay outside it.
 
 **Memory — the second owned domain**
-([ADR-0031](docs/adr/0031-memory-is-the-second-owned-domain.md)). The store for
-environment constraints that have no table: one sentence, a reason, an actor, a
-time, up to two anchors, a review date. Team-global, admitted one entry at a time
-at the end of a Consultation, superseded by appending rather than overwriting,
-retrieved on its own anchor-filtered path rather than through hybrid search, and
-raising a Conflict against the KB when an answer is composed rather than when the
-entry is written. Nothing is built.
+([ADR-0031](docs/adr/0031-memory-is-the-second-owned-domain.md), revised by
+[ADR-0035](docs/adr/0035-memory-revised-after-reading-the-spec-it-was-written-without.md)).
+The store for environment constraints that have no table: one sentence, a
+mandatory reason, an actor from the caller's identity, up to two anchors, a soft
+review date. Team-global, superseded by appending rather than overwriting,
+retrieved on its own anchor-filtered path rather than through hybrid search.
+
+*Shipped:* the store (`opspilot/memory/`), admission with the global cap,
+supersede, archive, anchor filtering, pick-or-create scopes, and
+`opspilot memory add / list / supersede / scopes`.
+
+*Not yet:* injection into a chat turn, answer-time Conflict detection against the
+KB, REST + UI, and the `pin_to_memory` path — which needs a persisted
+**Consultation** to pin a message in.
 
 **Consultation — the conversational surface**
 ([ADR-0032](docs/adr/0032-a-consultation-is-read-only-escalate-to-a-session-to-act.md)).

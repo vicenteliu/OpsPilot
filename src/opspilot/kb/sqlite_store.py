@@ -1,11 +1,9 @@
 """SQLite-backed metadata store for the memory subsystem.
 
-Owns three tables (full schema in ``docs/specs/memory/storage/sqlite-schema.sql``):
+Owns two tables (full schema in ``docs/specs/memory/storage/sqlite-schema.sql``):
 
 * ``kb_documents``  — one row per ingested source file
 * ``kb_chunks``     — chunk-level metadata + ``vector_id`` link to LanceDB
-* ``memory_records`` — mid-term memory rows (minimal CRUD in PR-4; PR-6
-  layers session-driven writes on top)
 
 Plus an FTS5 keyword index over ``kb_chunks`` (BM25, ``unicode61``
 tokenizer with diacritic folding). Vector bodies live in LanceDB (see
@@ -30,10 +28,11 @@ import functools
 import json
 import secrets
 import sqlite3
-import threading
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any, cast
+
+from ..dblock import lock_for
 
 # ── Public dataclasses (DB-row mirrors) ──────────────────────────────
 
@@ -61,7 +60,9 @@ def _serialised[M: Callable[..., Any]](method: M) -> M:
 
     Every method here drives one shared ``sqlite3.Connection`` — the API keeps a
     single store on ``app.state.sqlite`` and reaches it from the default
-    multi-threaded executor. Neither a statement sequence nor an ``execute`` →
+    multi-threaded executor, alongside four *other* stores on the same
+    connection. The lock therefore belongs to the connection, not to this class
+    (:mod:`opspilot.dblock`). Neither a statement sequence nor an ``execute`` →
     ``fetchone`` pair is atomic on that connection, and ``commit()`` is
     connection-scoped rather than thread-scoped. Unserialised, concurrent callers
     raise ``InterfaceError``, lose writes, and fail to read rows that are present
@@ -90,7 +91,7 @@ class SqliteStore:
 
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn
-        self._lock = threading.RLock()
+        self._lock = lock_for(conn)
 
     @_serialised
     def close(self) -> None:
@@ -633,70 +634,6 @@ class SqliteStore:
             "open_conflicts": int(rows["open_conflicts"]),
             "corrections_total": int(rows["corrections_total"]),
         }
-
-    # ── memory_records (D3 — minimal CRUD) ───────────────────────────
-
-    @_serialised
-    def write_memory(self, record: dict[str, Any]) -> None:
-        """Insert (or replace by id) a single ``memory_records`` row.
-
-        PR-4 only ships write/get; PR-6 layers session-driven updates
-        and TTL sweeps on top.
-        """
-        if not record.get("redacted", False):
-            raise ValueError(
-                f"Memory record {record.get('id')} has redacted=False; "
-                "all memory content must be redacted before persistence."
-            )
-
-        row = {
-            "id": record["id"],
-            "type": record["type"],
-            "scope": record["scope"],
-            "title": record["title"],
-            "body": record["body"],
-            "tags_json": json.dumps(record.get("tags", []), ensure_ascii=False),
-            "source_origin": record["source_origin"],
-            "source_session_id": record.get("source_session_id"),
-            "source_trace_seq": record.get("source_trace_seq"),
-            "source_document_id": record.get("source_document_id"),
-            "source_url": record.get("source_url"),
-            "created_at": record["created_at"],
-            "updated_at": record["updated_at"],
-            "valid_until": record.get("valid_until"),
-            "confidence": record["confidence"],
-            "redacted": 1,
-            "redaction_rules_version": record.get("redaction_rules_version"),
-            "labels_json": json.dumps(record.get("labels", {}), ensure_ascii=False),
-            "extensions_json": json.dumps(record.get("extensions", {}), ensure_ascii=False),
-        }
-        self._conn.execute(
-            """
-            INSERT OR REPLACE INTO memory_records (
-              id, type, scope, title, body, tags_json, source_origin,
-              source_session_id, source_trace_seq, source_document_id,
-              source_url, created_at, updated_at, valid_until, confidence,
-              redacted, redaction_rules_version, labels_json, extensions_json
-            ) VALUES (
-              :id, :type, :scope, :title, :body, :tags_json, :source_origin,
-              :source_session_id, :source_trace_seq, :source_document_id,
-              :source_url, :created_at, :updated_at, :valid_until, :confidence,
-              :redacted, :redaction_rules_version, :labels_json, :extensions_json
-            )
-            """,
-            row,
-        )
-        self._conn.commit()
-
-    @_serialised
-    def get_memory(self, mem_id: str) -> dict[str, Any] | None:
-        cur = self._conn.execute("SELECT * FROM memory_records WHERE id = ?", (mem_id,))
-        r = cur.fetchone()
-        if r is None:
-            return None
-        return _row_to_dict_with_json(
-            r, json_fields=("tags_json", "labels_json", "extensions_json")
-        )
 
 
 # ── Helpers ───────────────────────────────────────────────────────────

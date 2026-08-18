@@ -37,68 +37,15 @@ INSERT OR REPLACE INTO schema_meta(key, value) VALUES
 -- 2. MID-TERM MEMORY
 ------------------------------------------------------------
 -- Equivalent to schemas/memory-record.schema.json
-CREATE TABLE IF NOT EXISTS memory_records (
-  id                       TEXT PRIMARY KEY
-                                CHECK (id GLOB 'mem_[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'),
-  type                     TEXT NOT NULL CHECK (type IN ('user','feedback','project','reference')),
-  scope                    TEXT NOT NULL,
-  title                    TEXT NOT NULL CHECK (length(title) BETWEEN 1 AND 80),
-  body                     TEXT NOT NULL,
-  tags_json                TEXT NOT NULL DEFAULT '[]',
-  source_origin            TEXT NOT NULL CHECK (source_origin IN ('session','user_input','ingest','system')),
-  source_session_id        TEXT,
-  source_trace_seq         INTEGER,
-  source_document_id       TEXT,
-  source_url               TEXT,
-  created_at               TEXT NOT NULL,
-  updated_at               TEXT NOT NULL,
-  valid_until              TEXT,
-  confidence               TEXT NOT NULL CHECK (confidence IN ('low','medium','high')),
-  redacted                 INTEGER NOT NULL CHECK (redacted = 1),
-  redaction_rules_version  TEXT,
-  labels_json              TEXT NOT NULL DEFAULT '{}',
-  extensions_json          TEXT NOT NULL DEFAULT '{}'
-) STRICT;
+-- ``memory_records`` (a typed mid-term memory table) was removed on 2026-08-18.
+-- It was specified, indexed and given CRUD, and nothing ever wrote to it. The
+-- Memory domain that replaces it lives in ``opspilot/memory/store.py`` and
+-- creates its own ``memory_entries`` table; see ADR-0031 and ADR-0035 for why
+-- the typed/confidence-weighted/hard-expiry design was decided against.
 
-CREATE INDEX IF NOT EXISTS idx_mem_type        ON memory_records(type);
-CREATE INDEX IF NOT EXISTS idx_mem_scope       ON memory_records(scope);
-CREATE INDEX IF NOT EXISTS idx_mem_updated     ON memory_records(updated_at DESC);
-CREATE INDEX IF NOT EXISTS idx_mem_valid_until ON memory_records(valid_until);
-CREATE INDEX IF NOT EXISTS idx_mem_session     ON memory_records(source_session_id);
 
 -- FTS5 full-text index (external-content table; BM25 by default)
 -- tokenize='trigram': matches substring queries on mixed Chinese/English content
-CREATE VIRTUAL TABLE IF NOT EXISTS memory_records_fts USING fts5 (
-  title,
-  body,
-  tags,
-  content='memory_records',
-  content_rowid='rowid',
-  tokenize='trigram'
-);
-
--- Triggers keeping FTS in sync with the main table
-CREATE TRIGGER IF NOT EXISTS memory_records_ai AFTER INSERT ON memory_records BEGIN
-  INSERT INTO memory_records_fts(rowid, title, body, tags)
-  VALUES (new.rowid, new.title, new.body, new.tags_json);
-END;
-
-CREATE TRIGGER IF NOT EXISTS memory_records_ad AFTER DELETE ON memory_records BEGIN
-  INSERT INTO memory_records_fts(memory_records_fts, rowid, title, body, tags)
-  VALUES ('delete', old.rowid, old.title, old.body, old.tags_json);
-END;
-
-CREATE TRIGGER IF NOT EXISTS memory_records_au AFTER UPDATE ON memory_records BEGIN
-  INSERT INTO memory_records_fts(memory_records_fts, rowid, title, body, tags)
-  VALUES ('delete', old.rowid, old.title, old.body, old.tags_json);
-  INSERT INTO memory_records_fts(rowid, title, body, tags)
-  VALUES (new.rowid, new.title, new.body, new.tags_json);
-END;
-
-------------------------------------------------------------
--- 3. KB DOCUMENTS
-------------------------------------------------------------
--- Equivalent to schemas/kb-document.schema.json
 CREATE TABLE IF NOT EXISTS kb_documents (
   id                       TEXT PRIMARY KEY
                                 CHECK (id GLOB 'doc_[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'),

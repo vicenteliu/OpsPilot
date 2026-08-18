@@ -40,7 +40,6 @@ def test_init_creates_all_tables(tmp_path: Path) -> None:
         # _idx, ...) are bookkeeping.
         for required in {
             "schema_meta",
-            "memory_records",
             "kb_documents",
             "kb_chunks",
             "ingest_runs",
@@ -56,11 +55,10 @@ def test_init_creates_fts_virtual_tables(tmp_path: Path) -> None:
     conn = init_sqlite(db)
     try:
         rows = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' "
-            "AND name IN ('memory_records_fts','kb_chunks_fts')"
+            "SELECT name FROM sqlite_master WHERE type='table' AND name = 'kb_chunks_fts'"
         ).fetchall()
         names = {r["name"] for r in rows}
-        assert names == {"memory_records_fts", "kb_chunks_fts"}
+        assert names == {"kb_chunks_fts"}
     finally:
         conn.close()
 
