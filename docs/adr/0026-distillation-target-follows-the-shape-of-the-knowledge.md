@@ -1,6 +1,14 @@
 # Distillation target follows the shape of the knowledge
 
-Status: accepted (2026-08-14)
+Status: accepted (2026-08-14) — **revised by ADR-0036**
+
+> The rule below stands: the target follows the shape of the knowledge, and when
+> something qualifies as both, the page wins. **The unit changed.** This ADR hangs
+> distillation on a **Session**, which is one playbook run over one input and
+> therefore harness-shaped by construction — it is not a loop, and it could not
+> have been otherwise here, because **Consultation** and **Working set** did not
+> exist yet. ADR-0036 moves the Skill path to a closed Working set.
+
 
 `wiki/query_to_page.py` already distils a qualifying **Session** into a wiki
 page: it triggers on ≥ 2 `kb_search` calls or a `user_action.accept` event,

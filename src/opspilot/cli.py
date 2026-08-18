@@ -2196,6 +2196,96 @@ def workingset_status() -> None:
     )
 
 
+@workingset_app.command("distil")
+def workingset_distil(
+    working_set_id: str = typer.Argument(..., help="A closed working set (ws_xxxxxxxx)."),
+    amends: str = typer.Option("", "--amends", help="Skill id to revise; the normal case."),
+    new_because: str = typer.Option(
+        "", "--new-because", help="Reason this needs a NEW Skill instead of amending one."
+    ),
+    model: str = typer.Option("", "--model", help="Override the drafting model."),
+) -> None:
+    """Draft a Skill from how a problem was actually worked (ADR-0036).
+
+    The normal outcome is an **amendment** to an existing Skill: one Skill covers
+    a subsystem, not one failure, and the load_skill catalog rides in context, so
+    a bank that grows per incident spends the tokens progressive disclosure was
+    meant to save. Creating a new one needs --new-because, and that sentence
+    travels with the draft.
+
+    The stopping condition and allowed_tools are left blank on purpose. A run
+    that went well never exercised either, so nothing in the record could supply
+    them — and a plausible guess gets skimmed and merged, which a blank cannot.
+    """
+    from .consultation import (
+        ConsultationStore,
+        NotDistillableError,
+        WorkingSetStore,
+        draft,
+        gather,
+        load_existing,
+        stage,
+    )
+    from .providers.registry import make_provider
+    from .settings_store import SettingsStore
+
+    if not amends and not new_because:
+        _err.print(
+            "[red]choose one:[/red] --amends <skill-id> to revise an existing Skill "
+            "(the normal case), or --new-because '<reason>' to start a new one."
+        )
+        _err.print("[dim]Available skills:[/dim]")
+        for d in sorted(Path("agent_skills").glob("*/SKILL.md")):
+            _err.print(f"  {d.parent.name}")
+        raise typer.Exit(code=1)
+
+    cfg = load_config()
+    conn = init_sqlite(cfg.home / "kb" / "sqlite.db")
+    try:
+        source = gather(WorkingSetStore(conn), ConsultationStore(conn), working_set_id)
+    except (KeyError, NotDistillableError) as e:
+        _err.print(f"[red]not distillable:[/red] {e}")
+        raise typer.Exit(code=1) from e
+
+    # The most judgement-heavy generation this product does: its output steers
+    # another agent. Prefer the admin's thinking tier when one is designated.
+    pb = load_playbook(REPO_ROOT / "playbooks" / "pb_ticket_summary_en")
+    settings = SettingsStore(conn)
+    thinking_id = settings.get("thinking_model_id")
+    target = next(
+        (m for m in [pb.model, *pb.extra_models] if f"{m.provider_id}/{m.name}" == thinking_id),
+        pb.model,
+    )
+    model_name = model or target.name
+    provider = make_provider(target.provider_id, kind=target.kind)
+    existing = load_existing(Path("agent_skills"), amends) if amends else None
+
+    _console.print(
+        f"[dim]{source.consultations} conversation(s) under “{source.title}”"
+        f"{' at ' + source.scope if source.scope else ''} → "
+        f"{'revising ' + amends if amends else 'new Skill'}[/dim]"
+    )
+    try:
+        skill = draft(provider, source, model_name=model_name, amends=existing)
+    except NotDistillableError as e:
+        _err.print(f"[red]drafting failed:[/red] {e}")
+        raise typer.Exit(code=1) from e
+
+    staging = cfg.home / "skill-drafts"
+    path = stage(skill, staging)
+    _console.print(f"[green]{path}[/green]")
+    if new_because:
+        (path.parent / "WHY-NEW.txt").write_text(new_because.strip() + "\n", encoding="utf-8")
+        _console.print(f"  · reason recorded in {path.parent / 'WHY-NEW.txt'}")
+    _console.print(
+        "  · review the stopping condition and allowed_tools — both are blank on "
+        "purpose, and a Skill missing either is rejected, not merged (ADR-0027)"
+    )
+    _console.print(
+        "  · moving it into agent_skills/ is the commit, and that commit is the admission"
+    )
+
+
 @workingset_app.command("close")
 def workingset_close() -> None:
     """Close the open Working set — the problem is done."""

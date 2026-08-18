@@ -101,17 +101,25 @@ across four models turned up three defects in a row, two fixed and one open:
   ([#175](https://github.com/vicenteliu/OpsPilot/issues/175)). This is the next
   thing to do — until it is fixed, no comparison table can be trusted.
 
-**Skill-shaped distillation targets.** The distillation *machinery* exists —
-`wiki/query_to_page.py` turns a qualifying Session into a draft wiki page, and
-`skill_drafter.py` drafts a Skill from a description. What is missing is the
-Skill-shaped path: a trigger that recognises a **loop-shaped** resolution —
-repeated tool calls narrowing on one hypothesis — which is a different signal
-from the synthesis-worthy one `query_to_page` already uses
-([ADR-0026](docs/adr/0026-distillation-target-follows-the-shape-of-the-knowledge.md)).
-The gap is a target, not distillation. Note what is *not* coming: harness-gated
-automatic promotion is rejected, not deferred
-([ADR-0027](docs/adr/0027-skills-are-machine-drafted-and-human-admitted.md)), so
-the iteration engine keeps evolving playbook variants and Skills stay outside it.
+**Skill distillation** — shipped
+([ADR-0026](docs/adr/0026-distillation-target-follows-the-shape-of-the-knowledge.md),
+revised by [ADR-0036](docs/adr/0036-the-loop-is-a-working-set-not-a-session.md)).
+The loop turned out not to be a Session: a Session is one playbook run over one
+input and is harness-shaped by construction. **A closed Working set is the loop** —
+a problem opened, worked across several Consultations, and closed by the person
+who decided it was finished.
+
+`opspilot workingset distil` reads the whole chain, dead ends included, and drafts
+a Skill into a staging directory. It requires a *manual* close (a set closed by the
+inactivity fallback was abandoned, not solved) and at least two conversations.
+The default outcome is `--amends` on an existing Skill; a new one needs
+`--new-because`, and that sentence travels with the draft.
+
+**The stopping condition and `allowed_tools` come back blank, by design.** A run
+that went well never exercised either, and a plausible guess reads well, gets
+skimmed and gets merged — a blank cannot be rubber-stamped. Harness-gated
+automatic promotion remains rejected, not deferred
+([ADR-0027](docs/adr/0027-skills-are-machine-drafted-and-human-admitted.md)).
 
 **Memory — the second owned domain**
 ([ADR-0031](docs/adr/0031-memory-is-the-second-owned-domain.md), revised by
