@@ -79,13 +79,62 @@ UI, and a brand mark generated from a single SVG source.
 
 ## Open
 
-**Skill distillation.** `CONTEXT.md` describes Skills that are *distilled from
-high-scoring Sessions* and evolved by the iteration engine (variant →
-harness-gated promotion → lineage). The iteration engine exists and the admin
-can have a Skill drafted from a description, but nothing distills a Skill from a
-Session, and distilled Skills are not wired into runs. This is the largest gap
-between the glossary and the code, and it is deliberate — ADR-0022 scoped it out
-of v1 — but it should either get built or get struck from the glossary.
+**Model-comparison results that mean what they say.** Running the golden fixture
+across four models turned up three defects in a row, two fixed and one open:
+
+- `SqliteStore` shared one unguarded connection across the executor threads every
+  API route uses — eight concurrent `upsert_document` calls raised three
+  `InterfaceError`s and landed four rows, and concurrent corrections failed to
+  read chunks that were present. Independent of `--workers`; fixed by serialising
+  every connection-touching method behind one reentrant lock
+  ([#166](https://github.com/vicenteliu/OpsPilot/issues/166), deliberately
+  decoupled from any storage migration — [ADR-0033](docs/adr/0033-storage-posture-fix-the-defect-now-defer-postgres.md)).
+- Sampling params were sent unconditionally, so Sonnet 5 and Opus 5 — already in
+  six playbooks' `extra_models` — returned HTTP 400 on every run
+  ([#172](https://github.com/vicenteliu/OpsPilot/issues/172)). Extended thinking
+  had the same shape of bug against the same models
+  ([#170](https://github.com/vicenteliu/OpsPilot/issues/170)). Both fixed; the
+  posture behind them is [ADR-0034](docs/adr/0034-hosted-api-models-are-primary-local-inference-is-auxiliary.md).
+- **Open:** a `ProviderError` silently retries on `extra_models[0]`, so a
+  different model answers and the row keeps the primary's `model_ref`. Naming a
+  model that does not exist currently scores 0.903 and passes
+  ([#175](https://github.com/vicenteliu/OpsPilot/issues/175)). This is the next
+  thing to do — until it is fixed, no comparison table can be trusted.
+
+**Skill-shaped distillation targets.** The distillation *machinery* exists —
+`wiki/query_to_page.py` turns a qualifying Session into a draft wiki page, and
+`skill_drafter.py` drafts a Skill from a description. What is missing is the
+Skill-shaped path: a trigger that recognises a **loop-shaped** resolution —
+repeated tool calls narrowing on one hypothesis — which is a different signal
+from the synthesis-worthy one `query_to_page` already uses
+([ADR-0026](docs/adr/0026-distillation-target-follows-the-shape-of-the-knowledge.md)).
+The gap is a target, not distillation. Note what is *not* coming: harness-gated
+automatic promotion is rejected, not deferred
+([ADR-0027](docs/adr/0027-skills-are-machine-drafted-and-human-admitted.md)), so
+the iteration engine keeps evolving playbook variants and Skills stay outside it.
+
+**Memory — the second owned domain**
+([ADR-0031](docs/adr/0031-memory-is-the-second-owned-domain.md)). The store for
+environment constraints that have no table: one sentence, a reason, an actor, a
+time, up to two anchors, a review date. Team-global, admitted one entry at a time
+at the end of a Consultation, superseded by appending rather than overwriting,
+retrieved on its own anchor-filtered path rather than through hybrid search, and
+raising a Conflict against the KB when an answer is composed rather than when the
+entry is written. Nothing is built.
+
+**Consultation — the conversational surface**
+([ADR-0032](docs/adr/0032-a-consultation-is-read-only-escalate-to-a-session-to-act.md)).
+`POST /api/chat/stream` is its stateless ancestor. What it needs: server-side
+persistence, an author, per-user visibility (the repo's first), a 90-day
+retention job, the Working set with its inactivity fallback, and escalation into
+a Session carrying a Work item description and nothing else. Read-only by
+decision — no proposed actions, no distillation.
+
+**Export and import for KB / Skills / Wiki / Memory**
+([ADR-0033](docs/adr/0033-storage-posture-fix-the-defect-now-defer-postgres.md)).
+A tar of per-domain native formats plus a manifest; KB exports source documents
+and the receiver re-ingests, because vectors are bound to an embedding model.
+Sessions and Consultations get no export interface, by decision.
 
 **Live verification of the identity and channel integrations.** LDAP, OIDC, the
 all-in-one image, and WeCom assist are implemented and covered by offline tests,
@@ -103,3 +152,14 @@ that have not been run. Not development work; still unfinished business.
   undecided, but it will not be a source-built runtime
   ([ADR-0025](docs/adr/0025-no-source-built-inference-runtimes.md)).
 - **A native app** remains exploratory and is not committed.
+
+- **Postgres + pgvector** — the intended destination if storage moves, in one
+  step rather than by adding a third store
+  ([ADR-0033](docs/adr/0033-storage-posture-fix-the-defect-now-defer-postgres.md)).
+  Not scheduled: it costs ADR-0008's zero-infrastructure install, the all-in-one
+  image, a golden-test recalibration when FTS5 becomes `tsvector`, and the
+  migration of sessions / auth / inventory / settings along with the KB. Revisit
+  when the #166 write lock is a measured bottleneck, a second machine is
+  genuinely required, or an external constraint mandates a central database.
+  Replacing LanceDB with ChromaDB was considered and rejected — the defect it was
+  meant to solve is in SQLite.
