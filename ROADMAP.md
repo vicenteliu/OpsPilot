@@ -81,10 +81,11 @@ UI, and a brand mark generated from a single SVG source.
 
 **SQLite concurrent-write defect** ([#166](https://github.com/vicenteliu/OpsPilot/issues/166)).
 `SqliteStore` shares one unguarded connection across the executor threads every
-API route uses, so `commit()` — which is connection-scoped, not thread-scoped —
-lets concurrent writes interleave. Present today, independent of `--workers`.
-Fixed with a write lock plus `busy_timeout`, deliberately decoupled from any
-storage migration ([ADR-0033](docs/adr/0033-storage-posture-fix-the-defect-now-defer-postgres.md)).
+API route uses. Measured: eight concurrent `upsert_document` calls raised three
+`InterfaceError`s and landed four rows, and concurrent corrections failed to read
+chunks that were present — writes and reads both. Present today, independent of
+`--workers`. Fixed by serialising every connection-touching method behind one
+reentrant lock, deliberately decoupled from any storage migration ([ADR-0033](docs/adr/0033-storage-posture-fix-the-defect-now-defer-postgres.md)).
 This is the first thing to do.
 
 **Skill-shaped distillation targets.** The distillation *machinery* exists —

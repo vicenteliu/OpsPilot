@@ -17,7 +17,14 @@ and every blocking route call reaches it through
 `loop.run_in_executor(None, ...)` — the default multi-threaded pool. Write paths
 are `execute(...)` then `commit()` with no lock. `commit()` is connection-scoped,
 not thread-scoped, so concurrent writes share one implicit transaction and
-interleave. `_PRAGMAS` has no `busy_timeout`.
+interleave — and separately, neither a statement sequence nor an `execute` →
+`fetchone` pair is atomic on a shared connection.
+
+Measured: eight threads calling `upsert_document` at once raised three
+`InterfaceError`s and landed four of eight rows, with two of the three "failed"
+documents in the database anyway. Sixteen concurrent `add_correction` calls also
+raised `KeyError` for chunks that were present and committed, so **reads are
+affected too, not only writes.**
 
 This is a present-day correctness defect, it is **independent of `--workers`**,
 and no vector store is involved in it.
@@ -26,8 +33,13 @@ and no vector store is involved in it.
 
 ### 1. Fix the defect now, decoupled from any migration
 
-Serialise the write paths with a lock and add `busy_timeout` — issue #166.
-Writes on a KB workbench should be serial; this is not OLTP.
+Serialise every method that touches the connection behind one reentrant lock —
+issue #166. Reads are included because reads corrupt too, and because locking
+individual statements would still let a read land between another thread's write
+and its commit. Access on a KB workbench should be serial; this is not OLTP.
+
+(`busy_timeout` needed no change. `_PRAGMAS` omits it, but `sqlite3.connect()`
+defaults to `timeout=5.0`, which already sets it to 5000 ms.)
 
 A defect that can corrupt data today must not be scheduled behind an
 architectural decision that has not been made yet. The fix is tens of lines and
