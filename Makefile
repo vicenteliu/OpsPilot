@@ -144,30 +144,30 @@ endif
 harness: ensure-venv ## Run a single fixture through the harness (pass --fixture/--golden/--playbook).
 	$(OPSPL) harness run --fixture $(FIXTURE) --golden $(GOLDEN) --playbook $(PLAYBOOK) --output $(or $(OUTPUT),results.jsonl)
 
-golden-kb: ensure-venv ## Load the Stage 1 spec example KB (frozen fixture, deterministic ids).
+golden-kb: ensure-venv ## Load the Stage 1 spec example KB (frozen fixture; embeds via OPENAI_API_KEY, else Ollama).
 	$(OPSPL) kb load-fixture \
 	    --doc-meta examples/scn_ticket_summary_zh/kb/doc-meta.json \
 	    --chunks   examples/scn_ticket_summary_zh/kb/chunks.jsonl
 
-golden: ensure-venv golden-kb ## Run the Stage 1 golden test (auto-ingests KB; needs Ollama running).
+golden: ensure-venv golden-kb ## Run the Stage 1 golden test (needs ANTHROPIC_API_KEY + an embedding provider).
 	$(OPSPL) harness golden --output golden-results.jsonl
 
-golden-openrouter: ensure-venv golden-kb ## Run the Stage 4 OpenRouter golden test (needs OPENROUTER_API_KEY + Ollama running).
+golden-openrouter: ensure-venv golden-kb ## Run the Stage 4 OpenRouter golden test (needs OPENROUTER_API_KEY + an embedding provider).
 	$(OPSPL) harness golden-openrouter
 
-golden-gemini: ensure-venv golden-kb ## Run the Stage 5 Gemini golden test (needs GEMINI_API_KEY + Ollama running).
+golden-gemini: ensure-venv golden-kb ## Run the Stage 5 Gemini golden test (needs GEMINI_API_KEY + an embedding provider).
 	$(OPSPL) harness golden-gemini
 
 golden-ollama: ensure-venv golden-kb ## Run the golden fixture on Ollama chat (needs Ollama running).
 	$(OPSPL) harness golden-provider --provider ollama-local --model gemma4:e4b
 
-golden-openai: ensure-venv golden-kb ## Run the golden fixture on OpenAI (needs OPENAI_API_KEY + Ollama running).
+golden-openai: ensure-venv golden-kb ## Run the golden fixture on OpenAI (needs OPENAI_API_KEY, which is also the embedding provider).
 	$(OPSPL) harness golden-provider --provider openai --model gpt-4o-mini
 
-golden-grok: ensure-venv golden-kb ## Run the golden fixture on Grok/xAI (needs GROK_API_KEY + Ollama running).
+golden-grok: ensure-venv golden-kb ## Run the golden fixture on Grok/xAI (needs GROK_API_KEY + an embedding provider).
 	$(OPSPL) harness golden-provider --provider grok --model grok-3-mini
 
-harness-matrix: golden golden-gemini golden-openrouter golden-ollama golden-openai golden-grok ## Run the golden fixture across all 6 providers (needs every *_API_KEY + Ollama).
+harness-matrix: golden golden-gemini golden-openrouter golden-ollama golden-openai golden-grok ## Run the golden fixture across all 6 providers (needs every *_API_KEY; Ollama only for golden-ollama).
 	@echo "harness-matrix complete: anthropic / gemini / openrouter / ollama / openai / grok"
 
 docker-build: ## Build the multi-stage docker image (opspilot:latest).

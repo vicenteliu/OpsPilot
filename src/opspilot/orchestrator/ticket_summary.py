@@ -203,8 +203,8 @@ def run_ticket_summary(
                         messages,
                         model=pb.model.name,
                         params=SamplingParams(
-                            temperature=pb.model.params.get("temperature", 0.2),
-                            top_p=pb.model.params.get("top_p", 0.9),
+                            temperature=pb.model.params.get("temperature"),
+                            top_p=pb.model.params.get("top_p"),
                             max_tokens=pb.model.params.get("max_tokens", 1500),
                         ),
                         tools=effective_tools,
@@ -216,8 +216,8 @@ def run_ticket_summary(
                         messages,
                         model=auto_fallback_model.name,
                         params=SamplingParams(
-                            temperature=auto_fallback_model.params.get("temperature", 0.2),
-                            top_p=auto_fallback_model.params.get("top_p", 0.9),
+                            temperature=auto_fallback_model.params.get("temperature"),
+                            top_p=auto_fallback_model.params.get("top_p"),
                             max_tokens=auto_fallback_model.params.get("max_tokens", 1500),
                         ),
                         tools=effective_tools,

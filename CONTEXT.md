@@ -107,7 +107,7 @@ A frozen, versioned input package (KB docs + input ticket + expected ground trut
 _Avoid_: test case, sample, example
 
 **Golden test**:
-The Stage-level end-to-end harness run that must pass before a Stage is considered complete. Requires a live Ollama instance.
+The Stage-level end-to-end harness run that must pass before a Stage is considered complete. Needs the target chat provider's API key and an embedding provider — Ollama satisfies the second only when no `OPENAI_API_KEY` is set, and is required outright only by the `golden-ollama` variant.
 _Avoid_: integration test, smoke test, e2e test
 
 **Weighted score**:
