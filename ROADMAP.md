@@ -145,10 +145,9 @@ pick-or-create scopes and a due-for-review mark.
 `report_conflict` with both ids when a constraint and a document contradict each
 other, and the row stays *open* until a human settles it —
 `entry_superseded` / `chunk_superseded` / `dismissed`. `merged` is deliberately
-absent, because merging would mean editing an entry in place. `GET
-/api/memory/conflicts`, `PATCH /api/memory/conflicts/{id}/resolve`.
-
-*Not yet:* a UI for settling them.
+absent, because merging would mean editing an entry in place. The Memory tab
+surfaces open conflicts above everything else, with the three outcomes as radio
+buttons and a required reason.
 
 **Consultation — the conversational surface**
 ([ADR-0032](docs/adr/0032-a-consultation-is-read-only-escalate-to-a-session-to-act.md)).
