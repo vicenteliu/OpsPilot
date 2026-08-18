@@ -176,9 +176,16 @@ The Chat tab carries a working-set bar, delivers the inactivity notice, and puts
 a **Remember this** action on every assistant turn — the reason field is required,
 because it is what the review date later asks a reader to judge.
 
-*Not yet:* escalation actually creating the Session, and the deferred context
-budget (trigger: when a stored Consultation's history can exceed the model's
-window — `docs/specs/session/templates/context-budget.template.yaml`).
+**Escalation runs a Session.** `POST /api/consultations/{id}/escalate` takes a
+Work item description — and *only* that; the transcript stays behind, because a
+**Fixture** has to be freezable and an arbitrarily long conversation is not. The
+Consultation records `→ session_id`, the Session's trace records
+`← consultation_id`, and escalating pins the Consultation so the permanent
+back-reference cannot dangle.
+
+*Not yet:* the deferred context budget (trigger: when a stored Consultation's
+history can exceed the model's window —
+`docs/specs/session/templates/context-budget.template.yaml`).
 
 **Export and import for KB / Skills / Wiki / Memory** — shipped
 ([ADR-0033](docs/adr/0033-storage-posture-fix-the-defect-now-defer-postgres.md)).
