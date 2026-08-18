@@ -41,20 +41,34 @@
     },
     "symptoms": {
       "type": "array",
-      "items": { "type": "string", "minLength": 1 },
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
       "minItems": 1
     },
     "scope": {
       "type": "string",
-      "enum": ["single_user", "multiple_users", "site_wide", "unknown"]
+      "enum": [
+        "single_user",
+        "multiple_users",
+        "site_wide",
+        "unknown"
+      ]
     },
     "tried_steps": {
       "type": "array",
-      "items": { "type": "string", "minLength": 1 }
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
     },
     "missing_fields": {
       "type": "array",
-      "items": { "type": "string", "minLength": 1 }
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
     },
     "tasks": {
       "type": "array",
@@ -63,23 +77,40 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["ref", "action", "rationale", "tier"],
+        "required": [
+          "ref",
+          "action",
+          "rationale",
+          "tier"
+        ],
         "properties": {
           "ref": {
             "type": "string",
             "pattern": "^task-[0-9]+$",
             "description": "Local task handle, e.g. 'task-1'."
           },
-          "action": { "type": "string", "minLength": 1 },
-          "rationale": { "type": "string", "minLength": 1 },
+          "action": {
+            "type": "string",
+            "minLength": 1
+          },
+          "rationale": {
+            "type": "string",
+            "minLength": 1
+          },
           "tier": {
             "type": "string",
-            "enum": ["L1", "L2", "L3"],
+            "enum": [
+              "L1",
+              "L2",
+              "L3"
+            ],
             "description": "Suggested support line — not an assignment."
           },
           "citations": {
             "type": "array",
-            "items": { "type": "string" },
+            "items": {
+              "type": "string"
+            },
             "default": []
           }
         }
@@ -90,7 +121,10 @@
       "pattern": "^P[0-4]$"
     },
     "escalation_hint": {
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "description": "Optional incident-level routing note (e.g. 'L2 network team'). Per-task routing lives in tasks[].tier."
     },
     "citations": {
@@ -99,7 +133,11 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "chunk_id", "document_id"],
+        "required": [
+          "id",
+          "chunk_id",
+          "document_id"
+        ],
         "properties": {
           "id": {
             "type": "string",
@@ -114,14 +152,76 @@
             "type": "string",
             "pattern": "^doc_[a-f0-9]{8}$"
           },
-          "source_path": { "type": "string" },
-          "line_start": { "type": "integer", "minimum": 1 },
-          "line_end": { "type": "integer", "minimum": 1 },
-          "anchor": { "type": ["string", "null"] },
+          "source_path": {
+            "type": "string"
+          },
+          "line_start": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "line_end": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "anchor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "heading_path": {
             "type": "array",
-            "items": { "type": "string" },
+            "items": {
+              "type": "string"
+            },
             "default": []
+          }
+        }
+      }
+    },
+    "proposed_actions": {
+      "_comment": "Optional (ADR-0028). A Session may PROPOSE an action; a human executes it. `intent` is a const rather than an enum on purpose: the first batch is read-only diagnostics and contains no mutation at all, so a mutating action cannot be expressed here. Widening it later is a visible, reviewable diff — which is exactly what a change to what the system may do should be.",
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ref",
+          "intent",
+          "type",
+          "command",
+          "target",
+          "why"
+        ],
+        "properties": {
+          "ref": {
+            "type": "string",
+            "pattern": "^pa-[0-9]+$"
+          },
+          "intent": {
+            "const": "diagnose"
+          },
+          "type": {
+            "enum": [
+              "shell",
+              "sql_readonly"
+            ]
+          },
+          "command": {
+            "type": "string",
+            "minLength": 1
+          },
+          "target": {
+            "type": "string",
+            "minLength": 1
+          },
+          "why": {
+            "type": "string",
+            "minLength": 1
+          },
+          "expected_output": {
+            "type": "string"
           }
         }
       }

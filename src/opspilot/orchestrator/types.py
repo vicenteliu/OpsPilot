@@ -87,6 +87,9 @@ class PlaybookSpec:
     retrieval: PlaybookRetrieval
     source_dir: Path
     extra_models: list[Model] = field(default_factory=list)  # additional selectable models
+    # ADR-0028: opt in to letting a Session PROPOSE a read-only diagnostic. It
+    # still takes a human pressing execute; existing playbooks are unaffected.
+    propose_actions: bool = False
 
     @property
     def ref(self) -> Playbook:
@@ -187,6 +190,7 @@ def load_playbook(playbook_dir: Path) -> PlaybookSpec:
         defaults=defaults,
         retrieval=retrieval,
         source_dir=playbook_dir,
+        propose_actions=bool(data.get("propose_actions", False)),
     )
 
 

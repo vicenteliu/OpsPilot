@@ -201,6 +201,23 @@ all-in-one image, and WeCom assist are implemented and covered by offline tests,
 but their against-real-infrastructure checks are manual post-deployment steps
 that have not been run. Not development work; still unfinished business.
 
+**Proposed actions** — shipped
+([ADR-0028](docs/adr/0028-a-session-proposes-an-action-a-human-executes-it.md)).
+`SandboxEngine` was reachable from the CLI and `/api/sandbox` and unreachable
+from the orchestrator, so anything that ran was driven by a person who retyped it
+somewhere else. A Session may now emit a `proposed_actions` block, surfaced with
+its dry-run preview and the approval gate's verdict, and it runs only when a
+human presses execute — request, preview, verdict, actor and outcome all append
+to the Session's trace.
+
+The first batch is **read-only diagnostics**, and that constraint lives in the
+artifact schema: `intent` is a `const`, so a mutation cannot be expressed.
+Widening it later is a visible, reviewable diff. Playbooks opt in with
+`propose_actions: true`; existing ones are unaffected.
+
+*Not yet:* the UI for previewing and executing — `GET /api/sessions/{id}/actions`,
+`POST .../actions/{ref}/preview` and `POST .../actions/execute` exist.
+
 ## Later
 
 - **Mobile companion, PWA-first** — the SvelteKit UI is already installable

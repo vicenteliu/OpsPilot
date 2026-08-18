@@ -325,6 +325,12 @@ class TraceEvent:
             # A different model answered than the one the playbook named. Not an
             # error — the run continued — but it must not be silent (#175).
             "model_fallback",
+            # A Session proposed an action; a human previewed and executed it
+            # (ADR-0028). The boundary between proposing and doing is only
+            # visible if every step of it is in the trace.
+            "action_proposed",
+            "action_previewed",
+            "action_executed",
         ],
         details: dict[str, Any] | None = None,
         actor: str | None = None,
