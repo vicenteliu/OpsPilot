@@ -128,16 +128,28 @@ class AnthropicProvider:
         if system_text:
             kwargs["system"] = system_text
         thinking_budget = params.thinking_budget_tokens or 0
-        if thinking_budget > 0:
-            # Extended thinking: budget must be < max_tokens; temperature must be 1
-            # and top_p must be unset (Anthropic API constraints).
+        if params.thinking == "adaptive":
+            # Sonnet 5, Opus 5, Opus 4.7/4.8, Fable 5. Depth is `effort`; there
+            # is no token budget, and `temperature` is rejected — so nothing is
+            # forced here, unlike the branch below.
+            kwargs["thinking"] = {"type": "adaptive"}
+            if params.effort is not None:
+                kwargs["output_config"] = {"effort": params.effort}
+        elif thinking_budget > 0:
+            # Pre-4.6 extended thinking: budget must be < max_tokens, temperature
+            # must be 1, top_p unset (Anthropic API constraints).
             kwargs["thinking"] = {"type": "enabled", "budget_tokens": thinking_budget}
             kwargs["max_tokens"] = max(params.max_tokens, thinking_budget + 1024)
             kwargs["temperature"] = 1.0
-        elif params.temperature is not None:
-            kwargs["temperature"] = params.temperature
-        elif params.top_p is not None:
-            kwargs["top_p"] = params.top_p
+
+        # An explicitly configured knob is still sent, even alongside adaptive
+        # thinking that will reject it. A 400 naming the bad field is better than
+        # silently dropping what the config asked for (#172).
+        if "temperature" not in kwargs:
+            if params.temperature is not None:
+                kwargs["temperature"] = params.temperature
+            elif params.top_p is not None:
+                kwargs["top_p"] = params.top_p
         if params.stop:
             kwargs["stop_sequences"] = params.stop
         if tools:
