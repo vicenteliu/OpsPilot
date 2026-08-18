@@ -9,6 +9,7 @@ from .distil import (
     load_existing,
     stage,
 )
+from .escalation import EscalationError, escalate
 from .pin import pin_to_memory
 from .store import RETENTION_DAYS, Consultation, ConsultationStore, Message
 from .working_set import IDLE_DAYS, WorkingSet, WorkingSetStore
@@ -20,11 +21,13 @@ __all__ = [
     "Consultation",
     "ConsultationStore",
     "DistillationInput",
+    "EscalationError",
     "NotDistillableError",
     "Message",
     "WorkingSet",
     "WorkingSetStore",
     "draft",
+    "escalate",
     "gather",
     "load_existing",
     "pin_to_memory",

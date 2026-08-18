@@ -270,6 +270,68 @@ async def pin_message(
     return _entry(entry)
 
 
+class EscalateRequest(BaseModel):
+    description: str
+
+
+@router.post("/consultations/{consultation_id}/escalate")
+async def escalate_consultation(
+    consultation_id: str,
+    body: EscalateRequest,
+    request: Request,
+    identity: Identity = _operator,
+) -> dict[str, Any]:
+    """Run a Session from this conversation's conclusion.
+
+    Only the Work item description travels — not the transcript. A **Fixture** is
+    a frozen input package and a Session's replayability rests on its input
+    having edges; an arbitrarily long conversation, small talk and dead ends
+    included, is not freezable, and the harness is the gate a Stage is declared
+    complete against.
+
+    The Consultation is pinned in the same act: the Session's trace is permanent,
+    and its back-reference must not point at something the sweep deleted.
+    """
+    import asyncio
+
+    from ...consultation import EscalationError, escalate
+
+    state = request.app.state
+    store = _consultations(request)
+    _visible(store, consultation_id, identity)
+    loop = asyncio.get_event_loop()
+
+    def _run() -> Any:
+        return escalate(
+            store,
+            consultation_id,
+            description=body.description,
+            actor=identity.name,
+            session_manager=state.session_mgr,
+            playbook=state.playbook,
+            provider=state.chat_provider,
+            redactor=state.redactor,
+            embed_fn=state.embed_fn,
+            sqlite_store=state.sqlite,
+            lance_store=state.lance,
+            mcp_registry=getattr(state, "mcp_registry", None),
+        )
+
+    try:
+        result = await loop.run_in_executor(None, _run)
+    except EscalationError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    return {
+        "consultation_id": consultation_id,
+        "session_id": result.session_id,
+        "artifact_id": result.artifact_id,
+        "schema_valid": result.schema_valid,
+        "escalated_by": identity.name,
+    }
+
+
 # ── Working set ───────────────────────────────────────────────────────
 
 

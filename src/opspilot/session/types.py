@@ -331,6 +331,9 @@ class TraceEvent:
             "action_proposed",
             "action_previewed",
             "action_executed",
+            # This Session was run from a Consultation (ADR-0032). The forward
+            # link lives on the Consultation; this is the permanent half.
+            "escalated_from",
         ],
         details: dict[str, Any] | None = None,
         actor: str | None = None,
