@@ -1,55 +1,17 @@
-# Memory & RAG — Detailed Spec
+# KB & RAG — Detailed Spec
 
-## 1. Three-tier semantics
-
-| Tier | Scope | TTL | Backend | Namespace |
-|---|---|---|---|---|
-| short-term | within a single session | bound to session state | in-memory + summaries written back to trace | session_id |
-| mid-term | project / workspace | project lifetime; can be expired manually | SQLite (with FTS5) + markdown | `<workspace>:<scope>` |
-| long-term (KB) | knowledge base | long-term; versioned | markdown + LanceDB + SQLite meta | `<kb>:<scope>` |
-
-## 2. Memory types (mid-tier)
-
-Aligned with the memory model of agents such as Claude Code, for easy cross-tool migration:
-
-| `type` | Purpose | Example |
-|---|---|---|
-| `user` | user role, preferences, knowledge | "User is a data scientist focused on observability" |
-| `feedback` | user corrections/confirmations of the AI (incl. why) | "Do not pile timestamps into RCAs; list only the causal chain" |
-| `project` | project status, decisions, deadlines, owners | "Finish the ITIL rollout pilot before Q2 starts; owner alice" |
-| `reference` | pointers to external systems (not the facts themselves) | "Tickets live in the Jira INC project; alerts on Grafana dashboard xx" |
-
-`type` is a hard constraint (schema enum), used for retrieval filtering and display grouping.
-
-## 3. Mid-term record fields
-
-The authoritative definition is `schemas/memory-record.schema.json`.
-
-| Field | Type | Required | Notes |
-|---|---|---|---|
-| `id` | `mem_<sha8>` | ✓ | content-addressed |
-| `type` | enum, see §2 | ✓ | |
-| `scope` | string | ✓ | namespace, e.g. `opspilot:user` / `opspilot:project` |
-| `title` | string | ✓ | ≤80 chars; used in the retrieval hit list |
-| `body` | string | ✓ | markdown body; with **Why:** and **How to apply:** sections (mandatory for feedback/project) |
-| `tags` | string[] | ✗ | free-form tags |
-| `source` | object | ✓ | see §4 |
-| `created_at` | RFC3339 | ✓ | |
-| `updated_at` | RFC3339 | ✓ | |
-| `valid_until` | RFC3339 \| null | ✗ | explicit expiry; read-only once expired |
-| `confidence` | enum `low/medium/high` | ✓ | affects retrieval weighting |
-| `redacted` | bool | ✓ | must be true before storage |
-
-## 4. Source attribution
-
-```yaml
-source:
-  origin: "session" | "user_input" | "ingest" | "system"
-  session_id: "sess_..."        # when origin=session
-  trace_seq: 42                  # when derived from a specific trace event
-  document_id: "doc_..."         # when origin=ingest
-  url: "https://..."             # when from an external source
-```
+> **Memory sections removed (2026-08-18).** §§1–4 described a three-tier memory
+> model — short-term / mid-term / long-term — with typed `memory_records`,
+> confidence-weighted retrieval and hard expiry. None of it was ever built, and
+> ADR-0031 (revised by ADR-0035) decided against most of its mechanisms after
+> arguing each one. A spec describing something never built and now decided
+> against is not history, it is wrong documentation: the next reader implements
+> it. ADR-0035 records what was kept, what was dropped, and why.
+>
+> What survived, relocated: the short-term context policy is **not memory** —
+> it is how a conversation stays inside a window — and now lives at
+> `docs/specs/session/templates/context-budget.template.yaml`. The anti-patterns
+> list moved into ADR-0035, rewritten for OpsPilot's domains.
 
 ## 5. KB document (long-term)
 
@@ -244,49 +206,6 @@ discover ──▶ classify ──▶ redact ──▶ chunk ──▶ embed ─
 - `content_hash` unchanged → skip the whole document
 - `content_hash` changed → delete old chunks (by document_id) + re-chunk/embed/upsert
 - document deleted → cascade-delete all chunks under that doc
-
-## 13. Short-term details
-
-Short-term memory does not get its own tables; it **reuses `session/trace.jsonl`** plus a set of runtime policies.
-
-Policies (in `short-term-config.template.yaml`):
-
-```yaml
-context_window:
-  max_tokens: 100000              # aligned with the model's long_context_tokens
-  reserve_for_response: 8000
-  reserve_for_system: 4000
-
-policy:
-  on_overflow: "summarize_oldest"  # truncate | summarize_oldest | summarize_smart
-  summarize_when_remaining_lt: 16000   # remaining-budget threshold that triggers summarization
-  keep_pinned: true                # events with user_action=pin are excluded from trimming
-  keep_last_n_user_turns: 4
-
-summary:
-  use_provider_alias: "@chat-fast" # summaries use the fast tier; decoupled from the main playbook provider
-  template_ref: "prompts/summarize_session_zh.md"
-  max_summary_tokens: 1024
-  store_as_trace_event: "system"    # written back to trace (type=system, event=summary_marker)
-```
-
-## 14. Mid-term write & harvest
-
-Write paths:
-1. **Direct write**: user/playbook submits explicitly (`memory.add(...)`)
-2. **Harvest**: on session archival, extract facts worth long-term retention from the trace
-
-Harvest rules (suggested):
-- explicitly marked `pin_to_memory` after `user_action=accept`
-- the `payload_diff` carried by `user_action=edit` contains the word "remember"
-- when session state moves `archived → finalize`, the summarizer emits candidates awaiting user confirmation
-
-**Anti-patterns (don't do this)**:
-- Don't put code patterns / file paths / project structure into memory (grep gets those)
-- Don't put git history / who changed what into memory (`git log`/`git blame` are authoritative)
-- Don't put debugging solutions into memory (the fix lives in the code; the commit message has the context)
-
-Reference: aligned with the design of Claude Code's memory system, for cross-tool reuse.
 
 ## 15. Security & redaction
 

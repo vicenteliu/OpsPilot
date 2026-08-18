@@ -8,13 +8,16 @@ identity, role, and password hashes for local accounts.
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import hmac
 import os
 import secrets
 import sqlite3
-from typing import Any
+from collections.abc import Callable
+from typing import Any, cast
 
+from ..dblock import lock_for
 from ..timeutil import now_rfc3339
 
 ROLES = ("viewer", "operator", "admin")
@@ -95,11 +98,28 @@ def _monotonic_plus(ttl: float) -> float:
     return time.time() + ttl
 
 
+def _serialised[M: Callable[..., Any]](method: M) -> M:
+    """Hold the connection's lock for the whole method.
+
+    Four stores share one ``sqlite3.Connection`` reached from a multi-threaded
+    executor, and ``commit()`` is connection-scoped: without this, a write here
+    ends whatever transaction another store had open (#166, :mod:`opspilot.dblock`).
+    """
+
+    @functools.wraps(method)
+    def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
+        with self._lock:
+            return method(self, *args, **kwargs)
+
+    return cast(M, wrapper)
+
+
 class AuthStore:
     """Users, sessions, and login audit over the shared SQLite connection."""
 
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn
+        self._lock = lock_for(conn)
         conn.executescript(_SCHEMA)
         # Idempotent column add (#98): pre-existing DBs gain role_overridden.
         cols = {r[1] for r in conn.execute("PRAGMA table_info(users)")}
@@ -109,19 +129,23 @@ class AuthStore:
 
     # ── users ──────────────────────────────────────────────────────────
 
+    @_serialised
     def get_user(self, username: str) -> dict[str, Any] | None:
         cur = self._conn.execute("SELECT * FROM users WHERE username = ?", (username,))
         row = cur.fetchone()
         return dict(zip((d[0] for d in cur.description), row, strict=True)) if row else None
 
+    @_serialised
     def list_users(self) -> list[dict[str, Any]]:
         cur = self._conn.execute("SELECT * FROM users ORDER BY username")
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row, strict=True)) for row in cur.fetchall()]
 
+    @_serialised
     def count_users(self) -> int:
         return int(self._conn.execute("SELECT COUNT(*) FROM users").fetchone()[0])
 
+    @_serialised
     def upsert_user(
         self,
         username: str,
@@ -149,6 +173,7 @@ class AuthStore:
         assert user is not None
         return user
 
+    @_serialised
     def set_role(self, username: str, role: str) -> bool:
         """Explicit admin role change — marks the user as override-pinned so a
         directory group mapping won't reset it on the next LDAP/OIDC login."""
@@ -159,6 +184,7 @@ class AuthStore:
         self._conn.commit()
         return cur.rowcount > 0
 
+    @_serialised
     def apply_directory_role(self, username: str, auth_source: str, mapped_role: str) -> str:
         """Upsert a directory user, honoring an admin override (ADR-0020).
 
@@ -171,6 +197,7 @@ class AuthStore:
         self.upsert_user(username, role=mapped_role, auth_source=auth_source)
         return mapped_role
 
+    @_serialised
     def set_enabled(self, username: str, enabled: bool) -> bool:
         cur = self._conn.execute(
             "UPDATE users SET enabled=?, updated_at=? WHERE username=?",
@@ -179,6 +206,7 @@ class AuthStore:
         self._conn.commit()
         return cur.rowcount > 0
 
+    @_serialised
     def bootstrap_admin(self, username: str, password: str) -> None:
         """Create the first admin when the user table is empty (break-glass)."""
         if self.count_users() == 0:
@@ -186,6 +214,7 @@ class AuthStore:
 
     # ── authentication ─────────────────────────────────────────────────
 
+    @_serialised
     def authenticate_local(self, username: str, password: str) -> dict[str, Any] | None:
         user = self.get_user(username)
         ok = (
@@ -199,6 +228,7 @@ class AuthStore:
 
     # ── sessions ───────────────────────────────────────────────────────
 
+    @_serialised
     def create_session(self, username: str) -> str:
         """Return a fresh opaque session token; only its hash is stored."""
         token = secrets.token_urlsafe(32)
@@ -210,6 +240,7 @@ class AuthStore:
         self._conn.commit()
         return token
 
+    @_serialised
     def resolve_session(self, token: str) -> dict[str, Any] | None:
         """Return the live, enabled User for a session token, or None."""
         import time
@@ -226,12 +257,14 @@ class AuthStore:
         user = self.get_user(row[0])
         return user if user and user["enabled"] else None
 
+    @_serialised
     def revoke_session(self, token: str) -> None:
         self._conn.execute("DELETE FROM auth_sessions WHERE token_hash = ?", (_sha(token),))
         self._conn.commit()
 
     # ── OIDC flow state (state/nonce/PKCE verifier, server-side) ───────
 
+    @_serialised
     def save_oidc_flow(self, state: str, code_verifier: str, nonce: str, ttl_s: int = 600) -> None:
         self._conn.execute(
             "INSERT OR REPLACE INTO oidc_flows (state, code_verifier, nonce, expires_at) "
@@ -240,6 +273,7 @@ class AuthStore:
         )
         self._conn.commit()
 
+    @_serialised
     def take_oidc_flow(self, state: str) -> dict[str, Any] | None:
         """Consume a flow by state (single-use); None if unknown or expired."""
         import time
@@ -256,10 +290,12 @@ class AuthStore:
 
     # ── audit ──────────────────────────────────────────────────────────
 
+    @_serialised
     def log_login(self, username: str, source: str, outcome: str) -> None:
         """Public login-audit hook for non-local sources (LDAP/OIDC)."""
         self._log_login(username, source, outcome)
 
+    @_serialised
     def _log_login(self, username: str, source: str, outcome: str) -> None:
         self._conn.execute(
             "INSERT INTO login_events (ts, username, source, outcome) VALUES (?,?,?,?)",
@@ -269,6 +305,7 @@ class AuthStore:
 
     # ── group → role mapping (used by the LDAP / OIDC slices) ──────────
 
+    @_serialised
     def list_group_roles(self) -> list[dict[str, Any]]:
         cur = self._conn.execute(
             "SELECT source, group_name, role FROM group_role_map ORDER BY source, group_name"
@@ -276,6 +313,7 @@ class AuthStore:
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row, strict=True)) for row in cur.fetchall()]
 
+    @_serialised
     def set_group_role(self, source: str, group_name: str, role: str) -> None:
         self._conn.execute(
             "INSERT INTO group_role_map (source, group_name, role) VALUES (?,?,?) "
@@ -284,6 +322,7 @@ class AuthStore:
         )
         self._conn.commit()
 
+    @_serialised
     def delete_group_role(self, source: str, group_name: str) -> bool:
         cur = self._conn.execute(
             "DELETE FROM group_role_map WHERE source=? AND group_name=?", (source, group_name)
@@ -291,6 +330,7 @@ class AuthStore:
         self._conn.commit()
         return cur.rowcount > 0
 
+    @_serialised
     def resolve_group_role(self, source: str, groups: list[str]) -> str | None:
         """Highest role any of *groups* maps to for *source*, or None."""
         best: str | None = None
@@ -303,6 +343,7 @@ class AuthStore:
                 best = role
         return best
 
+    @_serialised
     def recent_logins(self, limit: int = 50) -> list[dict[str, Any]]:
         cur = self._conn.execute(
             "SELECT ts, username, source, outcome FROM login_events ORDER BY event_id DESC LIMIT ?",

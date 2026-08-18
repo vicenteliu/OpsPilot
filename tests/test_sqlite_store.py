@@ -1,7 +1,7 @@
 """Tests for ``opspilot.kb.sqlite_store``.
 
 Covers KB document/chunk upsert + read, FTS5 BM25 search with namespace /
-classification filters, and the minimal memory_records CRUD.
+and classification filters.
 """
 
 from __future__ import annotations
@@ -296,70 +296,3 @@ def test_fts_search_top_k_bounds(store: SqliteStore) -> None:
     store.upsert_chunks([_chunk(f"chk_{i:08x}", seq=i, content="auth term") for i in range(5)])
     hits = store.fts_search("auth", top_k=2)
     assert len(hits) == 2
-
-
-# ── memory_records ────────────────────────────────────────────────────
-
-
-def _mem(mem_id: str = "mem_aaaaaaaa", **overrides: Any) -> dict[str, Any]:
-    base = {
-        "id": mem_id,
-        "type": "user",
-        "scope": "personal",
-        "title": "用户偏好示例",
-        "body": "this user prefers terse responses",
-        "tags": ["preference"],
-        "source_origin": "user_input",
-        "created_at": "2026-05-01T10:00:00Z",
-        "updated_at": "2026-05-01T10:00:00Z",
-        "confidence": "high",
-        "redacted": True,
-    }
-    base.update(overrides)
-    return base
-
-
-def test_write_and_get_memory(store: SqliteStore) -> None:
-    store.write_memory(_mem())
-    row = store.get_memory("mem_aaaaaaaa")
-    assert row is not None
-    assert row["type"] == "user"
-    assert row["tags_json"] == ["preference"]
-    assert row["confidence"] == "high"
-
-
-def test_memory_rejects_unredacted(store: SqliteStore) -> None:
-    with pytest.raises(ValueError, match="redacted"):
-        store.write_memory(_mem(redacted=False))
-
-
-def test_memory_id_glob_constraint(store: SqliteStore) -> None:
-    with pytest.raises(sqlite3.IntegrityError):
-        store.write_memory(_mem(mem_id="memory_bad"))
-
-
-def test_memory_type_constraint(store: SqliteStore) -> None:
-    with pytest.raises(sqlite3.IntegrityError):
-        store.write_memory(_mem(type="invalid"))
-
-
-def test_memory_title_length(store: SqliteStore) -> None:
-    # Title length CHECK is BETWEEN 1 AND 80.
-    with pytest.raises(sqlite3.IntegrityError):
-        store.write_memory(_mem(title=""))
-    with pytest.raises(sqlite3.IntegrityError):
-        store.write_memory(_mem(title="x" * 81))
-
-
-def test_memory_get_missing_returns_none(store: SqliteStore) -> None:
-    assert store.get_memory("mem_99999999") is None
-
-
-def test_memory_record_appears_in_fts(store: SqliteStore) -> None:
-    """memory_records_fts should auto-populate via the spec triggers."""
-    store.write_memory(_mem(title="vpn auth troubleshooting", body="something"))
-    rows = store._conn.execute(  # noqa: SLF001 — direct probe is OK in test
-        "SELECT rowid FROM memory_records_fts WHERE memory_records_fts MATCH ?",
-        ("auth",),
-    ).fetchall()
-    assert len(rows) == 1

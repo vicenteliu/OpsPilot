@@ -8,10 +8,13 @@ matching :mod:`opspilot.kb.storage_init`.
 
 from __future__ import annotations
 
+import functools
 import sqlite3
+from collections.abc import Callable
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
+from ..dblock import lock_for
 from ..ids import new_ulid_id
 from ..timeutil import UTC, now_rfc3339
 
@@ -133,11 +136,28 @@ def _validate_status(status: str) -> None:
         raise UnknownStatusError(f"unknown status '{status}'; valid: {', '.join(VALID_STATUSES)}")
 
 
+def _serialised[M: Callable[..., Any]](method: M) -> M:
+    """Hold the connection's lock for the whole method.
+
+    Four stores share one ``sqlite3.Connection`` reached from a multi-threaded
+    executor, and ``commit()`` is connection-scoped: without this, a write here
+    ends whatever transaction another store had open (#166, :mod:`opspilot.dblock`).
+    """
+
+    @functools.wraps(method)
+    def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
+        with self._lock:
+            return method(self, *args, **kwargs)
+
+    return cast(M, wrapper)
+
+
 class InventoryStore:
     """CRUD + event log over the ``assets`` / ``asset_events`` tables."""
 
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn
+        self._lock = lock_for(conn)
         conn.executescript(_SCHEMA)
         # Idempotent column migration (#87): CREATE TABLE IF NOT EXISTS
         # cannot add columns to an existing table.
@@ -148,11 +168,13 @@ class InventoryStore:
 
     # ── reads ──────────────────────────────────────────────────────────
 
+    @_serialised
     def get(self, asset_id: str) -> dict[str, Any] | None:
         cur = self._conn.execute("SELECT * FROM assets WHERE asset_id = ?", (asset_id,))
         row = cur.fetchone()
         return dict(zip((d[0] for d in cur.description), row, strict=True)) if row else None
 
+    @_serialised
     def events(self, asset_id: str) -> list[dict[str, Any]]:
         cur = self._conn.execute(
             "SELECT event_id, ts, actor, change, note FROM asset_events "
@@ -162,6 +184,7 @@ class InventoryStore:
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row, strict=True)) for row in cur.fetchall()]
 
+    @_serialised
     def all_events(
         self,
         *,
@@ -197,6 +220,7 @@ class InventoryStore:
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row, strict=True)) for row in cur.fetchall()]
 
+    @_serialised
     def expiring_warranties(self, days: int) -> list[dict[str, Any]]:
         """Assets whose warranty ends within *days* (or already ended).
 
@@ -213,6 +237,7 @@ class InventoryStore:
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row, strict=True)) for row in cur.fetchall()]
 
+    @_serialised
     def list(
         self,
         status: str | None = None,
@@ -243,6 +268,7 @@ class InventoryStore:
 
     # ── writes (every write appends an Asset event) ────────────────────
 
+    @_serialised
     def create(
         self,
         fields: dict[str, Any],
@@ -278,6 +304,7 @@ class InventoryStore:
         assert result is not None  # just inserted
         return result
 
+    @_serialised
     def update(
         self, asset_id: str, changes: dict[str, Any], actor: str = "", note: str = ""
     ) -> dict[str, Any]:
@@ -310,6 +337,7 @@ class InventoryStore:
         assert result is not None
         return result
 
+    @_serialised
     def delete(self, asset_id: str, actor: str = "", note: str = "") -> bool:
         """Hard delete, for data-entry mistakes — retirement is a status.
 
@@ -332,6 +360,7 @@ class InventoryStore:
 
     # ── procurements: optional grouping with batch field sync (#87) ────
 
+    @_serialised
     def get_procurement(self, procurement_id: str) -> dict[str, Any] | None:
         cur = self._conn.execute(
             "SELECT p.*, (SELECT COUNT(*) FROM assets a WHERE a.procurement_id = p.procurement_id)"
@@ -341,6 +370,7 @@ class InventoryStore:
         row = cur.fetchone()
         return dict(zip((d[0] for d in cur.description), row, strict=True)) if row else None
 
+    @_serialised
     def list_procurements(self) -> _Rows:
         cur = self._conn.execute(
             "SELECT p.*, (SELECT COUNT(*) FROM assets a WHERE a.procurement_id = p.procurement_id)"
@@ -349,6 +379,7 @@ class InventoryStore:
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row, strict=True)) for row in cur.fetchall()]
 
+    @_serialised
     def procurement_members(self, procurement_id: str) -> _Rows:
         cur = self._conn.execute(
             "SELECT * FROM assets WHERE procurement_id = ? ORDER BY created_at",
@@ -357,6 +388,7 @@ class InventoryStore:
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row, strict=True)) for row in cur.fetchall()]
 
+    @_serialised
     def create_procurement(self, asset_ids: _Ids, actor: str = "") -> dict[str, Any]:
         """Group existing Assets; the Procurement adopts their common fields.
 
@@ -393,6 +425,7 @@ class InventoryStore:
         assert result is not None
         return result
 
+    @_serialised
     def update_procurement(
         self, procurement_id: str, changes: dict[str, Any], actor: str = ""
     ) -> dict[str, Any]:
@@ -424,6 +457,7 @@ class InventoryStore:
         assert result is not None
         return result
 
+    @_serialised
     def delete_procurement(self, procurement_id: str, actor: str = "") -> bool:
         """Ungroup members (fields untouched) and delete the Procurement."""
         members = self.procurement_members(procurement_id)
@@ -440,6 +474,7 @@ class InventoryStore:
         self._conn.commit()
         return cur.rowcount > 0
 
+    @_serialised
     def _append_event(self, asset_id: str, actor: str, change: str, note: str) -> None:
         self._conn.execute(
             "INSERT INTO asset_events (asset_id, ts, actor, change, note) VALUES (?, ?, ?, ?, ?)",

@@ -1,6 +1,15 @@
 # Memory is the second owned domain: the home for knowledge that has no table
 
-Status: accepted (2026-08-18)
+Status: accepted (2026-08-18) — **revised by ADR-0035**
+
+> This was written without reading `docs/specs/memory/SPEC.md`, which already
+> described a memory design. Everything below still holds — the owned domain,
+> the "no table" rule and its reverse, the two anchors, team-global scope,
+> supersede-by-append, soft review dates, answer-time conflict detection.
+> **One decision changed**: the admission path is a human pinning a sentence or
+> writing one directly, not the assistant proposing at the end of a
+> Consultation. ADR-0035 records that and fills in what this ADR left open.
+
 
 OpsPilot has four knowledge carriers and none of them holds an environment
 constraint. A **Chunk** is a slice of an ingested document. A **Wiki page** is
