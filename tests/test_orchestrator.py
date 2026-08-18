@@ -21,9 +21,9 @@ from typing import Any
 import pytest
 
 from opspilot.errors import ProviderError
-from opspilot.memory.lance_store import LanceStore, VectorRecord
-from opspilot.memory.sqlite_store import SqliteStore
-from opspilot.memory.storage_init import init_sqlite
+from opspilot.kb.lance_store import LanceStore, VectorRecord
+from opspilot.kb.sqlite_store import SqliteStore
+from opspilot.kb.storage_init import init_sqlite
 from opspilot.orchestrator import RunRequest, load_playbook, run_ticket_summary
 from opspilot.orchestrator.types import PlaybookRetrieval, PlaybookRetrievalPrefetch
 from opspilot.providers.types import (

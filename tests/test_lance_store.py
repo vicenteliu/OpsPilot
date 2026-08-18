@@ -1,4 +1,4 @@
-"""Tests for ``opspilot.memory.lance_store``.
+"""Tests for ``opspilot.kb.lance_store``.
 
 Uses deterministic mock vectors (no embedding model required). Each test
 uses a fresh tmp_path so datasets don't leak between cases.
@@ -20,7 +20,7 @@ import pytest
 # sandbox warning disappears in CI.
 os.environ.setdefault("LANCEDB_CONFIG_DIR", "/tmp/lancedb-config")
 
-from opspilot.memory.lance_store import (  # noqa: E402
+from opspilot.kb.lance_store import (  # noqa: E402
     AnnHit,
     LanceStore,
     VectorRecord,

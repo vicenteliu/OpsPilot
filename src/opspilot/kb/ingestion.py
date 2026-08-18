@@ -14,7 +14,7 @@ Per-file flow:
   any redaction *hit* has a placeholder type in
   :data:`HARD_FAIL_PLACEHOLDER_TYPES` (private keys, etc.) — these are
   things that should never reach a KB even with the placeholder swap.
-* **chunk**    — :func:`memory.chunker.chunk_markdown` (PR-2 default).
+* **chunk**    — :func:`kb.chunker.chunk_markdown` (PR-2 default).
 * **embed**    — caller-injected ``embed_fn`` (matches retrieval's API);
   no provider import.
 * **upsert**   — SQLite ``kb_documents`` + ``kb_chunks`` (PR-4) and

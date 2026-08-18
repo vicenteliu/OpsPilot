@@ -1,6 +1,6 @@
 """Load a frozen KB fixture (chunks.jsonl + doc-meta.json) into the live stores.
 
-Why a separate path from :mod:`opspilot.memory.ingestion`?
+Why a separate path from :mod:`opspilot.kb.ingestion`?
 
 The ingestion pipeline (markitdown → redact → chunk → embed → upsert) is the
 *real-user* code path. Spec-example KB fixtures

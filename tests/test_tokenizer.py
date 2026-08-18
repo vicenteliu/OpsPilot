@@ -1,4 +1,4 @@
-"""Tests for opspilot.memory.tokenizer."""
+"""Tests for opspilot.kb.tokenizer."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from opspilot.memory.tokenizer import _py_count_tokens, count_tokens
+from opspilot.kb.tokenizer import _py_count_tokens, count_tokens
 
 try:
     import opspilot_tokenizer as _rs_mod

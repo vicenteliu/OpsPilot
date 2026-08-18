@@ -1,4 +1,4 @@
-"""Tests for ``opspilot.memory.sqlite_store``.
+"""Tests for ``opspilot.kb.sqlite_store``.
 
 Covers KB document/chunk upsert + read, FTS5 BM25 search with namespace /
 classification filters, and the minimal memory_records CRUD.
@@ -12,8 +12,8 @@ from typing import Any
 
 import pytest
 
-from opspilot.memory.sqlite_store import FtsHit, SqliteStore
-from opspilot.memory.storage_init import init_sqlite
+from opspilot.kb.sqlite_store import FtsHit, SqliteStore
+from opspilot.kb.storage_init import init_sqlite
 
 # ── Helpers ───────────────────────────────────────────────────────────
 

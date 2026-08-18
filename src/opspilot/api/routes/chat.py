@@ -86,7 +86,7 @@ def answer_chat(state: Any, messages: list[dict[str, str]]) -> str:
     context_chunks: list[str] = []
     if query:
         try:
-            from ...memory.retrieval import kb_search
+            from ...kb.retrieval import kb_search
 
             hits = kb_search(
                 query,

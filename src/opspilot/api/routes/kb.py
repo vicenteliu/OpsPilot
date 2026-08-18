@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel
 
 from ...auth import Identity, require_role
-from ...memory.ingestion import SourceAuthority
+from ...kb.ingestion import SourceAuthority
 
 router = APIRouter()
 
@@ -85,8 +85,8 @@ async def ingest_docs(body: IngestRequest, request: Request) -> dict[str, Any]:
     """Ingest one or more files into the KB."""
     state = request.app.state
 
-    from ...memory.ingestion import IngestConfig
-    from ...memory.ingestion import ingest as run_ingest
+    from ...kb.ingestion import IngestConfig
+    from ...kb.ingestion import ingest as run_ingest
 
     paths = [Path(p) for p in body.paths]
     ic = IngestConfig(
@@ -146,7 +146,7 @@ async def search_kb(
     """Hybrid (FTS5 + ANN) search over the KB."""
     state = request.app.state
 
-    from ...memory.retrieval import kb_search
+    from ...kb.retrieval import kb_search
 
     loop = asyncio.get_event_loop()
 
@@ -217,7 +217,7 @@ async def resolve_conflict_route(
     """Apply a resolution to an open KB conflict."""
     state = request.app.state
 
-    from ...memory.conflict import resolve_conflict
+    from ...kb.conflict import resolve_conflict
 
     loop = asyncio.get_event_loop()
 

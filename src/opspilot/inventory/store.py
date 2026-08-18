@@ -3,7 +3,7 @@
 One device = one Asset row; every change appends an Asset event with a
 timestamp and actor. The row is a projection, the event log is the
 history. Schema creation is idempotent (``CREATE TABLE IF NOT EXISTS``),
-matching :mod:`opspilot.memory.storage_init`.
+matching :mod:`opspilot.kb.storage_init`.
 """
 
 from __future__ import annotations

@@ -9,8 +9,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from opspilot.memory.sqlite_store import SqliteStore
-from opspilot.memory.storage_init import init_sqlite
+from opspilot.kb.sqlite_store import SqliteStore
+from opspilot.kb.storage_init import init_sqlite
 from opspilot.providers.types import ChatResponse, Usage
 from opspilot.wiki.index import WikiLogEntry, append_log, update_index
 from opspilot.wiki.ingest import WikiIngestConfig, WikiIngestError, ingest

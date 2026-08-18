@@ -18,9 +18,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from ..memory.lance_store import LanceStore
-from ..memory.retrieval import Hit, kb_search
-from ..memory.sqlite_store import SqliteStore
+from ..kb.lance_store import LanceStore
+from ..kb.retrieval import Hit, kb_search
+from ..kb.sqlite_store import SqliteStore
 from ..providers.types import ToolDef
 
 # ── Hit projection used in tool output ───────────────────────────────

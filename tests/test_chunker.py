@@ -1,4 +1,4 @@
-"""Tests for ``opspilot.memory.chunker``."""
+"""Tests for ``opspilot.kb.chunker``."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from opspilot.memory.chunker import (
+from opspilot.kb.chunker import (
     ChunkConfig,
     _py_chunk_markdown,
     _strip_frontmatter,

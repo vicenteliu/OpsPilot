@@ -95,7 +95,7 @@ def _tool_names(call: dict[str, Any]) -> list[str]:
 @pytest.fixture
 def canned_hits(monkeypatch: pytest.MonkeyPatch) -> None:
     """Make kb_search (used inside make_kb_search_tool) return one fixed hit."""
-    from opspilot.memory.retrieval import Hit
+    from opspilot.kb.retrieval import Hit
 
     def fake_kb_search(query, **kwargs):  # type: ignore[no-untyped-def]
         return [

@@ -1,4 +1,4 @@
-/// headings_then_size chunker — Rust port of ``memory.chunker`` (PR-17).
+/// headings_then_size chunker — Rust port of ``kb.chunker`` (PR-17).
 ///
 /// char/byte duality: Python str uses Unicode code-point indices; Rust &str
 /// uses byte offsets. We track both char_pos and byte_pos simultaneously

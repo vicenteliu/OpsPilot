@@ -140,7 +140,7 @@ def build() -> None:
     flow.append(Paragraph("Sample code block", styles["Heading2"]))
     flow.append(
         Preformatted(
-            "from opspilot.memory import kb_search, init_sqlite\n"
+            "from opspilot.kb import kb_search, init_sqlite\n"
             "conn = init_sqlite('/tmp/kb.db')\n"
             "hits = kb_search('OpsPilot ingestion fixture', ...)\n"
             "assert hits[0].chunk_id is not None",

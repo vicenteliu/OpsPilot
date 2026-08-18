@@ -15,12 +15,12 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from opspilot.api.routes.kb import router as kb_router
-from opspilot.memory.ingestion import SOURCE_AUTHORITIES, IngestConfig
-from opspilot.memory.ingestion import ingest as run_ingest
-from opspilot.memory.lance_store import LanceStore
-from opspilot.memory.retrieval import kb_search
-from opspilot.memory.sqlite_store import SqliteStore
-from opspilot.memory.storage_init import init_sqlite
+from opspilot.kb.ingestion import SOURCE_AUTHORITIES, IngestConfig
+from opspilot.kb.ingestion import ingest as run_ingest
+from opspilot.kb.lance_store import LanceStore
+from opspilot.kb.retrieval import kb_search
+from opspilot.kb.sqlite_store import SqliteStore
+from opspilot.kb.storage_init import init_sqlite
 from opspilot.redaction import Redactor
 
 _DIM = 8

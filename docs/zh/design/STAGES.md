@@ -150,7 +150,7 @@ wiki page
 
 ### 3.3 实施位置（Stage 1 末或 Stage 2 初）
 
-新增 `src/opspilot/memory/markitdown_adapter.py`：
+新增 `src/opspilot/kb/markitdown_adapter.py`：
 
 ```python
 def to_markdown(path: Path, *, llm_for_images: ProviderProtocol | None = None) -> str:

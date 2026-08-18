@@ -1,4 +1,4 @@
-"""Tests for ``opspilot.memory.ingestion``.
+"""Tests for ``opspilot.kb.ingestion``.
 
 Covers the end-to-end pipeline:
 markitdown → redact → chunk → embed → upsert
@@ -14,16 +14,16 @@ from typing import Final
 
 import pytest
 
-from opspilot.memory.ingestion import (
+from opspilot.kb.ingestion import (
     IngestConfig,
     IngestionError,
     discover_files,
     ingest,
 )
-from opspilot.memory.lance_store import LanceStore
-from opspilot.memory.retrieval import kb_search
-from opspilot.memory.sqlite_store import SqliteStore
-from opspilot.memory.storage_init import init_sqlite
+from opspilot.kb.lance_store import LanceStore
+from opspilot.kb.retrieval import kb_search
+from opspilot.kb.sqlite_store import SqliteStore
+from opspilot.kb.storage_init import init_sqlite
 from opspilot.redaction import Redactor
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -527,7 +527,7 @@ def test_ingest_resolve_then_superseded_excluded_from_retrieval(
     assert conflicts, "expected at least one conflict to be detected"
     conf_id = conflicts[0]["id"]
 
-    from opspilot.memory.conflict import resolve_conflict
+    from opspilot.kb.conflict import resolve_conflict
 
     resolve_conflict(conf_id, resolution="a_wins", resolved_by="tester", sqlite=sqlite)
 
