@@ -129,6 +129,13 @@ class OpenAIProvider:
                 kwargs["temperature"] = params.temperature
             if params.top_p is not None:
                 kwargs["top_p"] = params.top_p
+        if self.provider_id.startswith("openrouter"):
+            # OpenRouter computes the actual charge and returns it on the
+            # response. Asking for it beats any local price table: it is what
+            # was billed, and it cannot go stale. The field is an OpenRouter
+            # extension, so it goes through extra_body and is not sent to
+            # OpenAI / Gemini / Grok, which would reject it.
+            kwargs["extra_body"] = {"usage": {"include": True}}
         if params.stop:
             kwargs["stop"] = params.stop
         if tools:
@@ -167,6 +174,11 @@ class OpenAIProvider:
         usage = response.usage
         input_tokens = usage.prompt_tokens if usage else 0
         output_tokens = usage.completion_tokens if usage else 0
+        # Only OpenRouter reports a charge; for the others this stays 0.0, which
+        # every surface renders as nothing. It used to be 0.0 unconditionally,
+        # so a paid OpenRouter call read as free.
+        reported = getattr(usage, "cost", None) if usage else None
+        cost_usd = float(reported) if isinstance(reported, (int, float)) else 0.0
 
         return ChatResponse(
             content=text,
@@ -175,7 +187,7 @@ class OpenAIProvider:
             usage=Usage(
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
-                cost_usd=0.0,
+                cost_usd=cost_usd,
             ),
         )
 

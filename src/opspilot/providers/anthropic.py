@@ -20,6 +20,7 @@ from typing import Any
 from anthropic import Anthropic, APIError
 
 from ..errors import ProviderError
+from .pricing import estimate_cost_usd
 from .types import ChatResponse, FinishReason, Message, SamplingParams, ToolCall, ToolDef, Usage
 
 # Map Anthropic stop_reason values to our FinishReason enum.
@@ -185,10 +186,11 @@ class AnthropicProvider:
                     )
                 )
 
-        # Cost estimate for claude-sonnet-4 pricing (approximate).
+        # Per-model list price. This was one hardcoded Sonnet rate applied to
+        # every Anthropic model, so Haiku 4.5 read ~3x high and Opus 5 low.
         input_tokens = response.usage.input_tokens
         output_tokens = response.usage.output_tokens
-        cost_usd = (input_tokens * 3 + output_tokens * 15) / 1_000_000
+        cost_usd = estimate_cost_usd(model, input_tokens, output_tokens)
 
         return ChatResponse(
             content="".join(text_parts),
