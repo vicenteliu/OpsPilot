@@ -13,6 +13,68 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  behaviour-gate-evidence:
+    # Four of this product's behaviours are produced by a prompt, not by code:
+    # an injected Memory constraint changing an answer, a Memory ↔ KB
+    # contradiction being reported, a distilled Skill keeping its dead ends and
+    # its blanks, and an opted-in playbook proposing only read-only diagnostics.
+    # A reworded instruction can stop any of them, and none of them raises.
+    #
+    # `make test-behaviour` checks them by calling hosted models, which cannot
+    # run here: on a public repo that means forks have no key, every PR costs
+    # money, and model non-determinism turns the gate red for unrelated reasons
+    # — and a gate that cries wolf is one people learn to ignore.
+    #
+    # So CI does not run the gate. It makes sure the gate was run: touching the
+    # files those behaviours depend on fails until the PR body carries the
+    # result. Pasting a false line is possible and is then a deliberate false
+    # statement in a permanent record, which is the point.
+    name: Behaviour gate (evidence)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Did this PR touch a prompt-driven behaviour?
+        id: touched
+        run: |
+          # Deliberately file-level and over-triggering. Being asked to run the
+          # gate unnecessarily costs minutes; missing the change it exists for
+          # costs the reason it exists.
+          PROTECTED='
+          src/opspilot/orchestrator/chat_agent.py
+          src/opspilot/orchestrator/ticket_summary.py
+          src/opspilot/memory/inject.py
+          src/opspilot/consultation/distil.py
+          src/opspilot/sandbox/proposals.py
+          docs/specs/orchestrator/schemas/incident_summary_v1.schema.json
+          '
+          CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+          HIT=""
+          for f in $PROTECTED; do
+            echo "$CHANGED" | grep -qxF "$f" && HIT="$HIT $f"
+          done
+          echo "hit=$HIT" >> "$GITHUB_OUTPUT"
+      - name: Require the gate's result in the PR body
+        if: steps.touched.outputs.hit != ''
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          echo "This PR changes prompt-driven behaviour:${{ steps.touched.outputs.hit }}"
+          if echo "$BODY" | grep -qiE '^behaviour-gate:'; then
+            echo "Found the gate result:"
+            echo "$BODY" | grep -iE '^behaviour-gate:'
+            exit 0
+          fi
+          echo ""
+          echo "Run it and paste the result into the PR body:"
+          echo "    make test-behaviour"
+          echo "    behaviour-gate: 4/4 passed (votes 3/3, 3/3, 3/3, 3/3)"
+          echo ""
+          echo "It is not run here on purpose — see this job's comment in ci.yml."
+          exit 1
+
   python:
     name: Python (lint + type + test)
     runs-on: ubuntu-latest

@@ -224,6 +224,21 @@ Widening it later is a visible, reviewable diff. Playbooks opt in with
 *Not yet:* the UI for previewing and executing — `GET /api/sessions/{id}/actions`,
 `POST .../actions/{ref}/preview` and `POST .../actions/execute` exist.
 
+**Behaviour gate** — `make test-behaviour`. Four of this product's behaviours are
+produced by a *prompt*, not by code: an injected Memory constraint changing an
+answer, a Memory ↔ KB contradiction being reported, a distilled Skill keeping its
+dead ends and its blanks, and an opted-in playbook proposing only read-only
+diagnostics. A reworded instruction or a model bump can stop any of them, and
+**none of them raises an error**.
+
+Deliberately not in CI: it calls hosted models, and on a public repo that means
+forks have no key, every PR costs money, and non-determinism turns the gate red
+for unrelated reasons — *a gate that cries wolf is one people learn to ignore*.
+CI instead checks that it **was** run: touching the files those behaviours depend
+on fails until the PR body carries the result. Best of three, and the vote is
+reported, because a case needing three tries to pass twice is degrading before it
+is failing.
+
 ## Later
 
 - **Mobile companion, PWA-first** — the SvelteKit UI is already installable

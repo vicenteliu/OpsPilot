@@ -139,6 +139,9 @@ testpaths = ["tests"]
 markers = [
     "slow: slow tests (deselect with '-m \"not slow\"')",
     "requires_ollama: requires running Ollama instance",
+    # Model-in-the-loop behaviour gate: real API calls, non-deterministic, run by
+    # a person rather than by CI. See `make test-behaviour`.
+    "requires_api_key: calls a hosted model; excluded from the default run",
 ]
 addopts = "-v --strict-markers"
 asyncio_mode = "auto"
