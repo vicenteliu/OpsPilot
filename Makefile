@@ -54,7 +54,7 @@ test-cov: ensure-venv ## Run tests with coverage.
 	$(PYTEST) tests/ --cov=opspilot --cov-report=term-missing -m "not slow and not requires_ollama and not requires_api_key"
 
 test-behaviour: ensure-venv ## Behaviour gate — does the prompt still drive the behaviour? (needs ANTHROPIC_API_KEY).
-	@echo "Four model-facing behaviours, best of 3. Paste the summary into the PR body."
+	@echo "Five model-facing behaviours in six cases, best of 3. Paste the summary into the PR body."
 	$(PYTEST) tests/ -m "requires_api_key" -p no:randomly
 
 test-ollama: ensure-venv ## Run tests that require a running Ollama (assumes `make ollama-up && make ollama-pull`).

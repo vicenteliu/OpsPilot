@@ -117,16 +117,57 @@ Ollama and a stub target had silently moved; the behaviour gate scored the new
 Memory-proposal hint at 1/3, which turned out to be `finish_reason: length`
 truncating the label off the end of the answer rather than the model ignoring it.
 
-- **Open decision:** `kb/retrieval.py` is not on the behaviour gate's protected
-  path list, so [#203](https://github.com/vicenteliu/OpsPilot/pull/203) shipped
-  without gate evidence — yet it changes what context reaches the model. Whether
-  retrieval belongs on that list is a decision, not a bug fix, and was left to be
-  made deliberately.
-- **Not re-run since.** All nine fixes changed behaviour on that same path. The
-  way to check them is the way they were found: use it again.
+**Re-run the same day, and it paid again.** All nine fixes were checked the way
+they were found — a fresh `OPSPILOT_HOME`, the README's own commands, hosted
+models. Ten checks, ten passes: the two entry points now agree on an embedder, a
+dot-directory and a `../` path both ingest, a sentence-shaped question gets FTS
+ranks, Haiku and Sonnet 5 price to the cent and OpenRouter reports what it
+billed, the proposal hint fires without repeating itself, `working_set_id`
+survives the API, the bundle round-trips into an empty home with its actors
+intact, `distil --model anthropic/claude-sonnet-5` crosses providers, and the
+model-list editor rewrites a playbook without losing a comment.
+
+Three more defects came out of it, and two are the same shape as the first nine —
+two correct pieces of work that had never been run against each other:
+
+- **The README's own first command failed 5 of 15 files.**
+  `examples/sample_data_en/kb/` was built in May as the sample input for
+  `kb load-dir`, which reads `doc-meta.json` + `chunks.jsonl` pairs; `README.md`
+  later pointed `opspilot ingest` at the same directory. The `.jsonl` files
+  raised `AdapterError`, and the five metadata sidecars were ingested *as
+  documents* — two of them ranked in the top five for "why would a pod be stuck
+  in CrashLoopBackOff". One directory feeding two commands, neither wrong on its
+  own. **Fixed** by splitting it: source documents stay in `kb/`, their frozen
+  projections move to `fixtures/`. `ingest examples/sample_data_en/kb/` now
+  reports `5 succeeded · 0 failed` and retrieves nothing but SOP prose;
+  `kb load-dir examples/sample_data_en/fixtures/` still loads all five pairs
+  with their hand-authored ids intact. No product code changed.
+- **A tool loop that exhausts its rounds answered with its own preamble.**
+  `chat_agent.py` fell back to the last round's `resp.content`, but the last
+  round produced a tool call, so the content was "Let me check the knowledge
+  base…". Observed on a real question: six `kb_search` rounds, three of them the
+  same query, 578 output tokens billed, and 62 characters delivered with seven
+  citations attached to them. **Fixed:** the cap bounds the *tool* rounds, and
+  one final round with no tools turns what was already retrieved into an answer.
+  The model keeps repeating a query it has already run — that is a separate,
+  cheaper problem, and it no longer costs the user an answer.
+- **`propose_actions` is opt-in and nothing opts in** — see the proposed-actions
+  section below.
+
+And one rough edge: the CLI writes as `cli:<osuser>` while the loopback API
+writes as `local-dev`, so `opspilot workingset status` reports nothing open
+while the web UI has a set open for the same person. `distil` escapes it by
+taking an explicit id; `status` and `close` do not.
+
+**Decided:** `kb/retrieval.py` joins the behaviour gate's protected paths.
+[#203](https://github.com/vicenteliu/OpsPilot/pull/203) shipped without gate
+evidence, and what it changed was which chunks reach the model at all — the
+input every one of the five prompt-driven behaviours is judged on. The list's
+own rule already settles it: over-triggering costs minutes, missing the change
+costs the reason the gate exists.
 
 **Model-comparison results that mean what they say.** Running the golden fixture
-across four models turned up three defects in a row, two fixed and one open:
+across four models turned up three defects in a row, all since fixed:
 
 - `SqliteStore` shared one unguarded connection across the executor threads every
   API route uses — eight concurrent `upsert_document` calls raised three
@@ -141,11 +182,12 @@ across four models turned up three defects in a row, two fixed and one open:
   had the same shape of bug against the same models
   ([#170](https://github.com/vicenteliu/OpsPilot/issues/170)). Both fixed; the
   posture behind them is [ADR-0034](docs/adr/0034-hosted-api-models-are-primary-local-inference-is-auxiliary.md).
-- **Open:** a `ProviderError` silently retries on `extra_models[0]`, so a
-  different model answers and the row keeps the primary's `model_ref`. Naming a
-  model that does not exist currently scores 0.903 and passes
-  ([#175](https://github.com/vicenteliu/OpsPilot/issues/175)). This is the next
-  thing to do — until it is fixed, no comparison table can be trusted.
+- A `ProviderError` silently retried on `extra_models[0]`, so a different model
+  answered and the row kept the primary's `model_ref` — naming a model that does
+  not exist scored 0.903 and passed
+  ([#175](https://github.com/vicenteliu/OpsPilot/issues/175)). Fixed: the swap
+  now writes a `model_fallback` trace event and re-labels the result with the
+  model that actually answered.
 
 **Skill distillation** — shipped
 ([ADR-0026](docs/adr/0026-distillation-target-follows-the-shape-of-the-knowledge.md),
@@ -267,8 +309,14 @@ artifact schema: `intent` is a `const`, so a mutation cannot be expressed.
 Widening it later is a visible, reviewable diff. Playbooks opt in with
 `propose_actions: true`; existing ones are unaffected.
 
-*Not yet:* the UI for previewing and executing — `GET /api/sessions/{id}/actions`,
-`POST .../actions/{ref}/preview` and `POST .../actions/execute` exist.
+The UI for previewing and executing ships with it, over
+`GET /api/sessions/{id}/actions`, `POST .../actions/{ref}/preview` and
+`POST .../actions/execute`.
+
+*Not yet:* **no playbook in this repo opts in**, so on a fresh install the path
+is dark — an escalated Session returns `{"actions": []}`. Outside this file the
+key is named nowhere: not in a playbook, not in ADR-0028, which says only that
+playbooks opt in. The feature is finished; its front door is not open.
 
 **Behaviour gate** — `make test-behaviour`. Five of this product's behaviours are
 produced by a *prompt*, not by code: an injected Memory constraint changing an

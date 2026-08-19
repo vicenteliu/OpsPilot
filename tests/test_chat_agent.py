@@ -7,7 +7,12 @@ from typing import Any
 
 import pytest
 
-from opspilot.orchestrator.chat_agent import CHAT_MAX_TURNS, run_chat_agent
+from opspilot.orchestrator.chat_agent import (
+    _EXHAUSTED_HINT,
+    _TOOL_HINT,
+    CHAT_MAX_TURNS,
+    run_chat_agent,
+)
 from opspilot.providers.types import ChatResponse, ToolCall, Usage
 from opspilot.skills import Skill, SkillRegistry
 
@@ -166,18 +171,61 @@ def test_weak_model_uses_prefetch_no_tools(canned_hits: None) -> None:
 
 def test_max_turns_cap_enforced(canned_hits: None) -> None:
     # Always returns a tool_call → the loop must stop at the cap, not spin forever.
-    provider = FakeProvider(
-        [
-            _resp(
-                "",
-                finish="tool_call",
-                tool_calls=[ToolCall(id="t", name="kb_search", arguments={"query": "q"})],
-            )
-        ]
+    searching = _resp(
+        "Let me check the knowledge base.",
+        finish="tool_call",
+        tool_calls=[ToolCall(id="t", name="kb_search", arguments={"query": "q"})],
     )
+    provider = FakeProvider([searching] * CHAT_MAX_TURNS + [_resp("rotate the cert with certbot")])
     result = run_chat_agent(_state(provider), [{"role": "user", "content": "q"}])
-    assert len(provider.calls) == CHAT_MAX_TURNS
-    assert result.content  # best-effort fallback text, not a crash
+
+    # The cap bounds the *tool* rounds; one final no-tools round turns what was
+    # already retrieved into an answer.
+    assert len(provider.calls) == CHAT_MAX_TURNS + 1
+    assert provider.calls[-1]["tools"] is None
+    # The preamble the model wrote before reaching for a tool is not an answer.
+    assert result.content == "rotate the cert with certbot"
+    # The final round is billed like every other one.
+    assert result.usage["input_tokens"] == 10 * (CHAT_MAX_TURNS + 1)
+
+
+def test_exhausted_loop_never_returns_the_preamble(canned_hits: None) -> None:
+    """A model that answers nothing must not have its "I'll go look" echoed back.
+
+    Regression for the second end-to-end run: six identical `kb_search` rounds
+    billed 578 output tokens and delivered "Let me check the knowledge base for
+    any relevant procedures." with seven citations attached to it.
+    """
+    preamble = "Let me check the knowledge base for any relevant procedures."
+    searching = _resp(
+        preamble,
+        finish="tool_call",
+        tool_calls=[ToolCall(id="t", name="kb_search", arguments={"query": "q"})],
+    )
+    # The final no-tools round returns nothing usable either.
+    provider = FakeProvider([searching] * CHAT_MAX_TURNS + [_resp("")])
+    result = run_chat_agent(_state(provider), [{"role": "user", "content": "q"}])
+    assert preamble not in result.content
+    assert result.content == "I couldn't finish searching in time — please narrow your question."
+
+
+def test_exhausted_round_drops_instructions_for_tools_it_no_longer_has(
+    canned_hits: None,
+) -> None:
+    """The final round has no tools, so it must not be told to call any."""
+    searching = _resp(
+        "",
+        finish="tool_call",
+        tool_calls=[ToolCall(id="t", name="kb_search", arguments={"query": "q"})],
+    )
+    provider = FakeProvider([searching] * CHAT_MAX_TURNS + [_resp("answered")])
+    run_chat_agent(_state(provider), [{"role": "user", "content": "q"}])
+
+    in_loop = provider.calls[0]["messages"][0].content
+    final = provider.calls[-1]["messages"][0].content
+    assert _TOOL_HINT in in_loop  # the tool rounds do offer kb_search
+    assert _TOOL_HINT not in final  # the round with tools=None does not
+    assert _EXHAUSTED_HINT in final
 
 
 def test_unknown_tool_is_reported_not_fatal(canned_hits: None) -> None:

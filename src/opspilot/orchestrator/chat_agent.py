@@ -91,6 +91,11 @@ _TOOL_HINT = (
     " You have a kb_search tool — call it to ground your answer in the knowledge base "
     "before answering, and base your answer on what it returns."
 )
+_EXHAUSTED_HINT = (
+    " You have used every search you are allowed. Answer now from the results already "
+    "above, and name what is still missing if they are not enough. Do not say you are "
+    "about to look something up — there are no searches left."
+)
 
 
 @dataclass
@@ -381,7 +386,6 @@ def run_chat_agent(
             tools += [t for t in domain_tools if t.name in allowed]
         return tools
 
-    resp: Any = None
     for _ in range(CHAT_MAX_TURNS):
         emit({"type": "status", "message": "Thinking…"})
         resp = provider.chat(
@@ -486,8 +490,22 @@ def run_chat_agent(
 
         return ChatAgentResult(str(resp.content), list(citations.values()), usage)
 
-    # Max turns exhausted — answer with whatever the last turn produced.
-    fallback = (resp.content if resp is not None else "") or (
-        "I couldn't finish searching in time — please narrow your question."
-    )
-    return ChatAgentResult(str(fallback), list(citations.values()), usage)
+    # Every round was a tool call, so the loop ran out before the model wrote an
+    # answer. The last response's content is the preamble it wrote *before*
+    # reaching for a tool — "Let me check the knowledge base…" — and returning
+    # that bills a full search loop and delivers a sentence about intending to
+    # search. Ask once more with no tools: the results are already in
+    # `provider_msgs`, and with nothing left to call, the only move is to answer
+    # from them.
+    # The prompt is rebuilt, not extended: `system_prompt` tells the model to
+    # call kb_search before answering, to call report_conflict *before it
+    # answers*, and which skills it may load — three instructions it can no
+    # longer follow. PROPOSAL_HINT survives because offering a fact to Memory is
+    # prose, not a tool call.
+    emit({"type": "status", "message": "Generating response…"})
+    final_prompt = _SYSTEM_PROMPT_BASE + memory_prefix + PROPOSAL_HINT + _EXHAUSTED_HINT
+    final_msgs = [Message(role="system", content=final_prompt)] + provider_msgs[1:]
+    final = provider.chat(final_msgs, model=model.name, params=sampling)
+    accumulate(final)
+    answer = final.content or "I couldn't finish searching in time — please narrow your question."
+    return ChatAgentResult(str(answer), list(citations.values()), usage)
