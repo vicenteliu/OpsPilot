@@ -14,10 +14,11 @@ concurrency:
 
 jobs:
   behaviour-gate-evidence:
-    # Four of this product's behaviours are produced by a prompt, not by code:
+    # Five of this product's behaviours are produced by a prompt, not by code:
     # an injected Memory constraint changing an answer, a Memory ↔ KB
     # contradiction being reported, a distilled Skill keeping its dead ends and
-    # its blanks, and an opted-in playbook proposing only read-only diagnostics.
+    # its blanks, an opted-in playbook proposing only read-only diagnostics, and
+    # the assistant offering a standing fact to Memory.
     # A reworded instruction can stop any of them, and none of them raises.
     #
     # `make test-behaviour` checks them by calling hosted models, which cannot
@@ -42,12 +43,18 @@ jobs:
           # Deliberately file-level and over-triggering. Being asked to run the
           # gate unnecessarily costs minutes; missing the change it exists for
           # costs the reason it exists.
+          #
+          # retrieval.py holds no prompt. It decides which chunks reach one, and
+          # #203 shipped a change that silently made hybrid search pure-vector
+          # for the shape of question this product mostly gets — every behaviour
+          # below is judged on evidence this file selects.
           PROTECTED='
           src/opspilot/orchestrator/chat_agent.py
           src/opspilot/orchestrator/ticket_summary.py
           src/opspilot/memory/inject.py
           src/opspilot/consultation/distil.py
           src/opspilot/sandbox/proposals.py
+          src/opspilot/kb/retrieval.py
           docs/specs/orchestrator/schemas/incident_summary_v1.schema.json
           '
           CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
@@ -70,7 +77,7 @@ jobs:
           echo ""
           echo "Run it and paste the result into the PR body:"
           echo "    make test-behaviour"
-          echo "    behaviour-gate: 4/4 passed (votes 3/3, 3/3, 3/3, 3/3)"
+          echo "    behaviour-gate: 6 passed (votes 3/3, 3/3, 3/3, 3/3, 3/3, 3/3)"
           echo ""
           echo "It is not run here on purpose — see this job's comment in ci.yml."
           exit 1
