@@ -25,6 +25,7 @@ from typing import Any
 import pytest
 
 from opspilot.sandbox import ProposalError, execute_proposal, preview_proposal, to_request
+from opspilot.sandbox.types import ActionResult, ApplyResult, DryRunPreview, RequestedPolicy
 
 SCHEMA = json.loads(
     Path("docs/specs/orchestrator/schemas/incident_summary_v1.schema.json").read_text()
@@ -44,11 +45,30 @@ def _proposal(**over: Any) -> dict[str, Any]:
     return base
 
 
-class _Result:
-    status = "applied"
-    stdout = "path list output"
-    stderr = ""
-    exit_code = 0
+def _dry_run_result() -> ActionResult:
+    """What SandboxEngine.dry_run actually returns: a preview, and no output.
+
+    The stub used to be a flat object with `status` / `stdout` / `exit_code` on
+    it, which is not the shape of `ActionResult` — it is the shape the readers
+    wrongly assumed, so it agreed with them and hid the bug.
+    """
+    return ActionResult(
+        action_id="act_1",
+        status="dry_run",
+        dry_run_preview=DryRunPreview(
+            command_preview="esxcli storage core path list",
+            docker_args=["docker", "run", "--rm", "alpine:3.19"],
+            effective_policy=RequestedPolicy(),
+        ),
+    )
+
+
+def _applied_result() -> ActionResult:
+    return ActionResult(
+        action_id="act_1",
+        status="applied",
+        apply_result=ApplyResult(exit_code=0, stdout="path list output", stderr="", duration_ms=12),
+    )
 
 
 class _Engine:
@@ -56,13 +76,13 @@ class _Engine:
         self.dry_runs: list[Any] = []
         self.executions: list[Any] = []
 
-    def dry_run(self, request: Any) -> _Result:
+    def dry_run(self, request: Any) -> ActionResult:
         self.dry_runs.append(request)
-        return _Result()
+        return _dry_run_result()
 
-    def execute(self, request: Any, *, force_approve: bool = False) -> _Result:
+    def execute(self, request: Any, *, force_approve: bool = False) -> ActionResult:
         self.executions.append(request)
-        return _Result()
+        return _applied_result()
 
 
 class _Trace:
@@ -116,7 +136,32 @@ class TestPreviewAndExecute:
         result = preview_proposal(engine, _proposal(), session_id="sess_1", proposed_by="model")
         assert engine.executions == []
         assert engine.dry_runs and engine.dry_runs[0].dry_run is True
-        assert result.dry_run_status == "applied"
+        assert result.dry_run_status == "dry_run"
+
+    def test_the_preview_shows_the_command_that_would_run(self) -> None:
+        # A dry run produces a preview, never stdout — reading `stdout` off the
+        # ActionResult left the UI's preview box permanently empty.
+        engine = _Engine()
+        result = preview_proposal(engine, _proposal(), session_id="sess_1", proposed_by="model")
+        assert result.dry_run_stdout == "esxcli storage core path list"
+
+    def test_the_outcome_of_an_execution_reaches_the_person_who_ran_it(self) -> None:
+        # exit_code / stdout / stderr live on `ActionResult.apply_result`. Read
+        # off the ActionResult itself they are silently None and "" — for every
+        # execution, which is the whole output of a diagnostic command.
+        engine, trace = _Engine(), _Trace()
+        result = execute_proposal(
+            engine,
+            _proposal(),
+            session_id="sess_1",
+            proposed_by="model",
+            actor="user:alice",
+            trace_writer=trace,
+        )
+        assert result.apply_result is not None
+        assert result.apply_result.stdout == "path list output"
+        # And the permanent record carries the outcome, not just the intent.
+        assert trace.events[-1].payload["details"]["exit_code"] == 0
 
     def test_execute_records_who_pressed_it(self) -> None:
         engine, trace = _Engine(), _Trace()
@@ -147,3 +192,33 @@ class TestOptIn:
 
         pb = load_playbook(Path("playbooks/pb_ticket_summary_en"))
         assert pb.propose_actions is False
+
+
+class TestThePromptDescribesWhatTheSchemaDemands:
+    """The prompt is the only place the model learns the shape it must produce.
+
+    The first real run with `propose_actions: true` returned entries carrying
+    exactly the three fields the prompt named — `intent`, `command`, `why` — and
+    none of the three it did not. The schema requires six, so the artifact failed
+    validation and the whole summary was lost, not just the actions.
+
+    The behaviour gate could not catch it: its case hands the model
+    `json.dumps(schema["properties"]["proposed_actions"]["items"])`, supplying
+    the very fields production omits.
+    """
+
+    ITEM = SCHEMA["properties"]["proposed_actions"]["items"]
+
+    def test_every_required_field_is_named(self) -> None:
+        from opspilot.orchestrator.ticket_summary import _PROPOSE_ACTIONS_PROMPT
+
+        missing = [f for f in self.ITEM["required"] if f"`{f}`" not in _PROPOSE_ACTIONS_PROMPT]
+        assert not missing, f"the model is never told to emit: {missing}"
+
+    def test_every_accepted_value_of_a_constrained_field_is_named(self) -> None:
+        from opspilot.orchestrator.ticket_summary import _PROPOSE_ACTIONS_PROMPT
+
+        for value in self.ITEM["properties"]["type"]["enum"]:
+            assert f'"{value}"' in _PROPOSE_ACTIONS_PROMPT, f"`type` may be {value}, unsaid"
+        const = self.ITEM["properties"]["intent"]["const"]
+        assert f'"{const}"' in _PROPOSE_ACTIONS_PROMPT

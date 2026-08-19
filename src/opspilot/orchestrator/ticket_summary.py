@@ -62,13 +62,25 @@ You may add a `proposed_actions` array. Each entry is **one read-only diagnostic
 command** a human might run to learn something you could not determine from the
 input: collect state, run a query, pull a log.
 
-- `intent` is always `"diagnose"`. There is no way to propose a change here, and
-  you must not try to express one — a command that modifies anything is out of
-  scope for this field.
-- Propose only what genuinely narrows the problem. An empty array is the right
-  answer when the input already says enough.
-- `why` is read by the person deciding whether to run it. Say what the output
+Every entry needs all six of these. An entry missing one fails validation and
+costs the whole summary, not just the action:
+
+- `ref` — `"pa-1"`, `"pa-2"`, … numbered from 1 in the order you list them.
+- `intent` — always the string `"diagnose"`. There is no way to propose a change
+  here, and you must not try to express one: a command that modifies anything is
+  out of scope for this field.
+- `type` — `"shell"` or `"sql_readonly"`. Nothing else is accepted.
+- `command` — the exact command to run, as one string.
+- `target` — where it runs: the host, service, or database it applies to. Say
+  `"unknown"` if the input does not identify one.
+- `why` — read by the person deciding whether to run it. Say what the output
   would tell them, not what the command does.
+
+`expected_output` is optional: add it when you can say what a normal result looks
+like, so a person can tell at a glance whether the answer is surprising.
+
+Propose only what genuinely narrows the problem. An empty array is the right
+answer when the input already says enough.
 
 Nothing you put here runs by itself. A person reads it, sees a dry-run preview,
 and decides."""
