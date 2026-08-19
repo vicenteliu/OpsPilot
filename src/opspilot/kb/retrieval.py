@@ -90,6 +90,11 @@ class Hit:
     valid_from: str | None = None
     has_open_conflicts: bool = False
     source_authority: str | None = None
+    # A human overrode this chunk's content in place. Beside source_authority
+    # (what the citation rests on) and has_open_conflicts (whether it is
+    # disputed), this says the text is not what the source file says — the one
+    # change a person made deliberately, and the one that was unmarked (#159).
+    has_correction: bool = False
 
 
 def kb_search(
@@ -190,6 +195,7 @@ def kb_search(
         {str(rows_by_chunk[cid]["document_id"]) for cid in candidate_ids if cid in rows_by_chunk}
     )
     source_authorities = sqlite.get_source_authorities(candidate_doc_ids)
+    corrected = sqlite.get_corrected_chunk_ids(candidate_ids)
 
     def _sort_key(cid: str) -> tuple[float, int, str]:
         score = rrf_scores[cid]
@@ -231,6 +237,7 @@ def kb_search(
                 valid_from=row.get("valid_from"),
                 has_open_conflicts=doc_id in docs_with_conflicts,
                 source_authority=source_authorities.get(doc_id),
+                has_correction=cid in corrected,
             )
         )
     return out
