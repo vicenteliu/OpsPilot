@@ -143,13 +143,18 @@ async def execute_action(
     except ProposalError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
+    # The output lives on `ActionResult.apply_result`, the way /api/sandbox
+    # already reads it. Taken off the ActionResult these were silently None and
+    # "" on every execution — and the output is the entire point of running a
+    # diagnostic.
+    applied = getattr(result, "apply_result", None)
     return {
         "ref": body.ref,
         "executed_by": identity.name,
         "status": str(getattr(result, "status", "unknown")),
-        "exit_code": getattr(result, "exit_code", None),
-        "stdout": str(getattr(result, "stdout", "") or "")[:20_000],
-        "stderr": str(getattr(result, "stderr", "") or "")[:8_000],
+        "exit_code": getattr(applied, "exit_code", None),
+        "stdout": str(getattr(applied, "stdout", "") or "")[:20_000],
+        "stderr": str(getattr(applied, "stderr", "") or "")[:8_000],
     }
 
 
