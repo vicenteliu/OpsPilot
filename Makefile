@@ -1,4 +1,4 @@
-.PHONY: install install-dev install-ui dev ensure-venv test test-cov test-ollama lint format \
+.PHONY: install install-dev install-ui dev ensure-venv test test-cov test-ollama test-behaviour lint format \
         typecheck validate serve build-ui lint-ui ci-ui ci \
         ollama-up ollama-down ollama-pull ollama-logs harness golden golden-kb docker-build \
         rust-dev rust-build bench clean help golden-openrouter golden-gemini \
@@ -48,10 +48,14 @@ ensure-venv: ## Fail fast if venv / dev extras not installed.
 	}
 
 test: ensure-venv ## Run unit tests (skip slow / requires_ollama).
-	$(PYTEST) tests/ -m "not slow and not requires_ollama"
+	$(PYTEST) tests/ -m "not slow and not requires_ollama and not requires_api_key"
 
 test-cov: ensure-venv ## Run tests with coverage.
-	$(PYTEST) tests/ --cov=opspilot --cov-report=term-missing -m "not slow and not requires_ollama"
+	$(PYTEST) tests/ --cov=opspilot --cov-report=term-missing -m "not slow and not requires_ollama and not requires_api_key"
+
+test-behaviour: ensure-venv ## Behaviour gate — does the prompt still drive the behaviour? (needs ANTHROPIC_API_KEY).
+	@echo "Four model-facing behaviours, best of 3. Paste the summary into the PR body."
+	$(PYTEST) tests/ -m "requires_api_key" -p no:randomly
 
 test-ollama: ensure-venv ## Run tests that require a running Ollama (assumes `make ollama-up && make ollama-pull`).
 	$(PYTEST) tests/ -m "requires_ollama"
