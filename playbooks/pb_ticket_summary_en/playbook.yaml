@@ -20,6 +20,13 @@ description: |
 # Path is resolved relative to this file.
 system_prompt: "prompt.md"
 
+# Read-only diagnostics the Session may propose for a human to run (ADR-0028).
+# Off by default: a proposal is a command someone will read at 2am, and the
+# approval gate behind it is a heuristic denylist, not a proof. Uncomment to
+# opt this playbook in — `intent` is a schema `const`, so nothing that mutates
+# can be expressed either way.
+# propose_actions: true
+
 # Output artifact schema (registered in opspilot.schemas registry).
 output_schema: "incident_summary_v1"
 
