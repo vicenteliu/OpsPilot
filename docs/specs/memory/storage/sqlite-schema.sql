@@ -156,8 +156,14 @@ END;
 CREATE TABLE IF NOT EXISTS kb_conflicts (
   id              TEXT PRIMARY KEY
                       CHECK (id GLOB 'conf_[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'),
-  chunk_a_id      TEXT NOT NULL REFERENCES kb_chunks(id) ON DELETE CASCADE,
-  chunk_b_id      TEXT NOT NULL REFERENCES kb_chunks(id) ON DELETE CASCADE,
+  -- No cascade from kb_chunks on purpose. A Resolution records who decided
+  -- which knowledge is trustworthy, and a re-ingest that re-chunks the text
+  -- must not delete that judgement — the Asset event precedent, where the log
+  -- outlives the row it describes. Orphans are inert: lookups are by live
+  -- chunk id, so a settled conflict about a chunk that no longer exists simply
+  -- never matches. See #194.
+  chunk_a_id      TEXT NOT NULL,
+  chunk_b_id      TEXT NOT NULL,
   doc_a_id        TEXT NOT NULL REFERENCES kb_documents(id) ON DELETE CASCADE,
   doc_b_id        TEXT NOT NULL REFERENCES kb_documents(id) ON DELETE CASCADE,
   conflict_type   TEXT NOT NULL CHECK (conflict_type IN (
@@ -185,7 +191,13 @@ CREATE INDEX IF NOT EXISTS idx_conf_detected   ON kb_conflicts(detected_at DESC)
 CREATE TABLE IF NOT EXISTS kb_corrections (
   id           TEXT PRIMARY KEY
                    CHECK (id GLOB 'corr_[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'),
-  chunk_id     TEXT NOT NULL REFERENCES kb_chunks(id) ON DELETE CASCADE,
+  -- No cascade, and for the same reason as kb_conflicts above: this row holds
+  -- the old content and who overrode it, which is precisely what fixing the
+  -- source file used to destroy (#194).
+  chunk_id     TEXT NOT NULL,
+  -- So an orphaned correction still names what it was about, the way an Asset
+  -- event's closing snapshot names the device.
+  document_id  TEXT NOT NULL DEFAULT '',
   corrected_by TEXT NOT NULL,
   reason       TEXT NOT NULL,
   old_content  TEXT NOT NULL,
