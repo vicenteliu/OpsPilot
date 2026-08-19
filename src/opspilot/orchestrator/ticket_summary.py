@@ -167,8 +167,6 @@ def run_ticket_summary(
             #     The trace still gets a tool_call + tool_result pair so the
             #     harness's _retrieved_chunks() walker can find the chunks.
             effective_system_prompt = pb.system_prompt
-            if pb.propose_actions:
-                effective_system_prompt += _PROPOSE_ACTIONS_PROMPT
             effective_tools: list[ToolDef] = [tool_def, *mcp_tool_defs]
             effective_max_turns = pb.limits.max_turns
             prefetch_hits: list[dict[str, Any]] = []
@@ -183,6 +181,13 @@ def run_ticket_summary(
                 )
                 effective_tools = []
                 effective_max_turns = 1
+
+            # After the prefetch branch, not before: `_do_prefetch` rebuilds the
+            # prompt from `pb.system_prompt`, so appending earlier meant the
+            # opt-in was silently dropped in prefetch mode — which is every
+            # shipped playbook that would propose anything.
+            if pb.propose_actions:
+                effective_system_prompt += _PROPOSE_ACTIONS_PROMPT
 
             # 3c. system + user prompts (post-prefetch so trace mirrors the
             #     content actually fed to the model).

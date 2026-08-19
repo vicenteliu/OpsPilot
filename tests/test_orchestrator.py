@@ -16,7 +16,7 @@ import dataclasses
 import json
 import math
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 
@@ -779,6 +779,49 @@ def test_prefetch_query_fallback_when_fields_missing(
     tool_calls = [r for r in rows if r["type"] == "tool_call"]
     assert len(tool_calls) == 1
     assert tool_calls[0]["args"]["query"]  # non-empty
+
+
+@pytest.mark.parametrize("mode", ["tool", "prefetch"])
+def test_propose_actions_reaches_the_model_in_every_retrieval_mode(
+    mode: Literal["tool", "prefetch"],
+    session_manager: SessionManager,
+    populated_kb: tuple[SqliteStore, LanceStore],
+    redactor: Redactor,
+) -> None:
+    """Opting in must actually put the instruction in the system prompt.
+
+    `_do_prefetch` rebuilds the prompt from `pb.system_prompt`, so in prefetch
+    mode the opt-in was silently discarded — and every shipped playbook that
+    would propose anything is prefetch. The behaviour gate never caught it
+    because its case builds the system prompt by hand.
+    """
+    from opspilot.orchestrator.ticket_summary import _PROPOSE_ACTIONS_PROMPT
+
+    sqlite, lance = populated_kb
+    scripted = _scripted_prefetch_one_round() if mode == "prefetch" else _scripted_two_round()
+    provider = _ScriptedProvider(scripted)
+
+    request = _request(SAMPLE_TICKET, mode=mode)
+    request = dataclasses.replace(
+        request, playbook=dataclasses.replace(request.playbook, propose_actions=True)
+    )
+    result = run_ticket_summary(
+        request,
+        session_manager=session_manager,
+        provider=provider,
+        redactor=redactor,
+        embed_fn=_topic_embed,
+        sqlite_store=sqlite,
+        lance_store=lance,
+    )
+
+    sdir = session_manager.session_dir(result.session_id)
+    rows = [
+        json.loads(line) for line in (sdir / "trace.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    sys_prompts = [r for r in rows if r["type"] == "prompt" and r["role"] == "system"]
+    assert sys_prompts, "no system prompt was recorded"
+    assert _PROPOSE_ACTIONS_PROMPT in sys_prompts[0]["content"]
 
 
 def _hit(chunk_id: str, document_id: str, **cit: object) -> dict:

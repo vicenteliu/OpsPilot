@@ -84,16 +84,51 @@ _console = Console()
 _err = Console(stderr=True, style="red")
 
 
+def _single_operator_install() -> bool:
+    """True when nobody has configured identity yet.
+
+    Mirrors the condition in ``auth.deps.current_identity``: no user account and
+    no service token. A missing ``users`` table means auth has never been set up,
+    which is the same answer.
+    """
+    import sqlite3
+
+    cfg = load_config()
+    if cfg.api_token:
+        return False
+    db = cfg.home / "kb" / "sqlite.db"
+    if not db.is_file():
+        return True
+    conn = None
+    try:
+        conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+        return int(conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]) == 0
+    except sqlite3.Error:
+        return True
+    finally:
+        if conn is not None:
+            conn.close()
+
+
 def _cli_actor() -> str:
     """Attribution for records written outside an HTTP request.
 
-    There is no auth context on the CLI, so the OS user is the best available
-    answer. It is advisory, not evidence: anyone who can run this can also edit
-    the SQLite file directly. Over HTTP the actor comes from the caller's
-    Identity instead.
+    On an install nobody has configured identity for, the API answers
+    ``local-dev`` for the same human, and two names for one person splits their
+    Working set and their Memory entries by whichever surface they happened to
+    use — `opspilot workingset status` reported nothing open while the web UI
+    had a set open for them. So under exactly that condition the CLI answers
+    ``local-dev`` too.
+
+    Once identity means something the two diverge again, on purpose: there is no
+    auth context on the CLI, so the OS user is the best available answer. It is
+    advisory, not evidence — anyone who can run this can also edit the SQLite
+    file directly. Over HTTP the actor comes from the caller's Identity instead.
     """
     import getpass
 
+    if _single_operator_install():
+        return "local-dev"
     return f"cli:{getpass.getuser()}"
 
 
