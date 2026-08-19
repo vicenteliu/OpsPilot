@@ -174,6 +174,7 @@ async def search_kb(
                 "rank_fts": h.rank_fts,
                 "valid_from": h.valid_from,
                 "has_open_conflicts": h.has_open_conflicts,
+                "has_correction": h.has_correction,
                 # Provenance of the citation. Retrieval has always resolved it
                 # onto the Hit; it just never reached the caller, which is why
                 # no interface could show what an answer rested on.

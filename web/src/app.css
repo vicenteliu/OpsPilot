@@ -887,6 +887,11 @@ button:focus-visible {
   .btn-b-wins { background: var(--info-bg); color: var(--info-text); border-color: var(--info-border); }
   .row-conflict { background: var(--row-conflict-bg); }
   .warn-badge { display: inline-block; margin-left: 4px; color: var(--warn-text2); font-size: 0.85rem; cursor: help; }
+  /* A person overrode this chunk's content in place. Beside .warn-badge (the
+     source document is disputed), this says the text is not what the source
+     file says — the one change made deliberately, and the one that used to be
+     invisible. See #159. */
+  .override-badge { display: inline-block; margin-left: 4px; color: var(--primary); font-size: 0.85rem; cursor: help; }
 
   .status-open { background: var(--warn-bg); color: var(--warn-text); }
   .status-a_wins { background: var(--success-bg); color: var(--success-text); }

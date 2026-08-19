@@ -414,14 +414,20 @@ def kb_search_cmd(
     table.add_column("RRF", justify="right")
     table.add_column("Ranks (V/F)", justify="right")
     table.add_column("Snippet", overflow="fold")
+    # ⚠ the source document has an open conflict; ✎ a person overrode this chunk.
 
     for i, h in enumerate(hits, start=1):
         snippet = (h.content or "").strip().replace("\n", " ")[:80]
         ranks = f"{h.rank_vector or '-'}/{h.rank_fts or '-'}"
+        # An overridden chunk is not what the source file says, and it used to
+        # be indistinguishable from an ingested one (#159).
+        marks = ("[yellow]⚠[/yellow]" if h.has_open_conflicts else "") + (
+            "[cyan]✎[/cyan]" if h.has_correction else ""
+        )
         table.add_row(
             str(i),
             h.chunk_id,
-            h.document_id,
+            f"{h.document_id} {marks}".rstrip(),
             f"{h.score:.4f}",
             ranks,
             snippet,

@@ -164,6 +164,7 @@
               <td class="mono">
                 {h.document_id.slice(0, 20)}
                 {#if h.has_open_conflicts}<span class="warn-badge" title="Source document has open conflicts">⚠</span>{/if}
+                {#if h.has_correction}<span class="override-badge" title="A person overrode this chunk's content — it is not what the source file says">✎</span>{/if}
               </td>
               <td>
                 <span class="authority"

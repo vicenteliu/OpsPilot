@@ -265,6 +265,10 @@ export interface KBHit {
   rank_fts: number | null;
   valid_from: string | null;
   has_open_conflicts: boolean;
+  // A human overrode this chunk's content in place, so it is not what the
+  // source file says. Marked because an overridden chunk otherwise looks
+  // exactly like an ingested one (#159).
+  has_correction: boolean;
   source_authority: string | null;
   content: string;
 }

@@ -547,6 +547,25 @@ class SqliteStore:
         return {str(r["id"]): str(r["source_authority"]) for r in cur.fetchall()}
 
     @_serialised
+    def get_corrected_chunk_ids(self, chunk_ids: list[str]) -> set[str]:
+        """Which of *chunk_ids* carry a human **Correction**.
+
+        The content of a corrected chunk is the one thing somebody changed on
+        purpose, and until now it was the one thing a reader could not see. An
+        overridden chunk looked exactly like an ingested one, so an answer
+        disagreeing with the source file read as a stale index rather than as a
+        deliberate override (#159).
+        """
+        if not chunk_ids:
+            return set()
+        marks = ",".join("?" * len(chunk_ids))
+        cur = self._conn.execute(
+            f"SELECT DISTINCT chunk_id FROM kb_corrections WHERE chunk_id IN ({marks})",  # noqa: S608
+            tuple(chunk_ids),
+        )
+        return {str(r[0]) for r in cur.fetchall()}
+
+    @_serialised
     def get_superseded_chunk_ids(self, chunk_ids: list[str]) -> set[str]:
         """Return the subset of *chunk_ids* where ``superseded_by IS NOT NULL``."""
         if not chunk_ids:
