@@ -53,13 +53,6 @@ def _safe_fts_query(q: str) -> str:
 RRF_K: Final[int] = 60
 
 # Source-authority tie-breaker: higher rank wins when RRF scores are equal.
-_AUTHORITY_RANK: Final[dict[str, int]] = {
-    "official": 3,
-    "vendor": 2,
-    "internal": 1,
-    "unverified": 0,
-}
-
 # Default mixing weights from docs/specs/memory/SPEC.md §156. Vector slightly heavier
 # because dense retrieval generalises across paraphrase + cross-language;
 # keyword catches exact-token hits that embeddings miss.
@@ -197,15 +190,24 @@ def kb_search(
     source_authorities = sqlite.get_source_authorities(candidate_doc_ids)
     corrected = sqlite.get_corrected_chunk_ids(candidate_ids)
 
-    def _sort_key(cid: str) -> tuple[float, int, str]:
-        score = rrf_scores[cid]
+    def _sort_key(cid: str) -> tuple[float, str, str]:
+        """Relevance, then recency, then the id.
+
+        ``source_authority`` is deliberately absent (ADR-0037). It describes what
+        a citation rests on; it does not rank one. Contradictions are settled by
+        a recorded **Resolution** that marks the loser superseded, and superseded
+        chunks never reach this sort at all — so a per-tier weight here would be
+        a standing preference between tiers making the same silent judgement on
+        every query, which is exactly what ADR-0029 rejected.
+
+        It used to appear as a tie-break behind the score, where under the
+        default weights it decided **6 rank pairs out of 369,370** and none
+        involving an ANN rank better than 18. The chunk id is the final key so
+        the order is total and stable.
+        """
         row = rows_by_chunk.get(cid) or {}
-        doc_id = str(row.get("document_id", ""))
-        authority = source_authorities.get(doc_id, "internal")
-        authority_rank = _AUTHORITY_RANK.get(authority, 1)
-        # Newer valid_from wins ties within the same authority tier.
         vf: str = row.get("valid_from") or ""
-        return (score, authority_rank, vf)
+        return (rrf_scores[cid], vf, cid)
 
     ordered_ids = sorted(candidate_ids, key=_sort_key, reverse=True)[:top_k]
 

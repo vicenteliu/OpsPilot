@@ -257,6 +257,13 @@ def run_chat_agent(
                     "source_path": c.get("source_path"),
                     "heading_path": c.get("heading_path") or [],
                     "snippet": (h.get("content") or "")[:240],
+                    # What this citation rests on. It never reorders anything
+                    # (ADR-0037) — which is precisely why the reader has to see
+                    # it: a descriptive signal nobody sees is not descriptive,
+                    # it is absent. The reader of an answer is the one most
+                    # likely to be misled, and had no way to tell a signed-off
+                    # SOP from a scraped forum post.
+                    "source_authority": h.get("source_authority"),
                 }
 
     def collect_web(payload: dict[str, Any]) -> None:
