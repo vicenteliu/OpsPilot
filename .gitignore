@@ -260,8 +260,11 @@ harness-results-*.jsonl
 .agents/
 .claude/
 .serena/
-# Root-anchored: machine-local installed skills live in /skills/, while the
-# tracked skill SPEC lives in docs/specs/skills/ and must NOT be ignored
+# Root-anchored: /skills/ is a symlink farm the skill installer generates over
+# .agents/skills/ — third-party dev skills, unrelated to the product's Skills,
+# which live in agent_skills/ (see CONTEXT.md). Anchored so the tracked spec at
+# docs/specs/skills/ is not ignored. Note this rule would also swallow a tracked
+# root skills/ — don't add one; agent_skills/ is the product's directory.
 /skills/
 skills-lock.json
 
