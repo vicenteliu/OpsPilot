@@ -9,7 +9,9 @@ version bump, an edited schema — any of them can stop one of these working, an
 2. the assistant reports a Memory ↔ KB contradiction instead of quietly picking;
 3. a distilled Skill keeps the dead ends and leaves its two load-bearing fields
    blank;
-4. an opted-in playbook proposes only read-only diagnostics.
+4. an opted-in playbook proposes only read-only diagnostics;
+5. the assistant says a standing fact belongs in Memory — and stays quiet when
+   the turn holds nothing of the kind.
 
 Each was verified once by hand while it was built, and the evidence was thrown
 away. That is the definition of a missing gate.
@@ -97,13 +99,21 @@ def provider() -> Any:
     return AnthropicProvider()
 
 
-def _ask(provider: Any, system: str, user: str, *, model: str, tools: Any = None) -> Any:
+def _ask(
+    provider: Any,
+    system: str,
+    user: str,
+    *,
+    model: str,
+    tools: Any = None,
+    max_tokens: int = 900,
+) -> Any:
     from opspilot.providers.types import Message, SamplingParams
 
     return provider.chat(
         [Message(role="system", content=system), Message(role="user", content=user)],
         model=model,
-        params=SamplingParams(max_tokens=900),
+        params=SamplingParams(max_tokens=max_tokens),
         tools=tools,
     )
 
@@ -269,3 +279,61 @@ def test_proposed_actions_stay_read_only(provider: Any) -> None:
         assert all(a.get("type") in ("shell", "sql_readonly") for a in actions)
 
     assert_behaviour("proposals stay read-only", best_of(check))
+
+
+# ── 5. A standing fact is offered to Memory, and only then ────────────
+
+_MARKER = "worth recording as a memory entry"
+_BASE = "You are OpsPilot, an intelligent IT operations assistant. Answer concisely."
+_STANDING = (
+    "Rolling back the deployment did not help — the previous revision crashloops "
+    "identically on a missing DB_PASSWORD, and the Secret exists. What is going on, "
+    "and is there anything here worth writing down so nobody re-derives it?"
+)
+_ROUTINE = "What does exit code 137 mean on a Kubernetes pod? One sentence."
+
+
+def test_a_standing_fact_is_offered_to_memory(provider: Any) -> None:
+    """A/B on the label, because the label is what a person acts on.
+
+    `memory_block` renders only entries that already exist and returns "" on an
+    empty store — every fresh install — so before PROPOSAL_HINT the assistant
+    was never told Memory existed. Asked this exact question it produced a
+    textbook entry and directed it to a *Wiki page*.
+    """
+    from opspilot.memory import PROPOSAL_HINT
+
+    def check() -> None:
+        # The playbook's own budget for this model, not the 900 the other cases
+        # use. The label is the answer's last line, so a `finish_reason: length`
+        # cuts exactly what is being measured — at 900 and at 2000 every miss was
+        # a truncation mid-sentence, not the model ignoring the hint.
+        without = (
+            _ask(provider, _BASE, _STANDING, model=CHAT_MODEL, max_tokens=8192).content or ""
+        ).lower()
+        with_hint = (
+            _ask(
+                provider,
+                _BASE + PROPOSAL_HINT,
+                _STANDING,
+                model=CHAT_MODEL,
+                max_tokens=8192,
+            ).content
+            or ""
+        ).lower()
+        assert _MARKER not in without, "the control answer already offered it to Memory"
+        assert _MARKER in with_hint, "the hint did not produce the label a person pins on"
+
+    assert_behaviour("memory proposal", best_of(check))
+
+
+def test_a_routine_answer_offers_nothing(provider: Any) -> None:
+    """The failure mode of the fix: a hint that labels every turn is worse than
+    no hint, because a label that always fires carries no information."""
+    from opspilot.memory import PROPOSAL_HINT
+
+    def check() -> None:
+        answer = _ask(provider, _BASE + PROPOSAL_HINT, _ROUTINE, model=CHAT_MODEL).content or ""
+        assert _MARKER not in answer.lower(), "a definition question was offered to Memory"
+
+    assert_behaviour("memory proposal restraint", best_of(check))
