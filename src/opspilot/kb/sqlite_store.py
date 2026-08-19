@@ -606,6 +606,105 @@ class SqliteStore:
     # ── kb_corrections ───────────────────────────────────────────────
 
     @_serialised
+    def delete_document(self, document_id: str, *, actor: str, reason: str) -> dict[str, Any]:
+        """Remove a document, its chunks, and the decisions that quote it.
+
+        Ingest is the one KB operation a user is invited to run repeatedly
+        against their own directories, so ingesting the wrong folder — or one
+        with secrets in it — is an ordinary mistake, and until now a permanent
+        one. That case is what makes this a **hard** delete rather than a
+        retirement: a soft delete leaves the content in the database, which does
+        not answer "we ingested something we should not have".
+
+        Corrections and settled conflicts about this document go with it, and
+        that is not in tension with #194. That change stopped a re-ingest
+        *accidentally* destroying a judgement nobody asked to delete. This is
+        somebody deliberately saying the content should not be here, and a
+        correction quotes the content it replaced.
+
+        What survives is a ``kb_deletions`` row: what went, who decided, and why,
+        quoting nothing. The Asset event precedent — the log outlives the row.
+
+        Returns the removed ``vector_ids`` (the caller clears LanceDB; this
+        method touches SQLite only) and the counts written to the log.
+        """
+        from ..timeutil import now_rfc3339
+
+        actor, reason = actor.strip(), reason.strip()
+        if not actor:
+            raise ValueError("actor is required and comes from the caller's identity")
+        if not reason:
+            raise ValueError("reason is required: a deletion nobody can explain is not auditable")
+        doc = self.get_document(document_id)
+        if doc is None:
+            raise KeyError(f"document {document_id!r} not found")
+
+        chunks = self.get_chunks_by_document_id(document_id)
+        vector_ids = [str(c["vector_id"]) for c in chunks if c.get("vector_id")]
+        chunk_ids = [str(c["id"]) for c in chunks]
+
+        corrections = conflicts = 0
+        if chunk_ids:
+            marks = ",".join("?" * len(chunk_ids))
+            corrections = self._conn.execute(
+                f"DELETE FROM kb_corrections WHERE chunk_id IN ({marks})",  # noqa: S608
+                tuple(chunk_ids),
+            ).rowcount
+            conflicts = self._conn.execute(
+                f"DELETE FROM kb_conflicts WHERE chunk_a_id IN ({marks}) "  # noqa: S608
+                f"OR chunk_b_id IN ({marks})",  # noqa: S608
+                (*chunk_ids, *chunk_ids),
+            ).rowcount
+
+        # kb_chunks cascades from kb_documents, and that cascade fires the FTS
+        # AFTER DELETE trigger, so keyword search drops the content too —
+        # verified, and both were traps when #156 was filed.
+        self._conn.execute("DELETE FROM kb_documents WHERE id = ?", (document_id,))
+
+        record = {
+            "id": "del_" + secrets.token_hex(4),
+            "document_id": document_id,
+            "source_path": str(doc.get("source_path") or ""),
+            "title": str(doc.get("title") or ""),
+            "chunks_removed": len(chunk_ids),
+            "corrections_removed": max(corrections, 0),
+            "conflicts_removed": max(conflicts, 0),
+            "reason": reason,
+            "actor": actor,
+            "deleted_at": now_rfc3339(),
+        }
+        self._conn.execute(
+            "INSERT INTO kb_deletions (id, document_id, source_path, title, chunks_removed, "
+            "corrections_removed, conflicts_removed, reason, actor, deleted_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?)",
+            tuple(
+                record[k]
+                for k in (
+                    "id",
+                    "document_id",
+                    "source_path",
+                    "title",
+                    "chunks_removed",
+                    "corrections_removed",
+                    "conflicts_removed",
+                    "reason",
+                    "actor",
+                    "deleted_at",
+                )
+            ),
+        )
+        self._conn.commit()
+        return {**record, "vector_ids": vector_ids}
+
+    @_serialised
+    def list_deletions(self, *, limit: int = 100) -> list[dict[str, Any]]:
+        """What was removed, by whom and why. Never the content."""
+        cur = self._conn.execute(
+            "SELECT * FROM kb_deletions ORDER BY deleted_at DESC LIMIT ?", (limit,)
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+    @_serialised
     def add_correction(
         self,
         chunk_id: str,

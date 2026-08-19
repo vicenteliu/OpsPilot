@@ -188,6 +188,25 @@ CREATE INDEX IF NOT EXISTS idx_conf_detected   ON kb_conflicts(detected_at DESC)
 ------------------------------------------------------------
 -- 6. KB CORRECTIONS (knowledge-correction records)
 ------------------------------------------------------------
+-- A removed document leaves a record of the removal, not of its content.
+-- Deleting is how "we ingested something we should not have" is answered, so
+-- the row deliberately quotes nothing — it names what went, who decided, and
+-- why. The Asset event precedent: the log outlives the row it describes (#156).
+CREATE TABLE IF NOT EXISTS kb_deletions (
+  id                   TEXT PRIMARY KEY
+                           CHECK (id GLOB 'del_[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'),
+  document_id          TEXT NOT NULL,
+  source_path          TEXT NOT NULL DEFAULT '',
+  title                TEXT NOT NULL DEFAULT '',
+  chunks_removed       INTEGER NOT NULL DEFAULT 0,
+  corrections_removed  INTEGER NOT NULL DEFAULT 0,
+  conflicts_removed    INTEGER NOT NULL DEFAULT 0,
+  reason               TEXT NOT NULL,
+  actor                TEXT NOT NULL,
+  deleted_at           TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_del_at ON kb_deletions(deleted_at DESC);
+
 CREATE TABLE IF NOT EXISTS kb_corrections (
   id           TEXT PRIMARY KEY
                    CHECK (id GLOB 'corr_[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'),

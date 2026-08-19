@@ -904,6 +904,76 @@ def kb_correct_cmd(
         raise typer.Exit(1) from e
 
 
+@kb_app.command("delete")
+def kb_delete_cmd(
+    document_id: str = typer.Argument(..., help="Document to remove (doc_xxxxxxxx)."),
+    reason: str = typer.Option(..., "--reason", "-m", help="Why it is being removed."),
+    yes: bool = typer.Option(False, "--yes", help="Skip the confirmation."),
+) -> None:
+    """Remove a document, its chunks, its vectors, and the decisions quoting it.
+
+    A hard delete, not a retirement: the case this answers is "we ingested
+    something we should not have", and a soft delete leaves the content in the
+    database. What survives is a record of the removal — what went, who decided,
+    and why — quoting nothing.
+    """
+    from .embedding import EMBED_DIM
+
+    cfg = load_config()
+    sqlite, lance = _open_kb_stores(
+        home=cfg.home, embedding_dim=EMBED_DIM, embedding_model=cfg.embed_model
+    )
+    doc = sqlite.get_document(document_id)
+    if doc is None:
+        _err.print(f"[red]not found:[/red] {document_id}")
+        raise typer.Exit(code=1)
+    chunks = len(sqlite.get_chunks_by_document_id(document_id))
+    if not yes:
+        _console.print(
+            f"[yellow]Deleting[/yellow] {document_id} — {doc.get('title') or '(untitled)'} "
+            f"({chunks} chunk(s)), and any corrections or conflicts quoting it."
+        )
+        if not typer.confirm("This cannot be undone. Continue?"):
+            raise typer.Exit(code=1)
+
+    report = sqlite.delete_document(document_id, actor=_cli_actor(), reason=reason)
+    # SQLite is done; the vectors are this caller's job.
+    if report["vector_ids"]:
+        lance.delete_by_vector_ids(report["vector_ids"])
+    _console.print(
+        f"[green]{document_id}[/green] removed — {report['chunks_removed']} chunk(s), "
+        f"{len(report['vector_ids'])} vector(s), {report['corrections_removed']} correction(s), "
+        f"{report['conflicts_removed']} conflict(s)"
+    )
+    _console.print(f"  · recorded as {report['id']} by {report['actor']}")
+
+
+@kb_app.command("deletions")
+def kb_deletions_cmd(
+    limit: int = typer.Option(20, "--limit", "-n"),
+) -> None:
+    """What has been removed from the KB, by whom and why."""
+    cfg = load_config()
+    sqlite = SqliteStore(init_sqlite(cfg.home / "kb" / "sqlite.db"))
+    rows = sqlite.list_deletions(limit=limit)
+    if not rows:
+        _console.print("[green]Nothing has been deleted.[/green]")
+        return
+    table = Table(title="KB deletions")
+    for col in ("When", "Document", "Title", "Removed", "By", "Reason"):
+        table.add_column(col, overflow="fold")
+    for r in rows:
+        table.add_row(
+            r["deleted_at"][:19],
+            r["document_id"],
+            r["title"] or "—",
+            f"{r['chunks_removed']}c/{r['corrections_removed']}corr/{r['conflicts_removed']}conf",
+            r["actor"],
+            r["reason"],
+        )
+    _console.print(table)
+
+
 @kb_app.command("corrections")
 def kb_corrections_cmd(
     chunk_id: str = typer.Option("", "--chunk", "-c", help="Filter to a specific chunk ID."),
