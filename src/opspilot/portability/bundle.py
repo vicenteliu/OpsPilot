@@ -161,7 +161,7 @@ def import_bundle(
     stats.wiki_pages = len(list((staging_dir / "wiki").rglob("*.md")))
     if stats.kb_documents:
         stats.notes.append(
-            f"{stats.kb_documents} KB document(s) staged — run `opspilot kb ingest` on "
+            f"{stats.kb_documents} KB document(s) staged — run `opspilot ingest` on "
             f"{staging_dir / 'kb'} to re-chunk and re-embed under this machine's model"
         )
     if stats.skills:

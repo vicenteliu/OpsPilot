@@ -37,10 +37,18 @@ def _topic_embed(text: str) -> list[float]:
 
 
 class _MockProvider:
-    """Minimal stand-in for OllamaProvider; only ``embed`` is used by CLI."""
+    """Minimal stand-in for OllamaProvider.
+
+    ``health_probe`` exists because the CLI now picks its embedder through
+    ``embedding.resolve_embedding`` — the same call the API makes, so the two
+    cannot disagree — and that function probes Ollama before choosing it.
+    """
 
     def embed(self, texts: list[str], *, model: str) -> list[list[float]]:
         return [_topic_embed(t) for t in texts]
+
+    def health_probe(self) -> bool:
+        return True
 
 
 @pytest.fixture
@@ -50,12 +58,20 @@ def runner() -> CliRunner:
 
 @pytest.fixture
 def mock_provider(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Replace ``opspilot.cli.make_provider`` with our deterministic mock."""
+    """Replace every make_provider the KB path reaches with our mock.
 
-    def _factory(provider_id: str = "ollama-local") -> _MockProvider:
+    Two targets, not one: an explicit ``--embedding-model`` still builds its
+    provider in ``opspilot.cli``, while the default now resolves through
+    ``opspilot.embedding``. Also forces the Ollama branch, so a machine that
+    happens to export OPENAI_API_KEY does not send the suite to a paid API.
+    """
+    monkeypatch.setenv("OPSPILOT_EMBED_PROVIDER", "ollama")
+
+    def _factory(*args: object, **kwargs: object) -> _MockProvider:
         return _MockProvider()
 
     monkeypatch.setattr("opspilot.cli.make_provider", _factory)
+    monkeypatch.setattr("opspilot.embedding.make_provider", _factory)
 
 
 @pytest.fixture
