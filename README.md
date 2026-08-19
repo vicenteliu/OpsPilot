@@ -61,6 +61,31 @@ practical work-assistance layer for IT support look like?**
 - **KB retrieval with citations** — hybrid vector (LanceDB) + full-text
   (SQLite FTS5) search fused with RRF; `tool` mode (ReAct) for strong models,
   `prefetch` injection for weak local ones
+- **Memory** — the standing facts about your environment that have no table of
+  their own: *"never restart the ESXi cluster on a Tuesday evening, finance runs
+  its month-end batch"*. OpsPilot's second owned domain. An entry is **admitted,
+  never harvested** — a person writes the sentence and the reason, because an
+  extractor cannot tell a mid-investigation hunch from a conclusion, and a wrong
+  entry never raises an error, it just quietly steers the assistant. Entries
+  carry up to two anchors (an Asset, a site) so a constraint about one site
+  cannot answer a question about another; they are superseded by appending, so
+  *"we recorded it wrong"* stays distinguishable from *"the world changed"*; and
+  a stale review date changes the label an entry carries, never whether it
+  applies. Memory reaches an answer on its own path rather than through hybrid
+  search — which is what lets the assistant notice when a recorded constraint
+  and an ingested document contradict each other, and open a **Conflict** for a
+  human to settle
+- **Consultation** — the surface where an operator actually works a problem,
+  grounded in the KB, Memory and Skills. Visible to its author and to admins
+  only, and swept after 90 days, because that is what makes it cheap enough to
+  think out loud in. Any sentence the assistant says can be **pinned into
+  Memory** with a reason, in the moment it is said. A **Working set** carries
+  what you are currently chasing across a chain of conversations — and the
+  address it lives at, which is what lets anchored Memory reach an answer at
+  all. It closes by hand, with an unconditional inactivity fallback that
+  announces itself, because nobody returns to press "close" at the moment a
+  problem is solved. To *act* on what a conversation found, it escalates into a
+  Session, carrying a work-item description and nothing else
 - **Asset inventory** — procurement-to-retirement tracking for the devices
   your team manages, and the one domain OpsPilot *owns* rather than mirrors:
   small teams have no CMDB, so CSV import/export is the migration path in and
@@ -72,17 +97,37 @@ practical work-assistance layer for IT support look like?**
   demand: it sees a compact catalog of triggers and pulls in the full
   procedure when a problem matches, with retrieval-injection fallback for
   models too weak to call tools. Admins can have one drafted from a problem
-  description and edit it before saving
+  description, or distilled from a **closed Working set** — a problem opened,
+  worked across several conversations, and finished. The draft keeps the dead
+  ends, because knowing what to rule out and in what order is the useful half of
+  a procedure, and it leaves the stopping condition and the tools list **blank
+  on purpose**: a run that went well never exercised either, and a plausible
+  guess gets skimmed and merged where a blank cannot. Nothing is admitted by
+  arriving — moving a draft into `agent_skills/` is a commit, and that commit is
+  the admission
 - **Redaction first** — PII stripped before any content reaches a model or
   the KB
 - **Auditable sessions** — content-addressed artifacts, append-only traces,
   schema-validated output, browsable history. Who acted is taken from the
   authenticated caller, never from what the caller claims
-- **Sandboxed actions** — AI-proposed shell actions run in hardened Docker
-  (L2) or gVisor (L3, fail-closed) containers; an approval gate flags risky
-  patterns for human sign-off
+- **Proposed actions** — a session may put forward a read-only diagnostic with
+  its dry-run preview and the approval gate's verdict, and **it runs only when a
+  person presses execute**; request, preview, verdict, actor and outcome all
+  append to the session's trace. The first batch is diagnostics and contains no
+  mutation at all — that constraint lives in the artifact schema, where the
+  intent is a constant, so a mutating action cannot be expressed. Widening it
+  later is a visible, reviewable diff. Execution happens in hardened Docker (L2)
+  or gVisor (L3, fail-closed) containers; the approval gate flags risky patterns
+  but is a defence-in-depth signal, not the boundary — the sandbox is
 - **Compounding wiki** — session insights distilled into lint-checked,
   lifecycle-managed wiki pages on top of the long-term KB
+- **Knowledge bundles** — export the KB, Skills, wiki pages and Memory as one
+  archive and restore them elsewhere. Per-domain native formats, not a uniform
+  envelope: Skills and wiki pages stay files, because a Skill is admitted through
+  a pull request and a pull request has to read as a diff. No vectors travel —
+  they are bound to an embedding model, so the receiver re-ingests. Sessions and
+  Consultations deliberately have **no** export: an append-only ledger stops
+  being one the moment it becomes a file anyone can edit
 - **MCP client** — tools from any Model Context Protocol server (stdio/HTTP)
   injected into the ReAct loop, with per-server allow/denylists
 - **Interfaces & channels** — CLI, REPL terminal UI (Textual, slash
