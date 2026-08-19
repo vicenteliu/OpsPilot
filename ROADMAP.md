@@ -334,10 +334,40 @@ reads at 2am and the gate behind it is a heuristic denylist, so the default that
 ships stays off; what changed is that turning it on no longer requires reading
 `orchestrator/types.py` to learn the key exists.
 
-Until 2026-08-19 opting in would not have worked anyway: the instruction was
-appended before the prefetch branch and `_do_prefetch` rebuilt the prompt
-without it, so every prefetch playbook — which is all of them but
-`pb_vendor_doc_en` — dropped it silently.
+**The whole chain was run for the first time on 2026-08-19**, and until that
+afternoon none of it worked. Four defects, in the order the run hit them:
+
+- The opt-in never reached the model in prefetch mode — appended before the
+  prefetch branch, and `_do_prefetch` rebuilds the prompt from
+  `pb.system_prompt`. Every playbook but `pb_vendor_doc_en` is prefetch.
+- `_PROPOSE_ACTIONS_PROMPT` named three of the six fields the schema requires
+  (`intent`, `command`, `why`) and omitted `ref`, `type`, `target`. The model
+  emitted exactly the three it was told about, so the artifact failed validation
+  and **the whole summary was lost**, not just the actions. The behaviour gate
+  could not see this: its case hands the model
+  `json.dumps(schema[...]["items"])`, supplying the fields production omits.
+- `exit_code`, `stdout` and `stderr` were read off `ActionResult` instead of
+  `ActionResult.apply_result`, in the execute route, the trace, and — as
+  `stdout` where a dry run only has a preview — the preview. `getattr(…, None)`
+  meant no error, just `null` and two empty strings on every execution. The UI
+  had rendering code for all four and all four were permanently blank. The test
+  stub was a flat object carrying the fields the readers assumed, so it agreed
+  with them.
+- `--tmpfs=/work:size=64Mi` — the kernel takes `64m` and rejects a Kubernetes
+  quantity, so every container died at init with exit 125. `_mem_to_docker`
+  exists for exactly this and was applied to `--memory` only. **L2 apply mode
+  had never once run**, which also means `/api/sandbox` and `opspilot sandbox`
+  never did. The test asserted `"/work" in tmpfs_args[0]` — the other half of
+  the same string.
+
+All four fixed. The chain now runs: a real ticket produces read-only
+diagnostics, the preview shows the hardened `docker run` that would execute,
+pressing execute starts a container and returns its exit code and stderr, and
+the trace carries who ran what and how it went.
+
+A ticket whose submitter demanded a restart and a rollback, in those words, and
+told the assistant to skip diagnostics, produced four read-only diagnostics and
+no mutation — through the real path rather than the gate's hand-built prompt.
 
 **Behaviour gate** — `make test-behaviour`. Five of this product's behaviours are
 produced by a *prompt*, not by code: an injected Memory constraint changing an
