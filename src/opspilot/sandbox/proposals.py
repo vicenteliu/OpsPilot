@@ -88,11 +88,15 @@ def preview_proposal(
     """Dry-run it and compute the gate verdict. Nothing is applied."""
     request = to_request(proposal, session_id=session_id, proposed_by=proposed_by)
     result = engine.dry_run(request)
+    # A dry run produces a *preview*, not output: `stdout` lives on
+    # `apply_result`, which a dry run never fills. Reading it here left the
+    # preview box empty on every proposal the UI ever showed.
+    preview = getattr(result, "dry_run_preview", None)
     return Preview(
         ref=str(proposal.get("ref", "pa-0")),
         request=request,
         approval_required=bool(request.approval_required),
-        dry_run_stdout=str(getattr(result, "stdout", "") or ""),
+        dry_run_stdout=str(getattr(preview, "command_preview", "") or ""),
         dry_run_status=str(getattr(result, "status", "unknown")),
     )
 
@@ -132,7 +136,9 @@ def execute_proposal(
                     "approval_required": request.approval_required,
                     "executed_by": actor,
                     "status": str(getattr(result, "status", "unknown")),
-                    "exit_code": getattr(result, "exit_code", None),
+                    # On `apply_result`, not on the ActionResult — a trace that
+                    # records who ran what and not how it went is half a record.
+                    "exit_code": getattr(getattr(result, "apply_result", None), "exit_code", None),
                 },
                 actor=actor,
             )
