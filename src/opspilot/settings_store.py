@@ -50,5 +50,6 @@ class SettingsStore:
             self._conn.commit()
 
     def delete(self, key: str) -> None:
-        self._conn.execute("DELETE FROM app_settings WHERE key = ?", (key,))
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute("DELETE FROM app_settings WHERE key = ?", (key,))
+            self._conn.commit()

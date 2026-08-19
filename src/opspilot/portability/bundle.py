@@ -86,7 +86,11 @@ def export_bundle(
         if sqlite is not None:
             stats.kb_documents = _export_kb(sqlite, staging / "kb")
         if skills_dir is not None and skills_dir.is_dir():
-            stats.skills = _copy_tree(skills_dir, staging / "skills")
+            _copy_tree(skills_dir, staging / "skills")
+            # Count Skills, not files. A skill directory may carry references or
+            # assets, and the exporting and importing sides have to report the
+            # same number for the same bundle.
+            stats.skills = len(list((staging / "skills").rglob("SKILL.md")))
         if wiki_root is not None and wiki_root.is_dir():
             stats.wiki_pages = _copy_tree(wiki_root, staging / "wiki", suffix=".md")
         if memory is not None:
@@ -296,7 +300,9 @@ def _safe_extract(tar: tarfile.TarFile, dest: Path) -> None:
     dest = dest.resolve()
     for member in tar.getmembers():
         target = (dest / member.name).resolve()
-        if not str(target).startswith(str(dest)):
+        # is_relative_to, not a string prefix: "/x/import-evil" starts with
+        # "/x/import" and is not inside it.
+        if not target.is_relative_to(dest):
             raise ValueError(f"bundle member escapes the staging directory: {member.name}")
         if member.issym() or member.islnk():
             raise ValueError(f"bundle contains a link, which is not allowed: {member.name}")

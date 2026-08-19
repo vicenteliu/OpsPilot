@@ -21,6 +21,7 @@
   let error = $state<string | null>(null);
   let scopeFilter = $state<string>('');
   let includeRetired = $state<boolean>(false);
+  let retiredIgnored = $state<boolean>(false);
 
   // New entry. `scope` is pick-or-create: free text alone drifts into
   // "HQ" / "hq" / "head office", and anchor-filtered retrieval then silently
@@ -50,7 +51,9 @@
   async function load() {
     loading = true; error = null;
     try {
-      entries = await listMemory({ scope: scopeFilter || undefined, includeRetired });
+      const listed = await listMemory({ scope: scopeFilter || undefined, includeRetired });
+      entries = listed.entries;
+      retiredIgnored = listed.includeRetiredIgnored;
       scopes = await listMemoryScopes();
       conflicts = await listMemoryConflicts('open');
     } catch (e) { error = e instanceof Error ? e.message : String(e); }
@@ -181,6 +184,9 @@
     <label class="mem-check">
       <input type="checkbox" bind:checked={includeRetired} onchange={load} /> include retired
     </label>
+    {#if retiredIgnored}
+      <span class="mem-muted">— ignored: an anchored view shows what applies here</span>
+    {/if}
     <button class="btn-secondary" onclick={load} disabled={loading}>Refresh</button>
   </div>
 
