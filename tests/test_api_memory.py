@@ -162,3 +162,25 @@ class TestRoles:
         res = client.post("/api/memory", json={"statement": "x", "reason": "y"})
         assert res.status_code == 403
         assert client.get("/api/memory").json()["total"] == 0
+
+
+class TestConsultationCarriesItsWorkingSet:
+    """ADR-0036 makes the Working set the chain of Consultations on one problem,
+    and that chain is what distillation reads. The API returned every other
+    field and dropped this one, so no client could see the relationship the
+    domain is built on. Nothing broke at the time — distillation reads the store
+    directly and the web client never asked for it — which is why it survived.
+    """
+
+    def test_both_reads_return_it(self, client: TestClient) -> None:
+        ws = client.post("/api/working-set", json={"title": "503s after deploy"}).json()
+        store = client.app.state.consultations
+        con = store.start(author="local-dev", title="pods", working_set_id=ws["id"])
+
+        assert client.get(f"/api/consultations/{con.id}").json()["working_set_id"] == ws["id"]
+        listed = client.get("/api/consultations").json()["consultations"]
+        assert [c["working_set_id"] for c in listed] == [ws["id"]]
+
+    def test_a_consultation_with_no_working_set_reports_null(self, client: TestClient) -> None:
+        con = client.app.state.consultations.start(author="local-dev", title="stray")
+        assert client.get(f"/api/consultations/{con.id}").json()["working_set_id"] is None

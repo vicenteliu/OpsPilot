@@ -40,7 +40,7 @@ if TYPE_CHECKING:
 
 from . import __version__
 from .config import ensure_home, load_config
-from .errors import OpsPilotError, SchemaError
+from .errors import OpsPilotError, ProviderError, SchemaError
 from .harness import load_fixture, load_golden, run_harness
 from .harness.reporter import render_result_table
 from .iteration.engine import IterationEngine
@@ -2275,7 +2275,9 @@ def workingset_distil(
     new_because: str = typer.Option(
         "", "--new-because", help="Reason this needs a NEW Skill instead of amending one."
     ),
-    model: str = typer.Option("", "--model", help="Override the drafting model."),
+    model: str = typer.Option(
+        "", "--model", help="Override the drafting model: `provider/name` or the bare name."
+    ),
 ) -> None:
     """Draft a Skill from how a problem was actually worked (ADR-0036).
 
@@ -2324,11 +2326,31 @@ def workingset_distil(
     pb = load_playbook(REPO_ROOT / "playbooks" / "pb_ticket_summary_en")
     settings = SettingsStore(conn)
     thinking_id = settings.get("thinking_model_id")
+    selectable = [pb.model, *pb.extra_models]
     target = next(
-        (m for m in [pb.model, *pb.extra_models] if f"{m.provider_id}/{m.name}" == thinking_id),
+        (m for m in selectable if f"{m.provider_id}/{m.name}" == thinking_id),
         pb.model,
     )
-    model_name = model or target.name
+    if model:
+        # Resolve against the selectable list, accepting either the id the API
+        # and the UI use (`anthropic/claude-sonnet-5`) or the bare name. This
+        # used to replace only the *name* while keeping the tier's provider, so
+        # `--model anthropic/claude-sonnet-5` reached Anthropic verbatim and
+        # came back `404 not_found_error: model: anthropic/claude-sonnet-5`,
+        # and naming another provider's model would have sent it to the wrong
+        # API entirely.
+        chosen = next(
+            (m for m in selectable if model in (f"{m.provider_id}/{m.name}", m.name)),
+            None,
+        )
+        if chosen is None:
+            _err.print(
+                f"[red]--model {model!r} is not one of the playbook's models.[/red]\n"
+                + "\n".join(f"  {m.provider_id}/{m.name}" for m in selectable)
+            )
+            raise typer.Exit(code=1)
+        target = chosen
+    model_name = target.name
     provider = make_provider(target.provider_id, kind=target.kind)
     existing = load_existing(Path("agent_skills"), amends) if amends else None
 
@@ -2340,6 +2362,11 @@ def workingset_distil(
     try:
         skill = draft(provider, source, model_name=model_name, amends=existing)
     except NotDistillableError as e:
+        _err.print(f"[red]drafting failed:[/red] {e}")
+        raise typer.Exit(code=1) from e
+    except ProviderError as e:
+        # A provider that refuses is a configuration problem, not a crash; it
+        # used to reach the user as a full traceback.
         _err.print(f"[red]drafting failed:[/red] {e}")
         raise typer.Exit(code=1) from e
 
