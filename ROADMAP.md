@@ -3,7 +3,7 @@
 Coarse-grained direction, not a commitment. Concrete work items live in
 [GitHub Issues](https://github.com/vicenteliu/OpsPilot/issues).
 
-Every claim below was checked against the code on 2026-07-26. If a line here
+Every claim below was checked against the code on 2026-08-19. If a line here
 disagrees with `src/`, the code wins and this file is the bug.
 
 ## Shipped
