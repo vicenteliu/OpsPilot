@@ -19,6 +19,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from ..memory import PROPOSAL_HINT
 from ..providers.base import ProviderProtocol
 from ..providers.registry import make_provider
 from ..providers.types import Message, SamplingParams, ToolDef
@@ -313,7 +314,11 @@ def run_chat_agent(
             Message(
                 role="system",
                 content=(
-                    _SYSTEM_PROMPT_BASE + memory_prefix + skill_block + _render_context(payload)
+                    _SYSTEM_PROMPT_BASE
+                    + memory_prefix
+                    + PROPOSAL_HINT
+                    + skill_block
+                    + _render_context(payload)
                 ),
             )
         ] + _history(messages)
@@ -354,7 +359,7 @@ def run_chat_agent(
     if conflict_tool_on:
         domain_tools.append(_REPORT_CONFLICT_TOOL)
 
-    system_prompt = _SYSTEM_PROMPT_BASE + _TOOL_HINT + memory_prefix
+    system_prompt = _SYSTEM_PROMPT_BASE + _TOOL_HINT + memory_prefix + PROPOSAL_HINT
     if conflict_tool_on:
         system_prompt += _CONFLICT_HINT
     if has_skills and registry is not None:

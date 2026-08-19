@@ -5,7 +5,7 @@ called ``memory`` until #167.
 """
 
 from .conflict import RESOLUTIONS, MemoryConflict, MemoryConflictStore
-from .inject import memory_block, render_entry
+from .inject import PROPOSAL_HINT, memory_block, render_entry
 from .store import GLOBAL_ENTRY_CAP, AdmissionError, MemoryEntry, MemoryStore
 
 __all__ = [
@@ -16,6 +16,7 @@ __all__ = [
     "MemoryConflictStore",
     "MemoryEntry",
     "MemoryStore",
+    "PROPOSAL_HINT",
     "memory_block",
     "render_entry",
 ]

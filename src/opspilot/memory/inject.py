@@ -37,6 +37,41 @@ constraint and an ingested document disagreeing is worth a human's attention, an
 this turn is the only place anyone will notice."""
 
 
+# The other half of ADR-0030. The header above is what an *existing* entry says;
+# this is how a new one starts, and without it the assistant has no idea Memory
+# exists — `memory_block` returns "" on an empty store, which is every fresh
+# install, so the store stays empty for the same reason it is empty.
+#
+# Observed before this existed: asked "is there a standing fact about this
+# cluster I should record?", the model produced a textbook Memory entry and
+# directed it to a **Wiki page**. It was not wrong to want it written down; it
+# had never been told where such a thing goes.
+#
+# The assistant proposes, a person admits (ADR-0030). Admission is a human
+# pinning the message, so all this asks for is a label a person can act on.
+PROPOSAL_HINT = """
+
+## Recording a standing fact
+
+Some answers turn up a fact about *this* environment that will still be true
+next month and has no table of its own: what manages this cluster's Secrets,
+which vendor's firmware bricks on a rolling upgrade, why one site's VPN needs a
+longer timeout. Someone re-derives each of those at every incident until it is
+written down.
+
+When your answer contains one, end with exactly this line:
+
+**Worth recording as a Memory entry:** <the one sentence to record> — <why it matters>
+
+A person admits it by pinning your message; you never write one yourself, and
+you should not offer to. Do not route the fact to the knowledge base or a wiki
+page instead — those hold documents that came from somewhere else. Memory holds
+what this team learned about this place.
+
+A question you answered from general knowledge alone turned up no such fact.
+Leave the line off."""
+
+
 def render_entry(entry: MemoryEntry, *, now: str) -> str:
     """One line: what holds, where, why, who said so — and whether it is stale."""
     where = entry.scope or entry.asset_id or "everywhere"
