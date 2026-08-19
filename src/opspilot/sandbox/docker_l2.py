@@ -32,7 +32,10 @@ def _mem_to_docker(mem: str) -> str:
 def _build_docker_args(request: ActionRequest, image: str, runtime: str | None = None) -> list[str]:
     p = request.requested_policy
     workdir = p.fs.workdir
-    disk = p.resource.disk_tmpfs
+    # Both policy sizes are Kubernetes-style and both need converting: the
+    # kernel's tmpfs `size=` takes 64m and rejects 64Mi outright, so leaving
+    # this one raw made every container die at init with exit 125.
+    disk = _mem_to_docker(p.resource.disk_tmpfs)
 
     args: list[str] = [
         "docker",

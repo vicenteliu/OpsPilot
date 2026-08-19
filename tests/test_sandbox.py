@@ -146,6 +146,17 @@ def test_docker_args_tmpfs_uses_workdir():
     assert "/work" in tmpfs_args[0]
 
 
+def test_every_size_docker_is_handed_is_in_units_docker_accepts():
+    """`64Mi` is a Kubernetes quantity; the kernel's tmpfs `size=` rejects it.
+
+    `_mem_to_docker` was applied to `--memory` and not to `--tmpfs`, so every
+    container died at init with exit 125 — L2 apply mode had never once run. The
+    old assertion checked the workdir half of the same string and passed.
+    """
+    flat = " ".join(_build_docker_args(_req(), "alpine:3.19"))
+    assert "Mi" not in flat and "Gi" not in flat and "Ki" not in flat, flat
+
+
 # ── Engine dry-run ────────────────────────────────────────────────────────
 
 
