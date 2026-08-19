@@ -313,9 +313,18 @@ class SqliteStore:
         (#144, #157). The removal is explicit now, and scoped to chunks the
         new set no longer contains.
 
-        A genuinely stale chunk's conflicts and corrections still cascade
-        away with it, which is correct: chunk ids are content-addressed, so
-        a chunk absent from the new set holds text that no longer exists.
+        A genuinely stale chunk's **open** conflicts go with it, which is
+        correct: chunk ids are content-addressed, so a chunk absent from the new
+        set holds text that no longer exists, and nobody should be asked to
+        settle a contradiction that is no longer there.
+
+        Its **corrections and settled conflicts do not** (#194). Those are not
+        statements about text — they are records of a human deciding which
+        knowledge was trustworthy, with an actor and a reason, and ADR-0029
+        rests on the reason surviving to be re-examined. They are left behind as
+        orphans, the way an Asset event outlives its Asset. Orphans are inert:
+        every read here is by live chunk id, so a decision about a chunk that no
+        longer exists simply never matches.
 
         Returns the number of chunks removed.
 
@@ -324,6 +333,23 @@ class SqliteStore:
         """
         keep = list(keep_ids)
         placeholders = ",".join("?" * len(keep))
+        # Open conflicts on the chunks about to go. Explicit rather than a
+        # cascade, because the cascade could not tell an unsettled contradiction
+        # from a settled judgement and took both.
+        if keep:
+            self._conn.execute(
+                "DELETE FROM kb_conflicts WHERE status = 'open' AND ("
+                f"chunk_a_id IN (SELECT id FROM kb_chunks WHERE document_id = ? AND id NOT IN ({placeholders})) "  # noqa: S608
+                f"OR chunk_b_id IN (SELECT id FROM kb_chunks WHERE document_id = ? AND id NOT IN ({placeholders})))",  # noqa: S608
+                (document_id, *keep, document_id, *keep),
+            )
+        else:
+            self._conn.execute(
+                "DELETE FROM kb_conflicts WHERE status = 'open' AND ("
+                "chunk_a_id IN (SELECT id FROM kb_chunks WHERE document_id = ?) "
+                "OR chunk_b_id IN (SELECT id FROM kb_chunks WHERE document_id = ?))",
+                (document_id, document_id),
+            )
         sql = f"DELETE FROM kb_chunks WHERE document_id = ? AND id NOT IN ({placeholders})"  # noqa: S608
         cur = (
             self._conn.execute(sql, (document_id, *keep))
@@ -600,11 +626,24 @@ class SqliteStore:
         old_content = str(row.get("content") or "")
         corr_id = "corr_" + secrets.token_hex(4)
         now = now_rfc3339()
+        # The document is snapshotted, not joined: once the source is fixed the
+        # chunk is gone, and a record that cannot say what it was about is not
+        # much of a record (#194).
         self._conn.execute(
             """INSERT INTO kb_corrections
-               (id, chunk_id, corrected_by, reason, old_content, new_content, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (corr_id, chunk_id, corrected_by, reason, old_content, new_content, now),
+               (id, chunk_id, document_id, corrected_by, reason, old_content, new_content,
+                created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                corr_id,
+                chunk_id,
+                str(row.get("document_id") or ""),
+                corrected_by,
+                reason,
+                old_content,
+                new_content,
+                now,
+            ),
         )
         self._conn.execute(
             "UPDATE kb_chunks SET content=? WHERE id=?",
