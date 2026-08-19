@@ -96,6 +96,39 @@ def test_discover_skips_hidden(tmp_path: Path) -> None:
     assert {p.name for p in out} == {"visible.md"}
 
 
+# The hidden-file filter used to test every segment of the *absolute* path, so a
+# corpus was silently skipped whenever any ancestor was dot-prefixed. That made
+# `opspilot ingest ../docs` and a corpus under any dot-directory report
+# "0 succeeded · 0 failed" — indistinguishable from an empty directory.
+
+
+def test_discover_ingests_a_corpus_the_user_named_under_a_dot_directory(
+    tmp_path: Path,
+) -> None:
+    corpus = tmp_path / ".staging"
+    corpus.mkdir()
+    (corpus / "runbook.md").write_text("hello", encoding="utf-8")
+    assert {p.name for p in discover_files([corpus])} == {"runbook.md"}
+
+
+def test_discover_ingests_through_a_dot_dot_segment(tmp_path: Path) -> None:
+    corpus = tmp_path / "kb"
+    corpus.mkdir()
+    (corpus / "runbook.md").write_text("hello", encoding="utf-8")
+    (tmp_path / "sibling").mkdir()
+    via_parent = tmp_path / "sibling" / ".." / "kb"
+    assert {p.name for p in discover_files([via_parent])} == {"runbook.md"}
+
+
+def test_discover_still_skips_dot_dirs_inside_the_tree(tmp_path: Path) -> None:
+    """The filter's actual purpose — VCS metadata and swap files — is unchanged."""
+    (tmp_path / "visible.md").write_text("y", encoding="utf-8")
+    git = tmp_path / ".git"
+    git.mkdir()
+    (git / "config").write_text("[core]", encoding="utf-8")
+    assert {p.name for p in discover_files([tmp_path])} == {"visible.md"}
+
+
 # ── Single-file ingest ───────────────────────────────────────────────
 
 

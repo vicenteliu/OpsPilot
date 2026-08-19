@@ -239,6 +239,24 @@ def list_schemas() -> None:
 # ──────────────────────────────────────────────────────────────────────────
 
 
+def _kb_embedding(cfg: Config, pinned: str | None, ollama_model: str) -> tuple[Any, str]:
+    """The embedder a KB command uses, and the reference recorded beside its vectors.
+
+    Unpinned, this is exactly what the API resolves at startup
+    (``embedding.resolve_embedding``) — so a CLI ingest and a ``serve`` cannot
+    select different embedders and leave the second one refusing to open the
+    first one's table. ``--embedding-model`` still pins the reference and embeds
+    through Ollama, which is what that flag has always meant.
+    """
+    from .embedding import resolve_embedding
+
+    if pinned is None:
+        embed_fn, status = resolve_embedding(cfg)
+        return embed_fn, status.model
+    provider = make_provider("ollama-local")
+    return (lambda text: provider.embed([text], model=ollama_model)[0]), pinned
+
+
 def _open_kb_stores(
     *, home: Path, embedding_dim: int, embedding_model: str
 ) -> tuple[SqliteStore, LanceStore]:
@@ -279,10 +297,10 @@ def ingest(
         "--source-authority",
         help="official | vendor | internal | unverified — how much this source is trusted.",
     ),
-    embedding_model: str = typer.Option(
-        "ollama-local/nomic-embed-text-v2-moe@2026-04",
+    embedding_model: str | None = typer.Option(
+        None,
         "--embedding-model",
-        help="Provider/model@date pinned reference.",
+        help="Pin provider/model@date. Default: whatever the server resolves.",
     ),
     embedding_dim: int = typer.Option(
         768, "--embedding-dim", help="Vector dim; must match the embedding model."
@@ -304,17 +322,13 @@ def ingest(
         raise typer.Exit(code=1)
 
     cfg = load_config()
+    embed_fn, embedding_model = _kb_embedding(cfg, embedding_model, embed_model_short)
     sqlite, lance = _open_kb_stores(
         home=cfg.home,
         embedding_dim=embedding_dim,
         embedding_model=embedding_model,
     )
     redactor = Redactor.from_yaml()
-    provider = make_provider("ollama-local")
-
-    def embed_fn(text: str) -> list[float]:
-        return provider.embed([text], model=embed_model_short)[0]
-
     ic = IngestConfig(
         kb_id=kb_id,
         namespace=namespace,
@@ -374,25 +388,22 @@ def kb_search_cmd(
     classification: str | None = typer.Option(
         None, "--classification", help="Filter to one classification level."
     ),
-    embedding_model: str = typer.Option(
-        "ollama-local/nomic-embed-text-v2-moe@2026-04",
+    embedding_model: str | None = typer.Option(
+        None,
         "--embedding-model",
+        help="Pin provider/model@date. Default: whatever the server resolves.",
     ),
     embedding_dim: int = typer.Option(768, "--embedding-dim"),
     embed_model_short: str = typer.Option("nomic-embed-text-v2-moe", "--ollama-embed-model"),
 ) -> None:
     """Hybrid (FTS5 + ANN) search over the KB; returns top-k chunks."""
     cfg = load_config()
+    embed_fn, embedding_model = _kb_embedding(cfg, embedding_model, embed_model_short)
     sqlite, lance = _open_kb_stores(
         home=cfg.home,
         embedding_dim=embedding_dim,
         embedding_model=embedding_model,
     )
-    provider = make_provider("ollama-local")
-
-    def embed_fn(text: str) -> list[float]:
-        return provider.embed([text], model=embed_model_short)[0]
-
     hits = kb_search(
         query,
         sqlite=sqlite,
@@ -471,15 +482,17 @@ def run(
         "--namespace",
         help="Override namespace; defaults to --kb-id.",
     ),
-    embedding_model: str = typer.Option(
-        "ollama-local/nomic-embed-text-v2-moe@2026-04",
+    embedding_model: str | None = typer.Option(
+        None,
         "--embedding-model",
+        help="Pin provider/model@date. Default: whatever the server resolves.",
     ),
     embedding_dim: int = typer.Option(768, "--embedding-dim"),
     embed_model_short: str = typer.Option("nomic-embed-text-v2-moe", "--ollama-embed-model"),
 ) -> None:
     """Run a playbook end-to-end against a ticket and emit a structured artifact."""
     cfg = load_config()
+    embed_fn, embedding_model = _kb_embedding(cfg, embedding_model, embed_model_short)
     pb = load_playbook(playbook)
     sqlite, lance = _open_kb_stores(
         home=cfg.home,
@@ -487,11 +500,10 @@ def run(
         embedding_model=embedding_model,
     )
     redactor = Redactor.from_yaml()
+    # The chat provider for the run itself. It was the same object as the
+    # embedder before the embedder moved to _kb_embedding; it is left exactly
+    # as it was, including that it ignores the playbook's model.
     provider = make_provider("ollama-local")
-
-    def embed_fn(text: str) -> list[float]:
-        return provider.embed([text], model=embed_model_short)[0]
-
     sm = SessionManager(home=cfg.home)
     request = RunRequest(
         playbook=pb,
@@ -567,14 +579,15 @@ def doc_generate(
         None, "--output", "-o", help="Save result JSON to this path."
     ),
     owner: str = typer.Option("cli-user", "--owner"),
-    embedding_model: str = typer.Option(
-        "ollama-local/nomic-embed-text-v2-moe@2026-04", "--embedding-model"
+    embedding_model: str | None = typer.Option(
+        None, "--embedding-model", help="Pin provider/model@date; default follows the server."
     ),
     embedding_dim: int = typer.Option(768, "--embedding-dim"),
     embed_model_short: str = typer.Option("nomic-embed-text-v2-moe", "--ollama-embed-model"),
 ) -> None:
     """Generate a vendor-facing operational document from KB content."""
     cfg = load_config()
+    embed_fn, embedding_model = _kb_embedding(cfg, embedding_model, embed_model_short)
     pb = load_playbook(playbook)
     sqlite, lance = _open_kb_stores(
         home=cfg.home,
@@ -587,11 +600,6 @@ def doc_generate(
         kind=pb.model.kind,
         api_key=cfg.anthropic_api_key if pb.model.provider_id.startswith("anthropic") else None,
     )
-    embed_provider = make_provider("ollama-local")
-
-    def embed_fn(text: str) -> list[float]:
-        return embed_provider.embed([text], model=embed_model_short)[0]
-
     sm = SessionManager(home=cfg.home)
 
     input_dict = {
@@ -703,8 +711,8 @@ def kb_load_fixture(
     chunks: Path = typer.Option(  # noqa: B008
         ..., "--chunks", "-c", exists=True, help="Path to chunks.jsonl."
     ),
-    embedding_model: str = typer.Option(
-        "ollama-local/nomic-embed-text-v2-moe@2026-04", "--embedding-model"
+    embedding_model: str | None = typer.Option(
+        None, "--embedding-model", help="Pin provider/model@date; default follows the server."
     ),
     embedding_dim: int = typer.Option(768, "--embedding-dim"),
     embed_model_short: str = typer.Option("nomic-embed-text-v2-moe", "--ollama-embed-model"),
@@ -717,16 +725,12 @@ def kb_load_fixture(
     model so the live LanceDB table is consistent with retrieval.
     """
     cfg = load_config()
+    embed_fn, embedding_model = _kb_embedding(cfg, embedding_model, embed_model_short)
     sqlite, lance = _open_kb_stores(
         home=cfg.home,
         embedding_dim=embedding_dim,
         embedding_model=embedding_model,
     )
-    provider = make_provider("ollama-local")
-
-    def embed_fn(text: str) -> list[float]:
-        return provider.embed([text], model=embed_model_short)[0]
-
     stats = load_kb_fixture(
         sqlite=sqlite,
         lance=lance,
@@ -754,8 +758,8 @@ def kb_load_dir(
     directory: Path = typer.Argument(  # noqa: B008
         ..., help="Root directory to search for doc-meta.json + chunks.jsonl pairs."
     ),
-    embedding_model: str = typer.Option(
-        "ollama-local/nomic-embed-text-v2-moe@2026-04", "--embedding-model"
+    embedding_model: str | None = typer.Option(
+        None, "--embedding-model", help="Pin provider/model@date; default follows the server."
     ),
     embedding_dim: int = typer.Option(768, "--embedding-dim"),
     embed_model_short: str = typer.Option("nomic-embed-text-v2-moe", "--ollama-embed-model"),
@@ -774,16 +778,12 @@ def kb_load_dir(
         raise typer.Exit(code=1)
 
     cfg = load_config()
+    embed_fn, embedding_model = _kb_embedding(cfg, embedding_model, embed_model_short)
     sqlite, lance = _open_kb_stores(
         home=cfg.home,
         embedding_dim=embedding_dim,
         embedding_model=embedding_model,
     )
-    provider = make_provider("ollama-local")
-
-    def embed_fn(text: str) -> list[float]:
-        return provider.embed([text], model=embed_model_short)[0]
-
     table = Table(title=f"KB fixtures loaded from {directory}", show_lines=False)
     table.add_column("Doc ID", overflow="fold")
     table.add_column("Source", overflow="fold")
@@ -1041,7 +1041,7 @@ def _harness_dispatch(
     golden_path: Path,
     playbook_dir: Path,
     owner: str,
-    embedding_model: str,
+    embedding_model: str | None,
     embedding_dim: int,
     embed_model_short: str,
     output: Path | None,
@@ -1055,6 +1055,7 @@ def _harness_dispatch(
     fixture across providers). Returns the desired CLI exit code.
     """
     cfg = load_config()
+    embed_fn, embedding_model = _kb_embedding(cfg, embedding_model, embed_model_short)
     fixture = load_fixture(fixture_path)
     golden = load_golden(golden_path)
     playbook = load_playbook(playbook_dir)
@@ -1074,12 +1075,7 @@ def _harness_dispatch(
         if playbook.model.provider_id.startswith("anthropic")
         else None,
     )
-    # Embed provider: always Ollama (other providers don't support embeddings)
-    embed_provider = make_provider("ollama-local")
     sm = __import__("opspilot.session", fromlist=["SessionManager"]).SessionManager(home=cfg.home)
-
-    def embed_fn(text: str) -> list[float]:
-        return embed_provider.embed([text], model=embed_model_short)[0]
 
     result = run_harness(
         fixture=fixture,
@@ -1130,8 +1126,8 @@ def harness_run(
         ..., "--playbook", "-p", exists=True, help="Path to playbook directory."
     ),
     owner: str = typer.Option("harness@opspilot", "--owner"),
-    embedding_model: str = typer.Option(
-        "ollama-local/nomic-embed-text-v2-moe@2026-04", "--embedding-model"
+    embedding_model: str | None = typer.Option(
+        None, "--embedding-model", help="Pin provider/model@date; default follows the server."
     ),
     embedding_dim: int = typer.Option(768, "--embedding-dim"),
     embed_model_short: str = typer.Option("nomic-embed-text-v2-moe", "--ollama-embed-model"),
@@ -1159,8 +1155,8 @@ def harness_run(
 
 @harness_app.command("golden")
 def harness_golden(
-    embedding_model: str = typer.Option(
-        "ollama-local/nomic-embed-text-v2-moe@2026-04", "--embedding-model"
+    embedding_model: str | None = typer.Option(
+        None, "--embedding-model", help="Pin provider/model@date; default follows the server."
     ),
     embedding_dim: int = typer.Option(768, "--embedding-dim"),
     embed_model_short: str = typer.Option("nomic-embed-text-v2-moe", "--ollama-embed-model"),
@@ -1191,8 +1187,8 @@ def harness_golden(
 
 @harness_app.command("golden-gemini")
 def harness_golden_gemini(
-    embedding_model: str = typer.Option(
-        "ollama-local/nomic-embed-text-v2-moe@2026-04", "--embedding-model"
+    embedding_model: str | None = typer.Option(
+        None, "--embedding-model", help="Pin provider/model@date; default follows the server."
     ),
     embedding_dim: int = typer.Option(768, "--embedding-dim"),
     embed_model_short: str = typer.Option("nomic-embed-text-v2-moe", "--ollama-embed-model"),
@@ -1228,8 +1224,8 @@ def harness_golden_gemini(
 
 @harness_app.command("golden-openrouter")
 def harness_golden_openrouter(
-    embedding_model: str = typer.Option(
-        "ollama-local/nomic-embed-text-v2-moe@2026-04", "--embedding-model"
+    embedding_model: str | None = typer.Option(
+        None, "--embedding-model", help="Pin provider/model@date; default follows the server."
     ),
     embedding_dim: int = typer.Option(768, "--embedding-dim"),
     embed_model_short: str = typer.Option("nomic-embed-text-v2-moe", "--ollama-embed-model"),
@@ -1289,8 +1285,8 @@ def harness_golden_provider(
     ),
     top_p: float | None = typer.Option(None, "--top-p", help="Sent only when given."),
     max_tokens: int = typer.Option(4096, "--max-tokens"),
-    embedding_model: str = typer.Option(
-        "ollama-local/nomic-embed-text-v2-moe@2026-04", "--embedding-model"
+    embedding_model: str | None = typer.Option(
+        None, "--embedding-model", help="Pin provider/model@date; default follows the server."
     ),
     embedding_dim: int = typer.Option(768, "--embedding-dim"),
     embed_model_short: str = typer.Option("nomic-embed-text-v2-moe", "--ollama-embed-model"),
@@ -1346,8 +1342,8 @@ def harness_golden_provider(
 
 @harness_app.command("golden-vendor-doc")
 def harness_golden_vendor_doc(
-    embedding_model: str = typer.Option(
-        "ollama-local/nomic-embed-text-v2-moe@2026-04", "--embedding-model"
+    embedding_model: str | None = typer.Option(
+        None, "--embedding-model", help="Pin provider/model@date; default follows the server."
     ),
     embedding_dim: int = typer.Option(768, "--embedding-dim"),
     embed_model_short: str = typer.Option("nomic-embed-text-v2-moe", "--ollama-embed-model"),

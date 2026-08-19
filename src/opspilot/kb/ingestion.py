@@ -146,7 +146,11 @@ def discover_files(paths: Iterable[Path]) -> list[Path]:
                 out.append(p)
         elif p.is_dir():
             for f in sorted(p.rglob("*")):
-                if f.is_file() and not any(part.startswith(".") for part in f.parts):
+                # Relative to the walked root, not absolute: testing every
+                # segment of the full path rejected the whole tree whenever an
+                # ancestor was dot-prefixed — `ingest ../docs` and any corpus
+                # under a hidden directory both ingested nothing, silently.
+                if f.is_file() and not any(part.startswith(".") for part in f.relative_to(p).parts):
                     out.append(f)
     return out
 
