@@ -171,6 +171,7 @@ class MemoryStore:
         scope: str | None = None,
         review_after: str | None = None,
         source_ref: str | None = None,
+        _enforce_cap: bool = True,
     ) -> MemoryEntry:
         """Record one admitted fact.
 
@@ -194,7 +195,12 @@ class MemoryStore:
         if not actor:
             raise AdmissionError("actor is required and comes from the caller's identity")
 
-        if not asset_id and not scope and self._count_live_global() >= GLOBAL_ENTRY_CAP:
+        if (
+            _enforce_cap
+            and not asset_id
+            and not scope
+            and self._count_live_global() >= GLOBAL_ENTRY_CAP
+        ):
             raise AdmissionError(
                 f"{GLOBAL_ENTRY_CAP} global entries already; give this one an anchor "
                 "or archive one that no longer holds"
@@ -259,6 +265,13 @@ class MemoryStore:
             scope=old.scope,
             review_after=review_after,
             source_ref=source_ref,
+            # Replacing a global entry is net-neutral on the count, and the old
+            # one is still live at this instant. Enforcing the cap here would
+            # make a capped-out constraint impossible to correct except by
+            # archiving it first — which loses the superseded_by link, the very
+            # history that distinguishes "we recorded it wrong" from "the world
+            # changed".
+            _enforce_cap=False,
         )
         self._conn.execute(
             "UPDATE memory_entries SET superseded_by = ?, superseded_at = ? WHERE id = ?",

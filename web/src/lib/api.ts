@@ -673,14 +673,17 @@ export async function listMemory(opts: {
   scope?: string;
   assetId?: string;
   includeRetired?: boolean;
-} = {}): Promise<MemoryEntry[]> {
+} = {}): Promise<{ entries: MemoryEntry[]; includeRetiredIgnored: boolean }> {
   const q = new URLSearchParams();
   if (opts.scope) q.set('scope', opts.scope);
   if (opts.assetId) q.set('asset_id', opts.assetId);
   if (opts.includeRetired) q.set('include_retired', 'true');
   const res = await apiFetch(`/api/memory?${q}`);
   if (!res.ok) throw new Error(`List memory failed: ${res.status}`);
-  return (await res.json()).entries;
+  const data = await res.json();
+  // An anchored read is "what applies here", which retired entries are not.
+  // Surfaced rather than dropped in silence.
+  return { entries: data.entries, includeRetiredIgnored: !!data.include_retired_ignored };
 }
 
 export async function listMemoryScopes(): Promise<string[]> {

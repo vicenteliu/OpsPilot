@@ -68,12 +68,20 @@ async def list_memory(
     search, so there is no relevance order to ask for.
     """
     store = _memory(request)
-    entries = (
-        store.applicable(asset_id=asset_id, scope=scope)
-        if (scope or asset_id)
-        else store.list_entries(include_retired=include_retired)
-    )
-    return {"entries": [_entry(e) for e in entries], "total": len(entries)}
+    anchored = bool(scope or asset_id)
+    if anchored:
+        entries = store.applicable(asset_id=asset_id, scope=scope)
+    else:
+        entries = store.list_entries(include_retired=include_retired)
+    return {
+        "entries": [_entry(e) for e in entries],
+        "total": len(entries),
+        # An anchored read is "what applies here", which retired entries by
+        # definition do not. Say so rather than dropping the flag in silence —
+        # a filter that quietly ignores half its input is the same failure this
+        # domain keeps arguing against.
+        "include_retired_ignored": anchored and include_retired,
+    }
 
 
 @router.get("/memory/scopes")
@@ -256,6 +264,8 @@ async def pin_message(
             store,
             _memory(request),
             message_id=message_id,
+            # Bind the message to the Consultation the caller was cleared for.
+            consultation_id=consultation_id,
             reason=body.reason,
             actor=identity.name,
             statement=body.statement,

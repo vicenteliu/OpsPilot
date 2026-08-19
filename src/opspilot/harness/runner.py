@@ -136,6 +136,11 @@ def run_harness(
     flags: list[str] = []
     extensions: dict[str, Any] = {}
     if run_result.answered_by:
+        # Unreachable while the call above passes allow_model_fallback=False,
+        # and kept deliberately: this is the guard that would catch a future
+        # change re-enabling the fallback, which is the failure #175 was about.
+        # A row that silently measured a different model is exactly what must
+        # not come back.
         flags.append("nondeterministic")
         extensions["answered_by"] = run_result.answered_by
     if not run_result.schema_valid or run_result.error:
