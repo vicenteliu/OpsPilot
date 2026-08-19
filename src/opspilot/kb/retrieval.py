@@ -35,18 +35,37 @@ from .sqlite_store import SqliteStore
 # (e.g. ``[REDACTED:role:11111111]``) crashes with
 # ``OperationalError: no such column: role`` when handed verbatim. We
 # tokenise on word chars + CJK ideographs and feed each token as a quoted
-# phrase, preserving FTS5's implicit-AND semantics.
+# phrase.
 _FTS_TOKEN_RE = re.compile(r"[\w一-鿿]+", re.UNICODE)
 
 
 def _safe_fts_query(q: str) -> str:
     """Sanitise an arbitrary string for FTS5 ``MATCH``.
 
-    Returns a phrase-AND expression of the form ``"tok1" "tok2" ...``.
+    Returns a phrase-OR expression of the form ``"tok1" OR "tok2" ...``.
     Empty input → ``""`` (which fts_search short-circuits via its NULL guard).
+
+    **OR, not FTS5's default implicit AND.** Under AND a question sentence
+    requires every stopword to appear in the document, so the keyword arm
+    returned nothing for exactly the input this product is built around — a
+    person asking in a sentence through Chat, Telegram or a ticket. Measured on
+    a 5-document KB: ``CrashLoopBackOff`` and ``pod CrashLoopBackOff`` both put
+    FTS at ranks 1 and 2, while ``why would a pod be stuck in CrashLoopBackOff``
+    contributed nothing, silently degrading hybrid search to pure vector.
+
+    OR costs no precision here, because BM25 supplies it: a rare token weighs
+    far more than a stopword, and a document matching several tokens outranks
+    one matching a single common word. Fusion consumes *ranks* (RRF), so what
+    the keyword arm owes is recall of the exact tokens embeddings miss — and
+    under AND it owed that and delivered nothing.
+
+    This is the failure the PR-8.5 hotfix worked around by stripping
+    ``[REDACTED:...]`` placeholders before they "crater implicit-AND recall"
+    (tests/test_orchestrator.py). That removed some noise tokens; ordinary
+    English supplies the rest.
     """
     tokens = _FTS_TOKEN_RE.findall(q)
-    return " ".join(f'"{t}"' for t in tokens)
+    return " OR ".join(f'"{t}"' for t in tokens)
 
 
 # RRF constant — Cormack et al. (2009). Higher k = flatter weighting.
