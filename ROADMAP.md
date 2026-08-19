@@ -151,13 +151,26 @@ two correct pieces of work that had never been run against each other:
   one final round with no tools turns what was already retrieved into an answer.
   The model keeps repeating a query it has already run — that is a separate,
   cheaper problem, and it no longer costs the user an answer.
-- **`propose_actions` is opt-in and nothing opts in** — see the proposed-actions
-  section below.
+- **`propose_actions` is opt-in and nothing opts in** — and chasing that turned
+  up why it would not have mattered. `ticket_summary` appended the instruction
+  to the system prompt *before* the prefetch branch, and `_do_prefetch` rebuilds
+  the prompt from `pb.system_prompt` — so in prefetch mode the opt-in was
+  silently discarded, and **every shipped playbook that would propose anything
+  is prefetch**. The behaviour gate did not catch it because its case builds the
+  system prompt by hand from `_PROPOSE_ACTIONS_PROMPT`: it proved the prompt
+  works, and nothing proved the prompt arrives. **Fixed**, with the opt-in now
+  applied after the branch and a test that asserts it reaches the model in both
+  retrieval modes.
 
-And one rough edge: the CLI writes as `cli:<osuser>` while the loopback API
-writes as `local-dev`, so `opspilot workingset status` reports nothing open
-while the web UI has a set open for the same person. `distil` escapes it by
-taking an explicit id; `status` and `close` do not.
+And one rough edge, now closed: the CLI wrote as `cli:<osuser>` while the
+loopback API wrote as `local-dev`, so `opspilot workingset status` reported
+nothing open while the web UI had a set open for the same person — and a Memory
+entry admitted from the CLI carried a different actor than the same person's
+entry admitted from the UI. Both names were deliberate; the split was not. The
+CLI now answers `local-dev` under exactly the condition `auth.deps` falls back
+on — no user account, no service token — and goes back to `cli:<osuser>` the
+moment identity means something, because then it genuinely has no auth context
+and should not borrow a name.
 
 **Decided:** `kb/retrieval.py` joins the behaviour gate's protected paths.
 [#203](https://github.com/vicenteliu/OpsPilot/pull/203) shipped without gate
@@ -313,10 +326,18 @@ The UI for previewing and executing ships with it, over
 `GET /api/sessions/{id}/actions`, `POST .../actions/{ref}/preview` and
 `POST .../actions/execute`.
 
-*Not yet:* **no playbook in this repo opts in**, so on a fresh install the path
-is dark — an escalated Session returns `{"actions": []}`. Outside this file the
-key is named nowhere: not in a playbook, not in ADR-0028, which says only that
-playbooks opt in. The feature is finished; its front door is not open.
+**Still off by default, now deliberately rather than by omission.** No playbook
+in this repo opts in, so an escalated Session returns `{"actions": []}` until
+someone turns it on — and the two incident playbooks now carry the key,
+commented out, with the reason next to it. A proposal is a command somebody
+reads at 2am and the gate behind it is a heuristic denylist, so the default that
+ships stays off; what changed is that turning it on no longer requires reading
+`orchestrator/types.py` to learn the key exists.
+
+Until 2026-08-19 opting in would not have worked anyway: the instruction was
+appended before the prefetch branch and `_do_prefetch` rebuilt the prompt
+without it, so every prefetch playbook — which is all of them but
+`pb_vendor_doc_en` — dropped it silently.
 
 **Behaviour gate** — `make test-behaviour`. Five of this product's behaviours are
 produced by a *prompt*, not by code: an injected Memory constraint changing an
