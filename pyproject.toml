@@ -142,6 +142,10 @@ markers = [
     # Model-in-the-loop behaviour gate: real API calls, non-deterministic, run by
     # a person rather than by CI. See `make test-behaviour`.
     "requires_api_key: calls a hosted model; excluded from the default run",
+    # Starts a real container. Every other sandbox test asserts on the argv we
+    # build, which is why a policy that could not start a container survived
+    # from PR-30 until it was run by hand.
+    "requires_docker: runs a real container; excluded from the default run",
 ]
 addopts = "-v --strict-markers"
 asyncio_mode = "auto"
