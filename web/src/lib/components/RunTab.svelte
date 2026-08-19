@@ -4,6 +4,7 @@
     runTicketStream, listSessions, getSession,
     type RunResponse, type TicketSummary, type Task, type SessionSummary,
   } from '$lib/api';
+  import ProposedActions from '$lib/components/ProposedActions.svelte';
 
   let { selectedModelId, modules }: { selectedModelId: string; modules: Record<string, boolean> } = $props();
 
@@ -318,6 +319,10 @@
 
 {#if summary}
   {@render outputCards(summary as TicketSummary)}
+{/if}
+
+{#if result?.session_id}
+  <ProposedActions sessionId={result.session_id} />
 {/if}
 
 <!-- History -->

@@ -11,7 +11,8 @@
   // judge.
   import {
     listMemory, listMemoryScopes, admitMemory, supersedeMemory, archiveMemory,
-    type MemoryEntry,
+    listMemoryConflicts, resolveMemoryConflict, CONFLICT_RESOLUTIONS,
+    type MemoryEntry, type MemoryConflict,
   } from '$lib/api';
 
   let entries = $state<MemoryEntry[]>([]);
@@ -31,6 +32,15 @@
   let reviewAfter = $state<string>('');
   let saving = $state<boolean>(false);
 
+  // Conflicts between a recorded constraint and an ingested document. Detecting
+  // was automatic; deciding which side loses is not, and the reason is stored
+  // because six months on it is the only way to tell a real finding from a
+  // misdiagnosis someone enshrined (ADR-0029).
+  let conflicts = $state<MemoryConflict[]>([]);
+  let resolvingId = $state<string | null>(null);
+  let resolution = $state<string>('chunk_superseded');
+  let resolveNote = $state<string>('');
+
   let supersedingId = $state<string | null>(null);
   let newStatement = $state<string>('');
   let newReason = $state<string>('');
@@ -45,6 +55,7 @@
       entries = listed.entries;
       retiredIgnored = listed.includeRetiredIgnored;
       scopes = await listMemoryScopes();
+      conflicts = await listMemoryConflicts('open');
     } catch (e) { error = e instanceof Error ? e.message : String(e); }
     finally { loading = false; }
   }
@@ -78,6 +89,15 @@
     catch (e) { error = e instanceof Error ? e.message : String(e); }
   }
 
+  async function settle(id: string) {
+    error = null;
+    try {
+      await resolveMemoryConflict(id, { resolution, note: resolveNote });
+      resolvingId = null; resolveNote = ''; resolution = 'chunk_superseded';
+      await load();
+    } catch (e) { error = e instanceof Error ? e.message : String(e); }
+  }
+
   let _init = false;
   $effect(() => { if (!_init) { _init = true; load(); } });
 </script>
@@ -90,6 +110,48 @@
 </p>
 
 {#if error}<div class="mem-error">{error}</div>{/if}
+
+{#if conflicts.length > 0}
+  <section class="mem-conflicts">
+    <h3>{conflicts.length} disagreement{conflicts.length === 1 ? '' : 's'} to settle</h3>
+    <p class="mem-hint">
+      A recorded constraint and a knowledge-base document contradict each other.
+      The assistant noticed while composing an answer; which side loses is yours.
+    </p>
+    {#each conflicts as c (c.id)}
+      <article class="mem-card mem-conflict">
+        <div class="mem-meta"><span class="mem-where">{c.memory_id}</span> vs <span class="mem-where">{c.chunk_id}</span></div>
+        <div class="mem-statement">{c.note}</div>
+        <div class="mem-meta mem-muted">
+          noticed {c.detected_at.slice(0, 10)}{#if c.detected_in}· in {c.detected_in}{/if}
+        </div>
+        {#if resolvingId === c.id}
+          <div class="mem-supersede">
+            {#each CONFLICT_RESOLUTIONS as r}
+              <label class="mem-radio">
+                <input type="radio" bind:group={resolution} value={r.id} />
+                <span><strong>{r.label}</strong>{#if r.hint} — {r.hint}{/if}</span>
+              </label>
+            {/each}
+            <input class="mem-input" bind:value={resolveNote} placeholder="Why (recorded with the decision)" />
+            <div class="mem-row">
+              <button class="btn-action" onclick={() => settle(c.id)}>Settle</button>
+              <button class="btn-secondary" onclick={() => (resolvingId = null)}>Cancel</button>
+            </div>
+            <p class="mem-hint">
+              There is no “merge”: merging would mean editing the constraint in
+              place, and a constraint is superseded by appending a new one.
+            </p>
+          </div>
+        {:else}
+          <div class="mem-row mem-actions">
+            <button class="btn-action" onclick={() => { resolvingId = c.id; resolveNote = ''; }}>Settle this</button>
+          </div>
+        {/if}
+      </article>
+    {/each}
+  </section>
+{/if}
 
 <section class="mem-new">
   <h3>Admit an entry</h3>
@@ -217,4 +279,10 @@
   }
   .mem-overdue { color: #d97706; font-weight: 600; margin-left: 0.4rem; }
   .mem-supersede { margin-top: 0.6rem; }
+  .mem-conflicts { margin-bottom: 1.4rem; }
+  .mem-conflicts h3 { margin: 0 0 0.3rem; font-size: 0.95rem; color: #d97706; }
+  .mem-conflict { border-color: #d97706; }
+  .mem-radio { display: flex; gap: 0.45rem; align-items: flex-start; font-size: 0.85rem; margin-bottom: 0.35rem; }
+  .mem-radio span { color: var(--text-muted); }
+  .mem-radio strong { color: var(--text); }
 </style>

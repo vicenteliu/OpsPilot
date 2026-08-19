@@ -792,6 +792,123 @@ export async function getConsultation(
   return res.json();
 }
 
+// ── Memory ↔ KB conflicts ────────────────────────────────────────────────────
+//
+// Detected when an answer is composed, not when an entry is written: at write
+// time the human just confirmed the entry and would dismiss the prompt. The
+// moment worth interrupting is months later, when the assistant holds both a
+// recorded constraint and a document that contradicts it (ADR-0031/0035).
+
+export interface MemoryConflict {
+  id: string;
+  memory_id: string;
+  chunk_id: string;
+  note: string;
+  detected_in: string | null;
+  detected_at: string;
+  status: string;
+  resolved_by: string | null;
+  resolution_note: string | null;
+}
+
+// `merged` is deliberately absent: merging would mean editing a Memory entry in
+// place, and an entry is superseded by appending.
+export const CONFLICT_RESOLUTIONS = [
+  { id: 'chunk_superseded', label: 'The constraint is right', hint: 'the document is stale or describes intended rather than actual behaviour' },
+  { id: 'entry_superseded', label: 'The document is right', hint: 'replace the constraint by appending a new one' },
+  { id: 'dismissed', label: 'They only appeared to disagree', hint: '' },
+] as const;
+
+export async function listMemoryConflicts(status = 'open'): Promise<MemoryConflict[]> {
+  const res = await apiFetch(`/api/memory/conflicts?status=${encodeURIComponent(status)}`);
+  if (!res.ok) throw new Error(`List conflicts failed: ${res.status}`);
+  return (await res.json()).conflicts;
+}
+
+export async function resolveMemoryConflict(
+  id: string,
+  body: { resolution: string; note: string }
+): Promise<void> {
+  const res = await apiFetch(`/api/memory/conflicts/${id}/resolve`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) throw new Error((await res.json()).detail ?? `Resolve failed: ${res.status}`);
+}
+
+// ── Proposed actions (ADR-0028) ──────────────────────────────────────────────
+//
+// A Session proposes; a human executes. The first batch is read-only
+// diagnostics — `intent` is a const in the artifact schema, so a mutation cannot
+// be expressed at all.
+
+export interface ProposedAction {
+  ref: string;
+  intent: string;
+  type: string;
+  command: string;
+  target: string;
+  why: string;
+  expected_output?: string;
+}
+
+export interface ActionPreview {
+  ref: string;
+  command: string;
+  target: string;
+  why: string;
+  approval_required: boolean;
+  dry_run_status: string;
+  dry_run_stdout: string;
+}
+
+export interface ActionOutcome {
+  ref: string;
+  executed_by: string;
+  status: string;
+  exit_code: number | null;
+  stdout: string;
+  stderr: string;
+}
+
+export async function listProposedActions(sessionId: string): Promise<ProposedAction[]> {
+  const res = await apiFetch(`/api/sessions/${sessionId}/actions`);
+  if (!res.ok) throw new Error(`List actions failed: ${res.status}`);
+  return (await res.json()).actions;
+}
+
+export async function previewAction(sessionId: string, ref: string): Promise<ActionPreview> {
+  const res = await apiFetch(`/api/sessions/${sessionId}/actions/${ref}/preview`, {
+    method: 'POST'
+  });
+  if (!res.ok) throw new Error((await res.json()).detail ?? `Preview failed: ${res.status}`);
+  return res.json();
+}
+
+export async function executeAction(sessionId: string, ref: string): Promise<ActionOutcome> {
+  const res = await apiFetch(`/api/sessions/${sessionId}/actions/execute`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ref })
+  });
+  if (!res.ok) throw new Error((await res.json()).detail ?? `Execute failed: ${res.status}`);
+  return res.json();
+}
+
+export async function escalateConsultation(
+  consultationId: string,
+  description: string
+): Promise<{ session_id: string; artifact_id: string | null }> {
+  const res = await apiFetch(`/api/consultations/${consultationId}/escalate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ description })
+  });
+  if (!res.ok) throw new Error((await res.json()).detail ?? `Escalate failed: ${res.status}`);
+  return res.json();
+}
+
 // ── MCP ──────────────────────────────────────────────────────────────────────
 
 export interface MCPServer {

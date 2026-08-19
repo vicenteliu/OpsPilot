@@ -4,7 +4,7 @@
   // the assistant says can be pinned into Memory with a reason.
   import {
     chatStream, getWorkingSet, openWorkingSet, closeWorkingSet, pinMessage,
-    getConsultation, listMemoryScopes,
+    getConsultation, listMemoryScopes, escalateConsultation,
     type ChatMessage, type ChatCitation, type WorkingSet,
   } from '$lib/api';
 
@@ -92,6 +92,26 @@
       pinFor = null; pinReason = ''; pinStatement = ''; pinScope = '';
     } catch (e) { pinError = e instanceof Error ? e.message : String(e); }
     finally { pinBusy = false; }
+  }
+
+  // Escalation: a Consultation reads; a Session acts. Only the Work item
+  // description travels — the transcript stays behind, because a Fixture has to
+  // be freezable and an arbitrarily long conversation is not (ADR-0032).
+  let escalating = $state<boolean>(false);
+  let escalateText = $state<string>('');
+  let escalateBusy = $state<boolean>(false);
+  let escalatedTo = $state<string | null>(null);
+  let escalateError = $state<string | null>(null);
+
+  async function doEscalate() {
+    if (!consultationId || !escalateText.trim()) return;
+    escalateBusy = true; escalateError = null;
+    try {
+      const res = await escalateConsultation(consultationId, escalateText.trim());
+      escalatedTo = res.session_id;
+      escalating = false;
+    } catch (e) { escalateError = e instanceof Error ? e.message : String(e); }
+    finally { escalateBusy = false; }
   }
 
   let _wsInit = false;
@@ -273,6 +293,37 @@
     <div class="error-banner" style="margin: 0.5rem 0"><strong>Error:</strong> {chatError}</div>
   {/if}
 
+  {#if consultationId && chatMessages.length > 0}
+    <div class="esc-bar">
+      {#if escalatedTo}
+        <span class="esc-done">Escalated to {escalatedTo}</span>
+      {:else if escalating}
+        <div class="esc-form">
+          <input class="ws-input" bind:value={escalateText}
+                 placeholder="The work item, in a sentence — the conversation does not travel" />
+          {#if escalateError}<div class="pin-error">{escalateError}</div>{/if}
+          <div class="pin-actions">
+            <button class="btn-action" onclick={doEscalate}
+                    disabled={escalateBusy || !escalateText.trim()}>
+              {escalateBusy ? 'Running…' : 'Run as a session'}
+            </button>
+            <button class="btn-secondary" onclick={() => (escalating = false)}>Cancel</button>
+          </div>
+          <p class="pin-hint">
+            A session is replayable and scoreable, which is why its input has to
+            have edges. Write what the problem is; the transcript stays here and
+            the two stay linked.
+          </p>
+        </div>
+      {:else}
+        <button class="pin-btn" onclick={() => {
+          escalating = true;
+          escalateText = chatMessages.find((m) => m.role === 'user')?.content.slice(0, 200) ?? '';
+        }}>Escalate to a session</button>
+      {/if}
+    </div>
+  {/if}
+
   <div class="chat-input-row">
     <textarea
       class="chat-input"
@@ -347,6 +398,9 @@
   .pin-actions { display: flex; gap: 0.5rem; }
   .pin-hint { color: var(--text-muted); font-size: 0.78rem; margin: 0.35rem 0 0; max-width: 56ch; }
   .pin-error { color: var(--danger, #dc2626); font-size: 0.8rem; margin-bottom: 0.35rem; }
+  .esc-bar { margin: 0.4rem 0; }
+  .esc-form { max-width: 46rem; }
+  .esc-done { font-size: 0.8rem; color: var(--text-muted); font-family: var(--font-mono); }
   .pin-done { margin-top: 0.5rem; font-size: 0.78rem; color: var(--text-muted); font-family: var(--font-mono); }
   .chat-citations { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.5rem; align-items: center; }
   .cite-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.6; }
