@@ -269,6 +269,12 @@
                 {#each msg.citations as c}
                   <span class="cite-chip" title={c.snippet}>
                     {c.source_path ?? c.document_id ?? c.chunk_id}
+                    {#if c.source_authority}
+                      <span class="cite-authority"
+                            title="How far this source is trusted. Recorded at ingest; it does not affect ranking.">
+                        {c.source_authority}
+                      </span>
+                    {/if}
                   </span>
                 {/each}
               </div>
@@ -402,6 +408,13 @@
   .esc-form { max-width: 46rem; }
   .esc-done { font-size: 0.8rem; color: var(--text-muted); font-family: var(--font-mono); }
   .pin-done { margin-top: 0.5rem; font-size: 0.78rem; color: var(--text-muted); font-family: var(--font-mono); }
+  .cite-authority {
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    opacity: 0.7;
+    margin-left: 0.25rem;
+    cursor: help;
+  }
   .chat-citations { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.5rem; align-items: center; }
   .cite-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.6; }
   .cite-chip {

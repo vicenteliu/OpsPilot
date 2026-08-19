@@ -570,6 +570,9 @@ export interface ChatCitation {
   source_path: string | null;
   heading_path: string[];
   snippet: string;
+  // What the citation rests on. It never reorders results (ADR-0037), which is
+  // exactly why it has to be visible — descriptive and invisible is absent.
+  source_authority: string | null;
 }
 
 export interface ChatResult {

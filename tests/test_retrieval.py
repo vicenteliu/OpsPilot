@@ -365,15 +365,14 @@ def _make_two_authority_stores(
 def _search_tied(sqlite: SqliteStore, lance: LanceStore) -> list[Hit]:
     """Query the authority fixture with weights that make the RRF sums tie.
 
-    The default weights (0.6 / 0.4) do **not** cancel — the vector-favoured
-    chunk wins on score alone and ``_AUTHORITY_RANK`` is never consulted,
-    which is how these tests came to pass without ever exercising the
-    tie-breaker (#148). Equal weights make the two rank contributions cancel
-    exactly, leaving authority as the only thing that can decide the order.
+    Equal weights make the two rank contributions cancel exactly, which is the
+    only situation in which anything after the score can decide the order. The
+    default 0.6 / 0.4 weights do not cancel, and that is how the original
+    versions of these tests passed without ever reaching the tie-breaker (#148).
 
     The equality assertion is the guard: if a change to the fixture, the RRF
-    formula or either store's ordering breaks the tie, this fails loudly
-    instead of silently going back to testing nothing.
+    formula or either store's ordering breaks the tie, this fails loudly instead
+    of silently going back to testing nothing.
     """
     hits = kb_search(
         "VPN authentication",
@@ -389,44 +388,54 @@ def _search_tied(sqlite: SqliteStore, lance: LanceStore) -> list[Hit]:
     return hits
 
 
-def test_official_ranks_above_internal_on_equal_rrf(tmp_path: Path) -> None:
-    """'official' source_authority should beat 'internal' as tie-breaker."""
+# ── Authority describes a citation; it does not rank one (ADR-0037) ───────────
+#
+# These four used to assert the opposite, and #149 made them genuinely exercise
+# the tie-break they were named for. #150 then enumerated what that tie-break
+# actually decided: 6 rank pairs out of 369,370 under the default weights, none
+# involving an ANN rank better than 18.
+#
+# The decision was to remove it rather than tune it. Contradictions are settled
+# by a recorded Resolution that marks the loser superseded, and superseded chunks
+# never reach this sort — so a per-tier weight would be a standing preference
+# between tiers, judging silently on every query, which ADR-0029 rejected.
+#
+# They are inverted rather than deleted: a decision nobody can test is one that
+# gets undone by accident, which is how the original mistake survived.
+
+
+def test_authority_does_not_break_a_tie_official_over_internal(tmp_path: Path) -> None:
+    """A more authoritative chunk is not promoted past an equally-scoring one."""
     sqlite, lance = _make_two_authority_stores(tmp_path, "official", "internal")
     hits = _search_tied(sqlite, lance)
-    assert hits[0].chunk_id == "chk_aaaaaaaa"  # official
-    assert hits[0].source_authority == "official"
-    assert hits[1].source_authority == "internal"
+    assert hits[0].chunk_id == "chk_bbbbbbbb", "authority reordered an exact tie"
+    assert hits[0].source_authority == "internal"
 
 
-def test_official_ranks_above_unverified_on_equal_rrf(tmp_path: Path) -> None:
-    """'official' should also beat 'unverified'."""
+def test_authority_does_not_break_a_tie_official_over_unverified(tmp_path: Path) -> None:
     sqlite, lance = _make_two_authority_stores(tmp_path, "official", "unverified")
     hits = _search_tied(sqlite, lance)
-    assert hits[0].chunk_id == "chk_aaaaaaaa"  # official
-    assert hits[1].chunk_id == "chk_bbbbbbbb"  # unverified
-
-
-def test_vendor_ranks_above_unverified_on_equal_rrf(tmp_path: Path) -> None:
-    """'vendor' should beat 'unverified'."""
-    sqlite, lance = _make_two_authority_stores(tmp_path, "vendor", "unverified")
-    hits = _search_tied(sqlite, lance)
-    assert hits[0].source_authority == "vendor"
-    assert hits[1].source_authority == "unverified"
-
-
-def test_higher_authority_wins_from_either_side_of_the_tie(tmp_path: Path) -> None:
-    """Control for the three tests above: swap the authorities, swap the winner.
-
-    Those all expect chunk A, the one that arrives *second* in the candidate
-    list, so an implementation that merely reversed the candidate order would
-    satisfy them. Here the higher authority sits on chunk B, which arrives
-    first, and it still has to win.
-    """
-    sqlite, lance = _make_two_authority_stores(tmp_path, "unverified", "official")
-    hits = _search_tied(sqlite, lance)
     assert hits[0].chunk_id == "chk_bbbbbbbb"
-    assert hits[0].source_authority == "official"
-    assert hits[1].source_authority == "unverified"
+    assert hits[0].source_authority == "unverified"
+
+
+def test_the_order_is_the_same_from_either_side_of_the_tie(tmp_path: Path) -> None:
+    """The decisive one: swapping the authorities must not swap the winner.
+
+    If authority were still consulted, these two fixtures would order
+    differently. They must not — the order comes from valid_from and then the
+    chunk id, and the tiers are inert.
+    """
+    a, la = _make_two_authority_stores(tmp_path / "a", "official", "unverified")
+    b, lb = _make_two_authority_stores(tmp_path / "b", "unverified", "official")
+    assert [h.chunk_id for h in _search_tied(a, la)] == [h.chunk_id for h in _search_tied(b, lb)]
+
+
+def test_the_authority_still_reaches_the_reader(tmp_path: Path) -> None:
+    """Descriptive is the whole point, and a signal nobody sees is absent."""
+    sqlite, lance = _make_two_authority_stores(tmp_path, "official", "unverified")
+    got = {h.source_authority for h in _search_tied(sqlite, lance)}
+    assert got == {"official", "unverified"}
 
 
 def test_source_authority_propagated_to_hit(tmp_path: Path) -> None:

@@ -81,7 +81,7 @@ The pipeline that converts raw documents (markdown, PDF, DOCX) → redact PII �
 _Avoid_: index, import, upload
 
 **Source authority**:
-How far a KB document's origin is trusted — `official` (your own signed-off SOPs), `vendor` (the manufacturer's documentation), `internal` (default: written by someone on the team), `unverified` (a forum answer, a scraped page). Recorded per document at ingest and returned on every **Hit**, so a reader can see what a citation rests on. It is *descriptive only*: retrieval ordering is relevance, and a lower tier is never demoted. Whether it should influence ranking is open — see issue #150.
+How far a KB document's origin is trusted — `official` (your own signed-off SOPs), `vendor` (the manufacturer's documentation), `internal` (default: written by someone on the team), `unverified` (a forum answer, a scraped page). Recorded per document at ingest and returned on every **Hit**, so a reader can see what a citation rests on. It is *descriptive only*: retrieval ordering is relevance, and a lower tier is never demoted. **Settled** (ADR-0037): it does not influence ranking, because contradictions are settled by a recorded **Resolution** that marks the losing **Chunk** superseded — and superseded chunks never reach the sort. A per-tier weight would be a standing preference between tiers, judging silently on every query, which is what ADR-0029 rejected. Because it is descriptive, it has to be *seen*: it travels with a KB search row and with a chat citation.
 _Avoid_: trust level, source quality, confidence (that is the model's, not the document's)
 
 **Conflict**:
