@@ -79,6 +79,52 @@ UI, and a brand mark generated from a single SVG source.
 
 ## Open
 
+**The first end-to-end run.** On 2026-08-19 the Memory / Consultation /
+Working-set / distillation / bundle stack was driven end to end for the first
+time — real corpus, hosted models — after being built and unit-tested in a single
+session. Nine defects, all fixed
+([#201](https://github.com/vicenteliu/OpsPilot/pull/201)–[#205](https://github.com/vicenteliu/OpsPilot/pull/205)):
+
+- `ingest` and `serve` selected embedders by different rules, so the documented
+  first run (`init` → `ingest` → `serve`) ended in a startup refusal for anyone
+  with an `OPENAI_API_KEY`. The guard was right; the two entry points were not.
+- `discover_files` tested every segment of the *absolute* path, so
+  `ingest ../docs` and any corpus under a dot-directory ingested nothing and
+  reported `0 succeeded · 0 failed`.
+- Hybrid retrieval was pure vector for any question written as a sentence:
+  quoted tokens under FTS5's implicit AND required every stopword to be present.
+- Reported cost was wrong for every model — hardcoded `0.0` on OpenAI-compatible
+  providers, one Sonnet rate for every Anthropic model — and cost is the number
+  that justifies ADR-0023's tiers.
+- The assistant was never told Memory existed, so asked for a standing fact it
+  produced a textbook entry and routed it to a Wiki page.
+- Four smaller ones: bundle import naming a command that does not exist, the
+  admin model-list editor deleting the comments inside the block it rewrites,
+  `--model` on `distil` unable to switch providers, and the API dropping
+  `working_set_id` from every Consultation it returned.
+
+What the run is worth recording for is not the list. Every one of these lived in
+a **seam no single test owns** — two entry points disagreeing on a default, a
+path filter's scope, a sentence missing from a prompt — and the suite was green
+at 1311 tests throughout. Three predictions written before the run (the Memory
+entry cap, ADR-0035's context budget, non-thinking models on admission) scored
+**0/3**: the predictions covered what had been thought about, and the defects
+were where nothing had.
+
+Two gates caught what a developer machine could not. CI failed
+[#201](https://github.com/vicenteliu/OpsPilot/pull/201) because the runner has no
+Ollama and a stub target had silently moved; the behaviour gate scored the new
+Memory-proposal hint at 1/3, which turned out to be `finish_reason: length`
+truncating the label off the end of the answer rather than the model ignoring it.
+
+- **Open decision:** `kb/retrieval.py` is not on the behaviour gate's protected
+  path list, so [#203](https://github.com/vicenteliu/OpsPilot/pull/203) shipped
+  without gate evidence — yet it changes what context reaches the model. Whether
+  retrieval belongs on that list is a decision, not a bug fix, and was left to be
+  made deliberately.
+- **Not re-run since.** All nine fixes changed behaviour on that same path. The
+  way to check them is the way they were found: use it again.
+
 **Model-comparison results that mean what they say.** Running the golden fixture
 across four models turned up three defects in a row, two fixed and one open:
 
@@ -224,11 +270,13 @@ Widening it later is a visible, reviewable diff. Playbooks opt in with
 *Not yet:* the UI for previewing and executing — `GET /api/sessions/{id}/actions`,
 `POST .../actions/{ref}/preview` and `POST .../actions/execute` exist.
 
-**Behaviour gate** — `make test-behaviour`. Four of this product's behaviours are
+**Behaviour gate** — `make test-behaviour`. Five of this product's behaviours are
 produced by a *prompt*, not by code: an injected Memory constraint changing an
 answer, a Memory ↔ KB contradiction being reported, a distilled Skill keeping its
-dead ends and its blanks, and an opted-in playbook proposing only read-only
-diagnostics. A reworded instruction or a model bump can stop any of them, and
+dead ends and its blanks, an opted-in playbook proposing only read-only
+diagnostics, and the assistant offering a standing fact to Memory — that last one
+in two halves, because the failure mode of a proposal hint is one that fires on
+every turn. A reworded instruction or a model bump can stop any of them, and
 **none of them raises an error**.
 
 Deliberately not in CI: it calls hosted models, and on a public repo that means
