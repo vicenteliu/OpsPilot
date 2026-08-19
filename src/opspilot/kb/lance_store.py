@@ -20,6 +20,7 @@ is exposed so PR-5 / PR-7 can call it after a large ingest.
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -222,10 +223,32 @@ class LanceStore:
         self._table.delete(f"vector_id IN ({in_list})")
 
     def count(self) -> int:
+        self._refresh()
         # lancedb is untyped at the package level; count_rows returns int.
         return int(self._table.count_rows())
 
     # ── ANN search ───────────────────────────────────────────────────
+
+    def _refresh(self) -> None:
+        """Point this handle at the newest table version before reading.
+
+        A LanceDB ``Table`` handle pins the dataset version it was opened at, so
+        rows written through *another* handle are invisible to this one — and the
+        API serves each request from whichever uvicorn worker it lands on
+        (``--workers 2`` in the production compose). The symptom is a document
+        that ingest reported as stored, that both stores hold on disk, and that
+        search cannot find: the ANN side behaves as though the dataset simply
+        does not contain the new rows, while every other result keeps its exact
+        order. See #155.
+
+        Measured at 5000 rows × 1536 dimensions: 0.58 ms against a 5.57 ms
+        search — under a millisecond, in a request whose real cost is LLM
+        inference. Bounding it with a TTL instead would buy back a fraction of
+        that and reintroduce a window in which a freshly ingested document is
+        invisible, which is the bug.
+        """
+        with contextlib.suppress(Exception):  # a refresh failure must not fail the read
+            self._table.checkout_latest()
 
     def ann_search(
         self,
@@ -237,6 +260,7 @@ class LanceStore:
     ) -> list[AnnHit]:
         if len(query_vec) != self.dim:
             raise ValueError(f"query vector has length {len(query_vec)}; expected {self.dim}")
+        self._refresh()
 
         search = (
             self._table.search(list(query_vec), vector_column_name=VECTOR_COLUMN)
