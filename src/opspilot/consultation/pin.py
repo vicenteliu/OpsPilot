@@ -29,6 +29,7 @@ def pin_to_memory(
     message_id: str,
     reason: str,
     actor: str,
+    consultation_id: str | None = None,
     statement: str | None = None,
     asset_id: str | None = None,
     scope: str | None = None,
@@ -46,6 +47,13 @@ def pin_to_memory(
     message = consultations.message(message_id)
     if message is None:
         raise KeyError(f"message {message_id!r} not found")
+    # A message id is globally unique but says nothing about who may read it.
+    # The caller was cleared for *one* Consultation; without this check they can
+    # name their own and pin a message out of somebody else's, which admits its
+    # text as a team-visible entry, echoes it back, and pins the victim's
+    # conversation against the retention sweep.
+    if consultation_id is not None and message.consultation_id != consultation_id:
+        raise KeyError(f"message {message_id!r} is not in {consultation_id!r}")
 
     entry = memory.admit(
         statement=statement if statement is not None else message.content,
