@@ -14,7 +14,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any, cast
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from ...auth import Identity, require_role
@@ -25,6 +25,7 @@ router = APIRouter()
 # Overriding a chunk or settling a conflict is an act, not a read: the glossary
 # puts KB *search* under viewer and acting under operator (ADR-0020).
 _operator = Depends(require_role("operator"))
+_viewer = Depends(require_role("viewer"))
 
 
 @router.get("/kb/stats")
@@ -184,6 +185,70 @@ async def search_kb(
             for h in hits
         ],
     }
+
+
+class DeleteDocRequest(BaseModel):
+    reason: str
+
+
+@router.delete("/kb/docs/{document_id}")
+async def delete_doc(
+    document_id: str,
+    body: DeleteDocRequest,
+    request: Request,
+    identity: Identity = _operator,
+) -> dict[str, Any]:
+    """Remove a document, its chunks, its vectors, and the decisions quoting it.
+
+    A **hard** delete. The case this answers is "we ingested something we should
+    not have" — a wrong folder, a directory with secrets — and a soft delete
+    leaves the content in the database, which does not answer it.
+
+    Operator, because removing knowledge is at least as much an act as
+    correcting it, and the actor comes from the caller's Identity rather than
+    the body — the rule already established for Resolutions and Corrections.
+
+    What survives is a record of the removal: what went, who decided, and why,
+    quoting nothing.
+    """
+    state = request.app.state
+    loop = asyncio.get_event_loop()
+
+    def _run() -> Any:
+        report = state.sqlite.delete_document(document_id, actor=identity.name, reason=body.reason)
+        # SQLite cascades the chunks and the FTS trigger keeps keyword search in
+        # step; the vectors are this caller's job.
+        if report["vector_ids"] and getattr(state, "lance", None) is not None:
+            state.lance.delete_by_vector_ids(report["vector_ids"])
+        return report
+
+    try:
+        report = await loop.run_in_executor(None, _run)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {
+        "id": report["id"],
+        "document_id": document_id,
+        "chunks_removed": report["chunks_removed"],
+        "vectors_removed": len(report["vector_ids"]),
+        "corrections_removed": report["corrections_removed"],
+        "conflicts_removed": report["conflicts_removed"],
+        "deleted_by": report["actor"],
+    }
+
+
+@router.get("/kb/deletions")
+async def list_deletions_route(
+    request: Request, limit: int = Query(50, ge=1, le=200), identity: Identity = _viewer
+) -> dict[str, Any]:
+    """What has been removed, by whom and why. Never the content."""
+    loop = asyncio.get_event_loop()
+    rows = await loop.run_in_executor(
+        None, lambda: request.app.state.sqlite.list_deletions(limit=limit)
+    )
+    return {"deletions": rows, "total": len(rows)}
 
 
 @router.get("/kb/conflicts")
