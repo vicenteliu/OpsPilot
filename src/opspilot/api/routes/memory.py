@@ -435,6 +435,10 @@ def _con(c: Any) -> dict[str, Any]:
         "updated_at": c.updated_at,
         "pinned_reason": c.pinned_reason,
         "session_id": c.session_id,
+        # ADR-0036 makes the Working set the chain of Consultations on one
+        # problem, and that chain is what distillation reads — so the domain's
+        # central relationship was the one field the API did not return.
+        "working_set_id": c.working_set_id,
     }
 
 

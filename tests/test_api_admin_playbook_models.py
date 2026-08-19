@@ -58,6 +58,103 @@ def _playbook_dir(tmp_path: Path) -> Path:
 # ── unit: comment-preserving write ───────────────────────────────────────────
 
 
+# The fixture above puts every comment *outside* the two rewritten blocks, so it
+# passed while the real playbook lost comments on every admin edit. These use a
+# fixture with comments *inside* them — including the two that exist to stop
+# someone re-adding a parameter that 400s on Sonnet 5 / Opus 5.
+
+_YAML_INNER = """\
+id: "pb_inner"
+version: "1.0.0"
+system_prompt: "prompt.md"
+output_schema: "incident_summary_v1"
+
+model:
+  provider_id: "anthropic"
+  kind: "anthropic"
+  name: "claude-sonnet-5"
+  version: "2025-01"
+  params:
+    # Sonnet 5 rejects temperature / top_p / top_k (HTTP 400).
+    max_tokens: 8192
+    # Depth is `effort`, not a token budget.
+    effort: "high"
+
+extra_models:
+  - provider_id: "openrouter"
+    kind: "openai"
+    name: "z-ai/glm-5.2"
+    version: "2025-01"
+    params:
+      max_tokens: 4096
+
+# Loop bounds.
+limits:
+  max_turns: 8
+"""
+
+
+def _inner_dir(tmp_path: Path) -> Path:
+    d = tmp_path / "pb_inner"
+    d.mkdir()
+    (d / "playbook.yaml").write_text(_YAML_INNER, encoding="utf-8")
+    (d / "prompt.md").write_text("system prompt", encoding="utf-8")
+    return d
+
+
+def _rewrite_unchanged(d: Path) -> str:
+    """Round-trip the file through the writer without changing anything."""
+    pb = load_playbook(d)
+    write_playbook_models(
+        d,
+        {
+            "provider_id": pb.model.provider_id,
+            "kind": pb.model.kind,
+            "name": pb.model.name,
+            "version": pb.model.version,
+            "params": dict(pb.model.params),
+        },
+        [
+            {
+                "provider_id": m.provider_id,
+                "kind": m.kind,
+                "name": m.name,
+                "version": m.version,
+                "params": dict(m.params),
+            }
+            for m in pb.extra_models
+        ],
+    )
+    return (d / "playbook.yaml").read_text(encoding="utf-8")
+
+
+def test_a_comment_before_the_first_param_survives(tmp_path: Path) -> None:
+    """ruamel attaches it to the parent's `params` key, not to `max_tokens`."""
+    out = _rewrite_unchanged(_inner_dir(tmp_path))
+    assert "# Sonnet 5 rejects temperature / top_p / top_k (HTTP 400)." in out
+
+
+def test_a_comment_between_params_survives(tmp_path: Path) -> None:
+    out = _rewrite_unchanged(_inner_dir(tmp_path))
+    assert "# Depth is `effort`, not a token budget." in out
+
+
+def test_the_next_section_heading_is_not_duplicated(tmp_path: Path) -> None:
+    """It is parked on the last key of the block, but it belongs to `limits:`.
+
+    Carrying it forward with the rest printed it twice — once where it belongs
+    and once inside the rewritten block. Column tells them apart.
+    """
+    out = _rewrite_unchanged(_inner_dir(tmp_path))
+    assert out.count("# Loop bounds.") == 1
+
+
+def test_an_unchanged_rewrite_changes_nothing_at_all(tmp_path: Path) -> None:
+    d = _inner_dir(tmp_path)
+    before = (d / "playbook.yaml").read_text(encoding="utf-8")
+    assert _rewrite_unchanged(d) == before
+
+
 def test_write_preserves_comments_and_updates(tmp_path: Path) -> None:
     d = _playbook_dir(tmp_path)
     write_playbook_models(
