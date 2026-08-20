@@ -119,6 +119,25 @@ def test_a_subprocess_can_be_created() -> None:
 
 
 @needs_docker
+def test_the_process_is_not_root() -> None:
+    stdout, _, _ = _run("id -u")
+    assert stdout.strip() == "1000", stdout
+
+
+@needs_docker
+def test_a_root_owned_file_cannot_be_read() -> None:
+    """Dropping capabilities is not the same as not being root.
+
+    DAC grants access on an ownership match, with no capability involved, so a
+    root process reads root-owned files even with `CapEff=0`. The argv carried
+    `uid=1000` on the tmpfs while the process ran as root, and `/etc/shadow`
+    (0640 root:shadow) was readable.
+    """
+    stdout, _, _ = _run("cat /etc/shadow >/dev/null 2>&1 && echo READ || echo denied")
+    assert "denied" in stdout, stdout
+
+
+@needs_docker
 def test_the_process_holds_no_capabilities() -> None:
     stdout, _, _ = _run("grep -E '^(CapEff|CapBnd):' /proc/self/status")
     caps = dict(re.findall(r"^(CapEff|CapBnd):\s*(\w+)", stdout, re.M))

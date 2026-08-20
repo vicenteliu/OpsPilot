@@ -413,12 +413,23 @@ assertion that needs no daemon: that the policy is where the code looks for it.
 `clock_gettime64` was missing and has been added on that basis alone — there is
 no 32-bit host here to run it on.
 
-*Open:* the command runs as **root inside the container**. There is no `--user`
-flag, though `--tmpfs=…,uid=1000` says someone intended one. With no
-capabilities, no new privileges, a read-only root and a deny-by-default filter
-this is heavily defanged, but it is weaker than the argv implies, and closing it
-could break a diagnostic that expects to read something root-only. That is a
-decision, not an oversight to fix quietly.
+**And it no longer runs as root.** There was no `--user` flag, though
+`--tmpfs=…,uid=1000` said someone had intended one. "Root with no capabilities"
+sounds equivalent to unprivileged and is not: DAC grants access on an *ownership
+match*, with no capability involved, so the process read root-owned files that
+`CapEff=0` did nothing about. Measured, same image, same argv otherwise:
+
+| | as root | as uid 1000 |
+| --- | --- | --- |
+| read `/etc/shadow` (0640 root:shadow) | yes | denied |
+| list `/root` (0700 root:root) | yes | denied |
+
+`--user=1000:1000` now rides alongside a tmpfs owned `uid=1000,gid=1000`, from
+one constant rather than two literals that have to agree — which is how most of
+this file's defects started. The feared cost did not materialise: pipelines,
+`ps`, `df`, `date` and the session's own diagnostics all still run, and `/work`
+stays writable because it is owned by the user now instead of merely mounted for
+them.
 
 **Behaviour gate** — `make test-behaviour`. Five of this product's behaviours are
 produced by a *prompt*, not by code: an injected Memory constraint changing an
