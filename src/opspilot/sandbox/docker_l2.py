@@ -6,14 +6,28 @@ L2 = Docker default + --read-only rootfs + --cap-drop ALL
 
 from __future__ import annotations
 
+import os
 import subprocess
 import time
 from pathlib import Path
+from typing import Final
 
 from .types import ActionRequest, ApplyResult, DryRunPreview
 
-# Repo-level seccomp policy (falls back to Docker default if not found).
-_SECCOMP_PROFILE = Path(__file__).parents[4] / "sandbox" / "policies" / "seccomp.template.json"
+# This file is ``src/opspilot/sandbox/``, so the repo root is four parents up
+# and the policy lives under ``docs/specs``. When pip-installed outside the repo
+# (the Docker image), ``OPSPILOT_SPECS_DIR`` points at the shipped tree — the
+# same resolution redaction.py, schemas.py and kb/storage_init.py use.
+_SPECS_DIR: Final[Path] = (
+    Path(os.environ["OPSPILOT_SPECS_DIR"])
+    if os.environ.get("OPSPILOT_SPECS_DIR")
+    else Path(__file__).resolve().parents[3] / "docs" / "specs"
+)
+# Falls back to the Docker default profile when absent — which is what happened
+# for this policy's whole life: the path pointed one level above the repo root
+# at a `sandbox/policies/` directory that has never existed, and `.exists()`
+# made that silent.
+_SECCOMP_PROFILE: Final[Path] = _SPECS_DIR / "sandbox" / "policies" / "seccomp.template.json"
 _DEFAULT_IMAGE = "alpine:3.19"
 
 

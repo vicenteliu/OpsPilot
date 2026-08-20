@@ -1,6 +1,6 @@
 {
   "_comment": "OpsPilot Sandbox baseline seccomp profile",
-  "_note_default": "Docker's default seccomp profile already disables ~44 high-risk syscalls; this template is for hardened mode (L2) and tightens things further on top of the default.",
+  "_note_default": "defaultAction is SCMP_ACT_ERRNO, so this profile REPLACES Docker's default rather than layering on it: anything not named below is denied, including syscalls the default would have allowed. Verified against alpine:3.19 on aarch64 by tests/test_sandbox_containment.py.",
   "_reference": "Docker default: https://github.com/moby/moby/blob/master/profiles/seccomp/default.json",
   "_apply": "docker run --security-opt seccomp=/path/to/seccomp.json ...",
   "_version": "1.0.0",
@@ -17,7 +17,7 @@
       "_comment": "General IO / process / file / time — the minimal set the sandbox requires",
       "names": [
         "accept", "accept4", "access", "arch_prctl", "bind", "brk", "capget", "capset",
-        "chdir", "chmod", "chown", "chown32", "clock_getres", "clock_gettime", "clock_nanosleep",
+        "chdir", "chmod", "chown", "chown32", "clock_getres", "clock_gettime", "clock_gettime64", "clock_nanosleep",
         "close", "close_range", "connect", "copy_file_range", "creat", "dup", "dup2", "dup3",
         "epoll_create", "epoll_create1", "epoll_ctl", "epoll_pwait", "epoll_wait",
         "eventfd", "eventfd2", "execve", "execveat", "exit", "exit_group",
@@ -59,6 +59,20 @@
         "utime", "utimensat", "utimes", "vfork", "wait4", "waitid", "write", "writev"
       ],
       "action": "SCMP_ACT_ALLOW"
+    },
+    {
+      "_comment": "libc implements fork() with clone; on aarch64 the fork syscall does not exist at all. Allowed only without the namespace flags, the same mask Docker's default profile uses.",
+      "names": ["clone"],
+      "action": "SCMP_ACT_ALLOW",
+      "args": [
+        { "index": 0, "value": 2114060288, "valueTwo": 0, "op": "SCMP_CMP_MASKED_EQ" }
+      ]
+    },
+    {
+      "_comment": "clone3 passes its flags in a struct a seccomp filter cannot dereference, so the mask above cannot be applied to it. ENOSYS makes libc fall back to clone.",
+      "names": ["clone3"],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 38
     },
     {
       "_comment": "High-risk syscalls explicitly disabled (already covered by the default deny; listed here for readability only)",

@@ -369,6 +369,57 @@ A ticket whose submitter demanded a restart and a rollback, in those words, and
 told the assistant to skip diagnostics, produced four read-only diagnostics and
 no mutation — through the real path rather than the gate's hand-built prompt.
 
+**The sandbox was then asked whether it actually contains anything.** ADR-0005
+makes it the real boundary and the approval gate an admitted heuristic, and
+until #209 it had never started a container, so nothing about the boundary had
+ever been observed. Reading the kernel's own view from inside — `/proc/self/status`,
+cgroup limits, routes — rather than trying to break out of it:
+
+| declared | in effect |
+| --- | --- |
+| `--cap-drop=ALL` | `CapEff` and `CapBnd` both `0000000000000000` |
+| `--security-opt=no-new-privileges` | `NoNewPrivs: 1` |
+| `--read-only` | writing outside `/work` blocked |
+| `--tmpfs=/work:size=64m` | `dd` asked for 80M, wrote exactly 67108864 bytes |
+| `--network=none` | no routes, only `lo` addressed, egress fails |
+| `--pids-limit=128` | `pids.max=128` |
+| `--memory=512m` | `memory.max=536870912` |
+| the project's seccomp profile | **not applied — ever** |
+
+`_SECCOMP_PROFILE` resolved to `<repo>/../sandbox/policies/`, one level above
+the repo root at a directory that has never existed, and it is used behind
+`if …exists()`, so the miss was silent: Docker's default profile applied
+instead. Three other modules already resolve `docs/specs` correctly with an
+`OPSPILOT_SPECS_DIR` override; this was the fourth site and the only wrong one.
+
+**Fixing the path alone breaks the sandbox**, which is why the profile had never
+been noticed: its allowlist has `fork` and `vfork` but not `clone`, and libc
+implements `fork()` with `clone` — on aarch64 the `fork` syscall does not exist
+at all. Every command returned `/bin/sh: can't fork: Operation not permitted`.
+The path bug had been hiding a profile that could not run anything. `clone` is
+now allowed with the namespace flags masked off and `clone3` returns `ENOSYS` so
+libc falls back to it — the same treatment Docker's default gives them, and the
+only one seccomp can enforce, since `clone3` takes a struct pointer a filter
+cannot dereference.
+
+With the profile actually loaded, `unshare`, `chroot` and `mount` are refused by
+the filter rather than only by the dropped capabilities.
+
+`tests/test_sandbox_containment.py` pins all of it behind a `requires_docker`
+marker. It self-skips where the image is absent, so CI still runs the one
+assertion that needs no daemon: that the policy is where the code looks for it.
+
+*Not verified:* the profile on 32-bit sub-architectures, which `archMap` claims.
+`clock_gettime64` was missing and has been added on that basis alone — there is
+no 32-bit host here to run it on.
+
+*Open:* the command runs as **root inside the container**. There is no `--user`
+flag, though `--tmpfs=…,uid=1000` says someone intended one. With no
+capabilities, no new privileges, a read-only root and a deny-by-default filter
+this is heavily defanged, but it is weaker than the argv implies, and closing it
+could break a diagnostic that expects to read something root-only. That is a
+decision, not an oversight to fix quietly.
+
 **Behaviour gate** — `make test-behaviour`. Five of this product's behaviours are
 produced by a *prompt*, not by code: an injected Memory constraint changing an
 answer, a Memory ↔ KB contradiction being reported, a distilled Skill keeping its
