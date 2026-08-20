@@ -29,6 +29,10 @@ _SPECS_DIR: Final[Path] = (
 # made that silent.
 _SECCOMP_PROFILE: Final[Path] = _SPECS_DIR / "sandbox" / "policies" / "seccomp.template.json"
 _DEFAULT_IMAGE = "alpine:3.19"
+# The process runs as this id and the tmpfs is owned by it. One constant for
+# both: the argv already carried `uid=1000` while the container ran as root,
+# and two literals that have to agree is how most of this file's defects began.
+_SANDBOX_UID: Final[int] = 1000
 
 
 def _mem_to_docker(mem: str) -> str:
@@ -56,7 +60,8 @@ def _build_docker_args(request: ActionRequest, image: str, runtime: str | None =
         "run",
         "--rm",
         "--read-only",
-        f"--tmpfs={workdir}:size={disk},uid=1000",
+        f"--tmpfs={workdir}:size={disk},uid={_SANDBOX_UID},gid={_SANDBOX_UID}",
+        f"--user={_SANDBOX_UID}:{_SANDBOX_UID}",
         "--cap-drop=ALL",
         "--security-opt=no-new-privileges",
         f"--memory={_mem_to_docker(p.resource.memory)}",
