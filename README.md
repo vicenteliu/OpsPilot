@@ -23,6 +23,18 @@ an auditable trail: PII is redacted before anything reaches a model, output
 is validated against a strict JSON Schema, and each session archives a
 content-addressed artifact plus an append-only trace.
 
+**Contents** · [A quick look](#a-quick-look) · [Why this project](#why-this-project) · [Highlights](#highlights) · [Quick start](#quick-start) · [Design notes](#design-notes) · [Architecture](#architecture) · [Documentation](#documentation) · [Safety](#safety) · [License](#license)
+
+## A quick look
+
+The web UI — dark-first, sidebar-navigated, every answer cited back to the KB:
+
+![OpsPilot web UI](docs/assets/webui.png)
+
+The terminal UI — a REPL with slash commands over the same backend:
+
+![OpsPilot TUI tour](docs/assets/tui.gif)
+
 ## Why this project
 
 AI is reshaping the IT-support industry. OpsPilot is a working answer to a
@@ -44,119 +56,68 @@ practical work-assistance layer for IT support look like?**
 
 - **Multi-provider** — Anthropic Claude, OpenAI, OpenRouter, Gemini, xAI
   Grok, or local Ollama; playbooks declare a primary model plus selectable
-  alternates (down to a local Gemma), switchable per-run from the UI or set
-  as a team default in the admin module, with automatic fallback when a
-  provider errors. Admins can curate the selectable list itself — remove or
-  upgrade models — from the admin module, editing the playbook in place.
-  Embeddings default to OpenAI, with local Ollama a one-variable switch away
-  for teams that keep them in-house. Playbooks can
-  route by complexity, sending the easy majority to a cheap tier and
-  escalating only what needs it
-- **Work-item intake** — pull tickets straight from Jira Service Management
-  on a JQL scope and post the AI suggestion back as a comment on the ticket:
-  polling-only (no public endpoint), comment-only (no field is ever touched),
-  restart-safe state, and a `--replay` mode that demos the whole loop
-  offline; intake can run on a cheaper model than interactive use, and
-  remote deployments can push instead via `POST /api/intake`
+  alternates (down to a local Gemma), switchable per-run or set as a team
+  default, with automatic fallback when a provider errors and complexity
+  routing that reserves the expensive tier for what needs it. Admins curate
+  the alternate list — remove or upgrade models — from the admin module,
+  editing the playbook in place; embeddings default to OpenAI, one variable
+  away from local Ollama
+- **Work-item intake** — polls Jira Service Management on a JQL scope and
+  posts the suggestion back as a ticket comment: polling-only (no public
+  endpoint), comment-only (no field is ever touched), restart-safe, with an
+  offline `--replay` demo; intake can run on a cheaper model, and remote
+  deployments push via `POST /api/intake` instead
 - **KB retrieval with citations** — hybrid vector (LanceDB) + full-text
   (SQLite FTS5) search fused with RRF; `tool` mode (ReAct) for strong models,
   `prefetch` injection for weak local ones
-- **Memory** — the standing facts about your environment that have no table of
-  their own: *"never restart the ESXi cluster on a Tuesday evening, finance runs
-  its month-end batch"*. OpsPilot's second owned domain. An entry is **admitted,
-  never harvested** — a person writes the sentence and the reason, because an
-  extractor cannot tell a mid-investigation hunch from a conclusion, and a wrong
-  entry never raises an error, it just quietly steers the assistant. Entries
-  carry up to two anchors (an Asset, a site) so a constraint about one site
-  cannot answer a question about another; they are superseded by appending, so
-  *"we recorded it wrong"* stays distinguishable from *"the world changed"*; and
-  a stale review date changes the label an entry carries, never whether it
-  applies. Memory reaches an answer on its own path rather than through hybrid
-  search — which is what lets the assistant notice when a recorded constraint
-  and an ingested document contradict each other, and open a **Conflict** for a
-  human to settle
+- **Memory** — the standing facts about your environment that have no table
+  of their own: *"never restart the ESXi cluster on a Tuesday evening"*.
+  Written by a person with a reason, carrying up to two anchors (an Asset,
+  a site), superseded by appending — and cross-checked against the KB,
+  opening a **Conflict** when the two disagree ([details](#memory))
 - **Consultation** — the surface where an operator actually works a problem,
-  grounded in the KB, Memory and Skills. Visible to its author and to admins
-  only, and swept after 90 days, because that is what makes it cheap enough to
-  think out loud in. Any sentence the assistant says can be **pinned into
-  Memory** with a reason, in the moment it is said. A **Working set** carries
-  what you are currently chasing across a chain of conversations — and the
-  address it lives at, which is what lets anchored Memory reach an answer at
-  all. It closes by hand, with an unconditional inactivity fallback that
-  announces itself, because nobody returns to press "close" at the moment a
-  problem is solved. To *act* on what a conversation found, it escalates into a
-  Session, carrying a work-item description and nothing else
+  grounded in the KB, Memory and Skills; any sentence the assistant says can
+  be pinned into Memory in the moment, and a **Working set** carries the
+  chase across conversations ([details](#consultation))
 - **Asset inventory** — procurement-to-retirement tracking for the devices
-  your team manages, and the one domain OpsPilot *owns* rather than mirrors:
-  small teams have no CMDB, so CSV import/export is the migration path in and
-  out. Eight free-set statuses (no state machine — real inventories are full
-  of corrections), an append-only event log whose actor comes from the
-  authenticated caller, and a fulfillment playbook that drafts Assets straight
-  from a Service Request
+  your team manages, with CSV as the migration path in and out, free-set
+  statuses, and an append-only event log ([details](#asset-inventory))
 - **Runtime Skills** — reusable `SKILL.md` packages the assistant loads on
-  demand: it sees a compact catalog of triggers and pulls in the full
-  procedure when a problem matches, with retrieval-injection fallback for
-  models too weak to call tools. Admins can have one drafted from a problem
-  description, or distilled from a **closed Working set** — a problem opened,
-  worked across several conversations, and finished. The draft keeps the dead
-  ends, because knowing what to rule out and in what order is the useful half of
-  a procedure, and it leaves the stopping condition and the tools list **blank
-  on purpose**: a run that went well never exercised either, and a plausible
-  guess gets skimmed and merged where a blank cannot. Nothing is admitted by
-  arriving — moving a draft into `agent_skills/` is a commit, and that commit is
-  the admission
+  demand from a compact trigger catalog; drafted from a problem description
+  or distilled from a closed Working set, and admitted only by a commit
+  ([details](#runtime-skills))
 - **Redaction first** — PII stripped before any content reaches a model or
   the KB
 - **Auditable sessions** — content-addressed artifacts, append-only traces,
   schema-validated output, browsable history. Who acted is taken from the
   authenticated caller, never from what the caller claims
-- **Proposed actions** — a session may put forward a read-only diagnostic with
-  its dry-run preview and the approval gate's verdict, and **it runs only when a
-  person presses execute**; request, preview, verdict, actor and outcome all
-  append to the session's trace. The first batch is diagnostics and contains no
-  mutation at all — that constraint lives in the artifact schema, where the
-  intent is a constant, so a mutating action cannot be expressed. Widening it
-  later is a visible, reviewable diff. Execution happens in hardened Docker (L2)
-  or gVisor (L3, fail-closed) containers; the approval gate flags risky patterns
-  but is a defence-in-depth signal, not the boundary — the sandbox is
+- **Proposed actions** — a session may put forward a read-only diagnostic
+  with its dry-run preview; it runs only when a person presses execute,
+  inside hardened Docker (L2) or gVisor (L3) sandboxes
+  ([details](#proposed-actions))
 - **Compounding wiki** — session insights distilled into lint-checked,
   lifecycle-managed wiki pages on top of the long-term KB
-- **Knowledge bundles** — export the KB, Skills, wiki pages and Memory as one
-  archive and restore them elsewhere. Per-domain native formats, not a uniform
-  envelope: Skills and wiki pages stay files, because a Skill is admitted through
-  a pull request and a pull request has to read as a diff. No vectors travel —
-  they are bound to an embedding model, so the receiver re-ingests. Sessions and
-  Consultations deliberately have **no** export: an append-only ledger stops
-  being one the moment it becomes a file anyone can edit
+- **Knowledge bundles** — export the KB, Skills, wiki pages and Memory as
+  one archive and restore them elsewhere; per-domain native formats, and no
+  vectors travel ([details](#knowledge-bundles))
 - **MCP client** — tools from any Model Context Protocol server (stdio/HTTP)
   injected into the ReAct loop, with per-server allow/denylists
 - **Interfaces & channels** — CLI, REPL terminal UI (Textual, slash
   commands), tabbed web UI (Svelte 5) with KB-augmented chat, FastAPI
-  backend; a Telegram channel brings the KB chat into your messenger and
-  files work items with `/intake`; WeCom connects both ways — a group robot
-  pushes intake suggestions (notify), and a self-built app answers KB
-  questions in chat (assist)
-- **Multi-user & SSO** — login-gated web UI with three roles
-  (viewer / operator / admin); authenticate against local accounts,
-  LDAP / Active Directory, or OIDC SSO, with group→role mapping and an
-  admin module for users, roles, provider status, and audit. Machine
-  callers (channels, intake) use a Service token; secrets stay in the
-  environment, never the database. Ships as an all-in-one Docker image —
-  one `docker run` is a complete, login-gated workbench
+  backend; a Telegram channel brings KB chat and `/intake` to your
+  messenger, and WeCom connects both ways — a group robot pushes intake
+  suggestions (notify), and a self-built app answers KB questions in chat
+  (assist)
+- **Multi-user & SSO** — three roles (viewer / operator / admin) against
+  local accounts, LDAP/AD, or OIDC SSO with group→role mapping, plus an
+  admin module for users, roles, provider status, and audit; machine callers
+  use a Service token, secrets stay in the environment — never the
+  database — and an all-in-one Docker image makes one `docker run` a
+  complete login-gated workbench
 - **Observability** — Prometheus `/metrics`, OTel-compatible JSON logs,
   `/health`
 - **Rust hot paths** — chunker (~10×) and tokenizer (~45×) compiled via
   PyO3/maturin, with a transparent Python fallback; CI enforces ≥5×
-
-## A quick look
-
-The web UI — dark-first, sidebar-navigated, every answer cited back to the KB:
-
-![OpsPilot web UI](docs/assets/webui.png)
-
-The terminal UI — a REPL with slash commands over the same backend:
-
-![OpsPilot TUI tour](docs/assets/tui.gif)
 
 ## Quick start
 
@@ -263,6 +224,88 @@ The container needs no Ollama: `ANTHROPIC_API_KEY` answers chat and
 
 For a multi-service deployment (nginx TLS termination, JSM intake, optional
 Ollama), see [Docker Compose](docs/deployment.md#docker-compose).
+
+## Design notes
+
+The one-line highlights above compress a lot of deliberate design. This
+section keeps the full reasoning for the domains OpsPilot owns and the
+decisions that are easy to get wrong.
+
+### Memory
+
+The standing facts about your environment that have no table of their own:
+*"never restart the ESXi cluster on a Tuesday evening, finance runs its
+month-end batch"*. OpsPilot's second owned domain. An entry is **admitted,
+never harvested** — a person writes the sentence and the reason, because an
+extractor cannot tell a mid-investigation hunch from a conclusion, and a wrong
+entry never raises an error, it just quietly steers the assistant. Entries
+carry up to two anchors (an Asset, a site) so a constraint about one site
+cannot answer a question about another; they are superseded by appending, so
+*"we recorded it wrong"* stays distinguishable from *"the world changed"*; and
+a stale review date changes the label an entry carries, never whether it
+applies. Memory reaches an answer on its own path rather than through hybrid
+search — which is what lets the assistant notice when a recorded constraint
+and an ingested document contradict each other, and open a **Conflict** for a
+human to settle.
+
+### Consultation
+
+The surface where an operator actually works a problem, grounded in the KB,
+Memory and Skills. Visible to its author and to admins only, and swept after
+90 days, because that is what makes it cheap enough to think out loud in. Any
+sentence the assistant says can be **pinned into Memory** with a reason, in
+the moment it is said. A **Working set** carries what you are currently
+chasing across a chain of conversations — and the address it lives at, which
+is what lets anchored Memory reach an answer at all. It closes by hand, with
+an unconditional inactivity fallback that announces itself, because nobody
+returns to press "close" at the moment a problem is solved. To *act* on what
+a conversation found, it escalates into a Session, carrying a work-item
+description and nothing else.
+
+### Asset inventory
+
+Procurement-to-retirement tracking for the devices your team manages, and the
+first domain OpsPilot came to *own* rather than mirror: small teams have no CMDB, so
+CSV import/export is the migration path in and out. Eight free-set statuses
+(no state machine — real inventories are full of corrections), an append-only
+event log whose actor comes from the authenticated caller, and a fulfillment
+playbook that drafts Assets straight from a Service Request.
+
+### Runtime Skills
+
+Reusable `SKILL.md` packages the assistant loads on demand: it sees a compact
+catalog of triggers and pulls in the full procedure when a problem matches,
+with retrieval-injection fallback for models too weak to call tools. Admins
+can have one drafted from a problem description, or distilled from a **closed
+Working set** — a problem opened, worked across several conversations, and
+finished. The draft keeps the dead ends, because knowing what to rule out and
+in what order is the useful half of a procedure, and it leaves the stopping
+condition and the tools list **blank on purpose**: a run that went well never
+exercised either, and a plausible guess gets skimmed and merged where a blank
+cannot. Nothing is admitted by arriving — moving a draft into `agent_skills/`
+is a commit, and that commit is the admission.
+
+### Proposed actions
+
+A session may put forward a read-only diagnostic with its dry-run preview and
+the approval gate's verdict, and **it runs only when a person presses
+execute**; request, preview, verdict, actor and outcome all append to the
+session's trace. The first batch is diagnostics and contains no mutation at
+all — that constraint lives in the artifact schema, where the intent is a
+constant, so a mutating action cannot be expressed. Widening it later is a
+visible, reviewable diff. Execution happens in hardened Docker (L2) or gVisor
+(L3, fail-closed) containers; the approval gate flags risky patterns but is a
+defence-in-depth signal, not the boundary — the sandbox is.
+
+### Knowledge bundles
+
+Export the KB, Skills, wiki pages and Memory as one archive and restore them
+elsewhere. Per-domain native formats, not a uniform envelope: Skills and wiki
+pages stay files, because a Skill is admitted through a pull request and a
+pull request has to read as a diff. No vectors travel — they are bound to an
+embedding model, so the receiver re-ingests. Sessions and Consultations
+deliberately have **no** export: an append-only ledger stops being one the
+moment it becomes a file anyone can edit.
 
 ## Architecture
 
