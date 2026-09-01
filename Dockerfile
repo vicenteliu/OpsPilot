@@ -4,7 +4,7 @@
 # Runtime stage: slim image with just the package + runtime deps.
 #
 # Build:   docker build -t opspilot:latest .
-# Verify:  docker run --rm opspilot:latest opspilot --version
+# Verify:  docker run --rm opspilot:latest --version   (entrypoint is `opspilot`)
 # CI:      pair with `make OLLAMA_MODE=docker ollama-up` for a fully
 #          containerised PR-8 golden run.
 
