@@ -133,16 +133,25 @@ class IngestStats:
 # ── Discovery ─────────────────────────────────────────────────────────
 
 
+# kb load-dir's fixture format pairs these two reserved names next to the
+# source documents they describe (the scn_* examples still mix them in one
+# directory). They are metadata *about* documents, not documents: ingesting
+# a doc-meta.json puts JSON boilerplate into retrieval results (#214).
+_FIXTURE_SIDECARS = frozenset({"doc-meta.json", "chunks.jsonl"})
+
+
 def discover_files(paths: Iterable[Path]) -> list[Path]:
     """Walk inputs to a flat list of files.
 
     Hidden files / dirs (starting with ``.``) are skipped — they're
-    almost always editor swap files or VCS metadata.
+    almost always editor swap files or VCS metadata. KB fixture sidecars
+    (``doc-meta.json`` / ``chunks.jsonl``) are skipped for the same
+    reason: they describe the corpus rather than belong to it.
     """
     out: list[Path] = []
     for p in paths:
         if p.is_file():
-            if not p.name.startswith("."):
+            if not p.name.startswith(".") and p.name not in _FIXTURE_SIDECARS:
                 out.append(p)
         elif p.is_dir():
             for f in sorted(p.rglob("*")):
@@ -150,7 +159,11 @@ def discover_files(paths: Iterable[Path]) -> list[Path]:
                 # segment of the full path rejected the whole tree whenever an
                 # ancestor was dot-prefixed — `ingest ../docs` and any corpus
                 # under a hidden directory both ingested nothing, silently.
-                if f.is_file() and not any(part.startswith(".") for part in f.relative_to(p).parts):
+                if (
+                    f.is_file()
+                    and f.name not in _FIXTURE_SIDECARS
+                    and not any(part.startswith(".") for part in f.relative_to(p).parts)
+                ):
                     out.append(f)
     return out
 

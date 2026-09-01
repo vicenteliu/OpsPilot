@@ -129,6 +129,19 @@ def test_discover_still_skips_dot_dirs_inside_the_tree(tmp_path: Path) -> None:
     assert {p.name for p in discover_files([tmp_path])} == {"visible.md"}
 
 
+def test_discover_skips_kb_fixture_sidecars(tmp_path: Path) -> None:
+    """A mixed directory — the scn_* examples' layout — ingests only the documents.
+
+    doc-meta.json / chunks.jsonl are `kb load-dir`'s input format; walking over
+    them with `ingest` used to put JSON metadata into retrieval results (#214).
+    """
+    (tmp_path / "sop.md").write_text("# SOP", encoding="utf-8")
+    (tmp_path / "doc-meta.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "chunks.jsonl").write_text("{}", encoding="utf-8")
+    assert {p.name for p in discover_files([tmp_path])} == {"sop.md"}
+    assert discover_files([tmp_path / "doc-meta.json"]) == []
+
+
 # ── Single-file ingest ───────────────────────────────────────────────
 
 
