@@ -25,7 +25,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import lancedb
 import pyarrow as pa
@@ -40,7 +40,7 @@ TABLE_NAME: str = "chunks"
 
 # Distance metric — cosine is what the spec mandates and is the standard
 # choice for sentence-embedding models. Set on every search() call.
-METRIC: str = "cosine"
+METRIC: Literal["cosine"] = "cosine"
 
 
 @dataclass(frozen=True)
@@ -154,7 +154,7 @@ class LanceStore:
         path.mkdir(parents=True, exist_ok=True)
         db = lancedb.connect(str(path))
 
-        if TABLE_NAME in db.table_names():
+        if TABLE_NAME in db.list_tables().tables:
             table = db.open_table(TABLE_NAME)
             existing_dim = _detect_dim(table)
             if existing_dim != dim:
@@ -204,7 +204,7 @@ class LanceStore:
                 )
 
         rows = [r.to_arrow_record() for r in records]
-        # merge_insert is the upsert idiom in LanceDB 0.5.x.
+        # merge_insert is LanceDB's upsert idiom.
         (
             self._table.merge_insert(on="vector_id")
             .when_matched_update_all()
@@ -248,7 +248,7 @@ class LanceStore:
         invisible, which is the bug.
         """
         with contextlib.suppress(Exception):  # a refresh failure must not fail the read
-            self._table.checkout_latest()
+            self._table.checkout_latest()  # type: ignore[no-untyped-call]  # unannotated in lancedb
 
     def ann_search(
         self,
@@ -264,7 +264,8 @@ class LanceStore:
 
         search = (
             self._table.search(list(query_vec), vector_column_name=VECTOR_COLUMN)
-            .metric(METRIC)
+            # typed as the base LanceQueryBuilder, which lacks distance_type
+            .distance_type(METRIC)  # type: ignore[attr-defined]
             .limit(top_k)
         )
         # Combine filter clauses with AND. ``where()`` takes a SQL-ish predicate.
@@ -359,10 +360,10 @@ def _detect_embedding_model(table: lancedb.table.Table) -> str | None:
     """
     if int(table.count_rows()) == 0:
         return None
-    scanned = table.to_lance().scanner(columns=["embedding_model"], limit=1).to_table()
-    if scanned.num_rows == 0:
+    rows = table.search().select(["embedding_model"]).limit(1).to_list()
+    if not rows:
         return None
-    value = scanned.column("embedding_model")[0].as_py()
+    value = rows[0].get("embedding_model")
     return str(value) if value else None
 
 
