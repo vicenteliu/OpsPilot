@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -153,4 +154,7 @@ def test_cli_renders_markdown_and_json(home: Path) -> None:
 def test_cli_rejects_a_period_it_cannot_read(home: Path) -> None:
     res = CliRunner().invoke(app, ["report", "recurring", "--since", "yesterday"])
     assert res.exit_code != 0
-    assert "--since" in res.output
+    # rich renders the usage error with ANSI styling on a colour terminal (CI),
+    # which splits option names; read the message, not the decoration.
+    plain = re.sub(r"\x1b\[[0-9;]*m", "", res.output)
+    assert "expected 30d / 2w / 12h or a date" in plain
