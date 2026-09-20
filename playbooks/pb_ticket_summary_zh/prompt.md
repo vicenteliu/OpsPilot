@@ -8,7 +8,8 @@
 2. **检索 KB**：对工单中提到的现象（如错误关键字、组件名、协议）调用 `kb_search` 工具，获得相关 SOP / Runbook chunk。**若 system 末尾已附 "已预检索 KB / Prefetched KB chunks" 段落，直接使用其中的 `chunk_id`，不要再调用任何工具。**
 3. **判断 scope**：根据工单内容选 `single_user | multiple_users | site_wide | unknown`。
 4. **拆解 tasks**：把这个 Incident 拆成 **至少 3 条**可分配的 Task；每条带 `ref`（`task-1`/`task-2`…）、`rationale`、以及建议处理的 `tier`（`L1` 一线 / `L2` 专家 / `L3` 工程或 vendor），引用了 KB 时填 `citations: ["kb-1"]`。
-5. **输出 final JSON**：仅输出 JSON 对象（无 markdown 围栏、无解释文字）；schema 见下方。
+5. **判断 cause_class**：选 `user_error | server_side | process_or_kb_gap | unknown` 之一——用户误操作且 KB 已有答案 / 服务端需要改 / 流程、表单或 KB 页本身有缺口 / 判断不了。
+6. **输出 final JSON**：仅输出 JSON 对象（无 markdown 围栏、无解释文字）；schema 见下方。
 
 ## 输出 JSON Schema (incident_summary_v1)
 
@@ -32,6 +33,7 @@
     }
   ],
   "severity_suggested": "P0|P1|P2|P3|P4",
+  "cause_class": "user_error | server_side | process_or_kb_gap | unknown",
   "escalation_hint": "<可选；一句整体路由建议>",
   "citations": [
     {
@@ -75,7 +77,7 @@ kb_search({"query": "VPN 认证失败", "top_k": 5})
 ## 输出示例（仅展示 JSON 形式，不要照抄字段值）
 
 ```json
-{"schema_version":"incident_summary_v1","work_item_ref":"T-XXXX","work_item_type":"incident","summary":"…","symptoms":["…"],"scope":"multiple_users","tried_steps":["…"],"missing_fields":["…"],"tasks":[{"ref":"task-1","action":"…","rationale":"…","tier":"L2","citations":["kb-1"]},{"ref":"task-2","action":"…","rationale":"…","tier":"L1","citations":[]},{"ref":"task-3","action":"…","rationale":"…","tier":"L3","citations":["kb-1"]}],"severity_suggested":"P2","escalation_hint":"L2 网络组","citations":[{"id":"kb-1","chunk_id":"chk_0cf89826","document_id":"doc_88a277cf","source_path":"…","line_start":37,"line_end":46}]}
+{"schema_version":"incident_summary_v1","work_item_ref":"T-XXXX","work_item_type":"incident","summary":"…","symptoms":["…"],"scope":"multiple_users","tried_steps":["…"],"missing_fields":["…"],"tasks":[{"ref":"task-1","action":"…","rationale":"…","tier":"L2","citations":["kb-1"]},{"ref":"task-2","action":"…","rationale":"…","tier":"L1","citations":[]},{"ref":"task-3","action":"…","rationale":"…","tier":"L3","citations":["kb-1"]}],"severity_suggested":"P2","cause_class":"server_side","escalation_hint":"L2 网络组","citations":[{"id":"kb-1","chunk_id":"chk_0cf89826","document_id":"doc_88a277cf","source_path":"…","line_start":37,"line_end":46}]}
 ```
 
 记住：**纯 JSON，无围栏，无解释**。
