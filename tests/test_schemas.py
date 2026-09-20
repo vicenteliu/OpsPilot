@@ -116,6 +116,16 @@ class TestIncidentSummarySchema:
         with pytest.raises(SchemaError):
             validate("incident_summary_v1", bad, repo_root=repo_root)
 
+    def test_cause_class_is_optional_and_closed(self, repo_root: Path) -> None:
+        # #220: a run may name the cause class; older artifacts have none.
+        ok = _valid_incident()
+        ok["cause_class"] = "process_or_kb_gap"
+        validate("incident_summary_v1", ok, repo_root=repo_root)
+        bad = _valid_incident()
+        bad["cause_class"] = "user-error"
+        with pytest.raises(SchemaError):
+            validate("incident_summary_v1", bad, repo_root=repo_root)
+
     def test_ticket_summary_v1_alias_removed(self, repo_root: Path) -> None:
         # Deprecation window closed (#11): the alias is gone.
         assert "ticket_summary_v1" not in registry(repo_root)

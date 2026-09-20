@@ -27,6 +27,7 @@ import dataclasses
 import json
 import os
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -57,6 +58,7 @@ from .orchestrator import RunRequest, load_playbook, run_ticket_summary
 from .orchestrator.ticket_summary import _format_doc_request
 from .providers import make_provider
 from .redaction import Redactor
+from .report import build_recurring_report
 from .schemas import (
     infer_schema_name,
     iter_items,
@@ -1615,6 +1617,68 @@ def wiki_import_dir(
 
 # ──────────────────────────────────────────────────────────────────────────
 #  iteration (PR-27)
+# ──────────────────────────────────────────────────────────────────────────
+#  report (rollups over archived runs — #220, ADR-0039)
+# ──────────────────────────────────────────────────────────────────────────
+
+report_app = typer.Typer(
+    name="report",
+    help="Reports over the archived Work-item traces.",
+    no_args_is_help=True,
+)
+app.add_typer(report_app)
+
+
+def _parse_period_bound(value: str | None, *, name: str) -> datetime | None:
+    """``30d`` / ``2w`` / ``12h`` back from now, or an RFC3339 / ISO date."""
+    if value is None:
+        return None
+    v = value.strip()
+    unit = {"h": "hours", "d": "days", "w": "weeks"}.get(v[-1:])
+    if unit and v[:-1].isdigit():
+        return datetime.now(UTC) - timedelta(**{unit: int(v[:-1])})
+    try:
+        dt = datetime.fromisoformat(v.replace("Z", "+00:00"))
+    except ValueError as e:
+        raise typer.BadParameter(f"{name}: expected 30d / 2w / 12h or a date, got {value!r}") from e
+    return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
+
+
+@report_app.command("recurring")
+def report_recurring(
+    since: str | None = typer.Option(
+        "30d",
+        "--since",
+        help="Start of the period: 30d / 2w / 12h back, or a date. 'all' = no bound.",
+    ),
+    until: str | None = typer.Option(None, "--until", help="End of the period (default: now)."),
+    fmt: str = typer.Option("md", "--format", "-f", help="md | json"),
+    out: Path | None = typer.Option(  # noqa: B008
+        None, "--out", "-o", help="Write here instead of stdout."
+    ),
+) -> None:
+    """Which classes of incident kept recurring in the period, and the fix per class.
+
+    Reads the archived sessions' incident summaries; makes no model call. The
+    report recommends — a person decides which fix to make.
+    """
+    if fmt not in ("md", "json"):
+        raise typer.BadParameter("--format must be md or json")
+    cfg = load_config()
+    report = build_recurring_report(
+        SessionManager(home=cfg.home),
+        since=None if since == "all" else _parse_period_bound(since, name="--since"),
+        until=_parse_period_bound(until, name="--until"),
+    )
+    text = report.to_json() if fmt == "json" else report.to_markdown()
+    if out is None:
+        typer.echo(text, nl=False)  # plain stdout: a wrapped table is not a table
+        return
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(text, encoding="utf-8")
+    _console.print(f"wrote {out} · {report.incidents} incidents in {len(report.rows)} classes")
+
+
 # ──────────────────────────────────────────────────────────────────────────
 
 iteration_app = typer.Typer(

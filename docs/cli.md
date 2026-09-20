@@ -134,6 +134,23 @@ Per-server allowlist/denylist, `${VAR:-default}` env expansion, and
 best-effort inline-secret detection across env/args/url/headers (a footgun
 guard, not a guarantee — keep secrets in the environment).
 
+## Report
+
+Rollups over the archived Work-item traces. No model call; the report
+recommends and a person decides which fix to make
+([ADR-0039](adr/0039-the-report-recommends-a-person-decides-the-cause-class-is-named-at-run-time.md)).
+
+```bash
+# Which classes of incident kept recurring in the last 30 days, and the fix per class
+opspilot report recurring
+opspilot report recurring --since 2w --format json --out reports/recurring.json
+opspilot report recurring --since all              # every archived run
+```
+
+Classes come from the `cause_class` each run named in its summary
+(`user_error` · `server_side` · `process_or_kb_gap` · `unknown`); runs from
+before the field existed roll up as `unclassified`, sorted last.
+
 ## Wiki
 
 The wiki layer converts KB documents and session responses into a browsable,

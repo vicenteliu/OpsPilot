@@ -120,6 +120,16 @@
       "type": "string",
       "pattern": "^P[0-4]$"
     },
+    "cause_class": {
+      "type": "string",
+      "enum": [
+        "user_error",
+        "server_side",
+        "process_or_kb_gap",
+        "unknown"
+      ],
+      "description": "Advisory cause class named at run time so resolved incidents can be rolled up by what keeps recurring (opspilot report recurring). Optional: artifacts written before it existed have none and roll up as unclassified."
+    },
     "escalation_hint": {
       "type": [
         "string",

@@ -73,6 +73,12 @@ supersedes [ADR-0002](docs/adr/0002-stage2-single-user-no-auth.md)):
 - Remote MCP server management from the admin UI; stdio stays file-only
   ([ADR-0024](docs/adr/0024-mcp-management-remote-ui-stdio-file-only.md))
 
+**Cross-ticket rollup** — `opspilot report recurring`: the archived incident
+summaries of a period grouped by the `cause_class` each run named, with the
+pages cited most and a fixed fix per class; runs from before the field roll up
+as unclassified, not guessed at
+([ADR-0039](docs/adr/0039-the-report-recommends-a-person-decides-the-cause-class-is-named-at-run-time.md), #220).
+
 **Public-facing polish** — repo hygiene, English as the canonical docs language
 with Chinese translations, `CONTRIBUTING.md` / `SECURITY.md`, the dark-first web
 UI, and a brand mark generated from a single SVG source.
