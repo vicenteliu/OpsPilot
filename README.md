@@ -13,8 +13,9 @@
 
 > 中文版：[README.zh-CN.md](./README.zh-CN.md)
 
-OpsPilot turns raw IT work items — incidents, service requests, tasks — into
-structured, KB-cited suggestions through a playbook-driven AI pipeline, and
+OpsPilot turns raw IT work items — incidents and service requests, broken into
+routable tasks — into structured, KB-cited suggestions through a
+playbook-driven AI pipeline, and
 closes the loop with the tools you already use: it polls new tickets straight
 from Jira Service Management and posts the suggestion back as a comment, and
 files a Telegram message as a work item with a single command. It runs fully

@@ -16,8 +16,8 @@
 > 本文是英文 README 的翻译版本；两者不一致时以英文版为准。
 
 OpsPilot 通过 playbook 驱动的 AI 管线，把原始 IT 工作项（Work item）——事件
-（Incident）、服务请求（Service Request）、任务（Task）——转化为结构化、带知识库
-引用的建议，并与你已有的工具形成闭环：自动从 Jira Service Management 轮询
+（Incident）和服务请求（Service Request），拆成可派发的任务（Task）——转化为结构化、
+带知识库引用的建议，并与你已有的工具形成闭环：自动从 Jira Service Management 轮询
 新工单并把建议以评论的形式发回工单，也可以在 Telegram 里用一条命令把消息
 立为工作项。它既可以用 Ollama 完全本地运行，也可以接入各大云端模型；每次
 运行都留下可审计的痕迹：内容到达模型之前先做 PII 脱敏，输出经过严格 JSON

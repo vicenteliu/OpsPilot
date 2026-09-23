@@ -7,7 +7,7 @@ AI-augmented IT operations workbench that turns tickets, logs, runbooks, and doc
 ### Work item types
 
 **Work item**:
-The umbrella for any inbound unit of IT support work OpsPilot processes. Its authoritative state lives in an external system of record (ITSM or a JSON input) — OpsPilot is a *processing layer*, not the owner (see ADR-0006). Subtypes: **Incident**, **Service Request**, **Task**.
+The umbrella for any inbound unit of IT support work OpsPilot processes. Its authoritative state lives in an external system of record (ITSM or a JSON input) — OpsPilot is a *processing layer*, not the owner (see ADR-0006). Subtypes: **Incident**, **Service Request**. A **Task** is what they are broken into, not a third kind of input (ADR-0040).
 _Avoid_: ticket (colloquial — conflates the subtypes), case, issue
 
 **Incident**:
@@ -19,24 +19,50 @@ A standard, pre-approved ask for something — access, a reset, provisioning —
 _Avoid_: request (bare word is overloaded), order
 
 **Task**:
-A concrete, assignable unit of work with a target **Tier**. Primarily an *output* — OpsPilot decomposes an **Incident**/**Service Request** into Tasks — but a standalone Task can also be an input that gets triaged on its own.
+A concrete, assignable unit of work with a target **Tier**. An *output* only: OpsPilot decomposes an **Incident** or a **Service Request** into Tasks, the way an ITSM request becomes requested items and catalog tasks. Nobody reports a Task, so it is never a **Work item type** (ADR-0040).
 _Avoid_: action, step, next_action, subtask
 
 **Work item type**:
-The discriminator (`incident` | `service_request` | `task`). Trusted from the input when declared; otherwise assigned by **Classification**.
+The discriminator (`incident` | `service_request`). Trusted from the input when declared; otherwise assigned by **Classification**.
 _Avoid_: category, kind
 
 **Classification**:
-The step that assigns a **Work item type** when the input does not declare one. Skipped when the type is already declared.
+The step that assigns a **Work item type** when the input does not declare one. Skipped when the type is already declared. With **Judgments** on, it is the second **Judgment**, and a declaration skips it and nothing else.
 _Avoid_: triage (broader), detection, routing
 
 **Severity**:
-The impact/urgency grade of an **Incident**: P0 (critical / site-wide) → P4 (minimal). OpsPilot *suggests* it; the system of record owns the final value.
+The grade of an **Incident**: P0 (critical / site-wide) → P4 (minimal). A **Lookup**, not a guess: a table in the repo reads it off **Impact** × **Urgency**, both **Judgments** (ADR-0040). OpsPilot *suggests* it; the system of record owns the final value.
 _Avoid_: priority (often a separate ITSM field), criticality
 
 **Tier**:
 The support line a **Task** is routed to — L1 (service desk), L2 (specialist), L3 (engineering / vendor). A suggestion, not an assignment.
 _Avoid_: level, line (ambiguous), group
+
+### Judgments
+
+**Judgments**:
+The stage that runs before a **Playbook** is chosen and settles every decision that can be settled without writing: one **Judgment** per decision, in a fixed order, **Security issue** first. Optional and off by default; off, a run is exactly what it was before (ADR-0040).
+_Avoid_: triage (taken — complexity routing, ADR-0023), routing, pre-processing
+
+**Judgment**:
+One decision answered by picking from an answer set written down in the repo, returned with a calibrated probability and no prose. Made by a typed judgment model, or by the Playbook's model as the fallback; the trace records which, with the price. Below the decision's threshold, set from labelled data, a person decides. A decision is a Judgment only if its answer set is written down.
+_Avoid_: classification (that is one Judgment), prediction, score
+
+**Lookup**:
+A decision whose answer follows from a table: **Severity** from **Impact** × **Urgency**, who receives a known fix from the handbook page it came from, approval from a catalog item. Costs nothing and never calls a model. If a table can answer a decision, it is a Lookup, not a **Judgment**.
+_Avoid_: rule engine, heuristic, inference
+
+**Security issue**:
+A **Work item** that reports, or may report, a security event — a phishing link, a strange sign-in, a lost device. The first **Judgment**; a yes stops the run: no suggestion, no KB fix, a person. Its threshold is set so that every labelled security item reaches a person. A declared type never skips it.
+_Avoid_: security incident (the security team's word once they take it), threat, alert
+
+**Impact**:
+How widely an **Incident** reaches — `single_user` · `multiple_users` · `site_wide`, the `scope` field without `unknown` (a low probability already says unknown). A **Judgment**; with **Urgency** it gives **Severity**.
+_Avoid_: scope (the field's name, not the concept), blast radius
+
+**Urgency**:
+How badly an **Incident** stops the person reporting it — `stopped` · `slowed` · `worked_around`. A **Judgment**; with **Impact** it gives **Severity**.
+_Avoid_: priority, criticality, SLA
 
 ### Core execution units
 
