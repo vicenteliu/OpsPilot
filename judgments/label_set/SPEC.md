@@ -125,9 +125,10 @@ security.
 - Cost per call and p50/p95 latency, each engine run three times over the set.
 - Published whichever engine wins.
 
-## 8. Open before drafting
+## 8. Decided before drafting (2026-09-24)
 
-1. Which OpenRouter model drafts (a GPT or a Gemini; the cheaper of the two that follows the quota
-   instructions).
-2. Whether 16 ambiguous rows is enough, or the split moves toward 20.
-3. The labeller's handle for `labelled_by`.
+1. **Drafter**: one batch of 10 is drafted by a GPT model and one by a Gemini model through
+   OpenRouter; the one that keeps to the quota instructions drafts the rest (the cheaper if both
+   do). The losing batch is discarded, not mixed in.
+2. **Ambiguous rows**: 16 stands.
+3. **Labeller**: `labelled_by: vicenteliu`.
