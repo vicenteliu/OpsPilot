@@ -12,11 +12,21 @@ the citation points at something the sweep deleted and survives in name only.
 from __future__ import annotations
 
 import sqlite3
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from opspilot.consultation import Consultation, ConsultationStore, pin_to_memory
+from opspilot.consultation import (
+    RETENTION_DAYS,
+    Consultation,
+    ConsultationStore,
+    pin_to_memory,
+)
 from opspilot.memory import AdmissionError, MemoryStore
+
+
+def _days_from_now(days: int) -> str:
+    return (datetime.now(UTC) + timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 @pytest.fixture
@@ -82,7 +92,7 @@ class TestVisibility:
 class TestRetention:
     def test_an_idle_consultation_is_swept(self, store: ConsultationStore) -> None:
         con = _with_turns(store)
-        assert store.purge(now="2027-01-01T00:00:00Z") == [con.id]
+        assert store.purge(now=_days_from_now(RETENTION_DAYS + 1)) == [con.id]
         assert store.get(con.id) is None
         assert store.messages(con.id) == []
 

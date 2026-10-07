@@ -13,12 +13,17 @@ one, a turn sees the global constraints and nothing else.
 from __future__ import annotations
 
 import sqlite3
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from opspilot.consultation import IDLE_DAYS, WorkingSetStore
 from opspilot.memory import MemoryStore
 from opspilot.orchestrator.chat_agent import turn_anchors
+
+
+def _days_from_now(days: int) -> str:
+    return (datetime.now(UTC) + timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 @pytest.fixture
@@ -65,7 +70,7 @@ class TestOpenAndClose:
 class TestFallback:
     def test_an_idle_set_is_closed(self, store: WorkingSetStore) -> None:
         store.open(owner="alice", title="dc-1 storage latency")
-        closed = store.sweep(now="2027-01-01T00:00:00Z")
+        closed = store.sweep(now=_days_from_now(IDLE_DAYS + 1))
         assert [w.title for w in closed] == ["dc-1 storage latency"]
         assert store.current("alice") is None
 
@@ -82,7 +87,7 @@ class TestFallback:
 
     def test_the_closure_is_announced_once(self, store: WorkingSetStore) -> None:
         store.open(owner="alice", title="dc-1 storage latency")
-        store.sweep(now="2027-01-01T00:00:00Z")
+        store.sweep(now=_days_from_now(IDLE_DAYS + 1))
         first = store.take_announcement("alice")
         assert first is not None
         assert "dc-1 storage latency" in first and str(IDLE_DAYS) in first
