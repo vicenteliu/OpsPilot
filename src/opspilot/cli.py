@@ -54,6 +54,7 @@ from .kb.lance_store import LanceStore
 from .kb.retrieval import kb_search
 from .kb.sqlite_store import SqliteStore
 from .kb.storage_init import init_sqlite
+from .label_set import BUDGET_USD, DRAFT_PROMPT_PATH, OUT_PATH, run_draft, run_trial
 from .orchestrator import RunRequest, load_playbook, run_ticket_summary
 from .orchestrator.ticket_summary import _format_doc_request
 from .providers import make_provider
@@ -1677,6 +1678,91 @@ def report_recurring(
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(text, encoding="utf-8")
     _console.print(f"wrote {out} · {report.incidents} incidents in {len(report.rows)} classes")
+
+
+# ──────────────────────────────────────────────────────────────────────────
+
+labelset_app = typer.Typer(
+    name="labelset",
+    help="Draft the synthetic label set the Judgments are measured on (#224).",
+    no_args_is_help=True,
+)
+app.add_typer(labelset_app)
+
+_BUDGET_HELP = "Cap on every drafting call, trials included (SPEC §5)."
+
+
+def _labelset_setup() -> tuple[Path, str]:
+    """The work directory and the committed drafting prompt."""
+    if not DRAFT_PROMPT_PATH.is_file():
+        raise typer.BadParameter(f"{DRAFT_PROMPT_PATH} not found; run from the repo root")
+    return load_config().home / "label_set_v1", DRAFT_PROMPT_PATH.read_text(encoding="utf-8")
+
+
+@labelset_app.command("trial")
+def labelset_trial(
+    model: str = typer.Option(..., "--model", "-m", help="OpenRouter id of a GPT or Gemini model."),
+    budget_usd: float = typer.Option(BUDGET_USD, "--budget-usd", help=_BUDGET_HELP),
+) -> None:
+    """Draft batch 1 with one candidate model and count the rows that kept to their slot.
+
+    Run it once for a GPT model and once for a Gemini model: the one that keeps
+    to its slots drafts the rest, the cheaper if both do (SPEC §8). Only counts
+    and problems are printed, because the labeller must not read the rows first.
+    """
+    work_dir, prompt = _labelset_setup()
+    try:
+        res = run_trial(
+            make_provider("openrouter"),
+            model,
+            work_dir=work_dir,
+            system_prompt=prompt,
+            redactor=Redactor.from_yaml(),
+            budget_usd=budget_usd,
+        )
+    except OpsPilotError as e:
+        _console.print(f"Error: {e}", style="red", markup=False)
+        raise typer.Exit(1) from e
+    o = res.outcome
+    typer.echo(
+        f"{model}: {len(o.kept)}/{len(o.kept) + len(o.failed)} rows kept to their slot"
+        f" · ${o.cost_usd:.4f} · {o.seconds:.1f}s"
+    )
+    for slot_id, problems in sorted(o.failed.items()):
+        typer.echo(f"  {slot_id}: {'; '.join(problems)}")
+    typer.echo(f"kept rows: {res.path}")
+
+
+@labelset_app.command("draft")
+def labelset_draft(
+    model: str = typer.Option(..., "--model", "-m", help="OpenRouter id of the trial's winner."),
+    out: Path = typer.Option(OUT_PATH, "--out", "-o", help="Where the unlabelled set goes."),  # noqa: B008
+    budget_usd: float = typer.Option(BUDGET_USD, "--budget-usd", help=_BUDGET_HELP),
+) -> None:
+    """Keep the winner's trial as batch 1, draft the other rows, write the set unlabelled.
+
+    A row that misses its slot or nearly repeats another on its topic is
+    redrafted. Progress is saved after every call, so a rerun resumes. Do not
+    open the output before labelling: it carries what the drafter intended.
+    """
+    work_dir, prompt = _labelset_setup()
+    try:
+        res = run_draft(
+            make_provider("openrouter"),
+            model,
+            work_dir=work_dir,
+            system_prompt=prompt,
+            redactor=Redactor.from_yaml(),
+            out=out,
+            budget_usd=budget_usd,
+        )
+    except OpsPilotError as e:
+        _console.print(f"Error: {e}", style="red", markup=False)
+        raise typer.Exit(1) from e
+    typer.echo(
+        f"wrote {res.out} · {res.rows} rows · {res.calls} calls"
+        f" · ${res.cost_usd:.4f} this run, ${res.spent_usd:.4f} in all"
+    )
 
 
 # ──────────────────────────────────────────────────────────────────────────
