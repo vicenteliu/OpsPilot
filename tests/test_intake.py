@@ -149,26 +149,46 @@ class TestIntakeLoop:
         for key in ("IT-101", "IT-102", "IT-103"):
             assert (out / f"{key}.md").exists()
 
-    def test_error_and_confirmation_produce_no_comment(self, tmp_path: Path) -> None:
+    def test_error_produces_no_comment(self, tmp_path: Path) -> None:
         out = tmp_path / "out"
         fake = FakeRunClient(
+            {"IT-101": {"session_id": "", "schema_valid": False, "error": "provider down"}}
+        )
+        report = IntakeLoop(ReplayTransport(FIXTURES, out), fake).run_once()  # type: ignore[arg-type]
+        assert report.commented == ["IT-102", "IT-103"]
+        assert any(k == "IT-101" and "provider down" in r for k, r in report.skipped)
+        assert not (out / "IT-101.md").exists()
+
+    def test_needs_confirmation_comments_that_a_person_is_needed(self, tmp_path: Path) -> None:
+        """#223: below the Classification threshold the item is not dropped —
+        the Source gets a comment naming the decision and its probability."""
+        out = tmp_path / "out"
+        state = IntakeState()
+        fake = FakeRunClient(
             {
-                "IT-101": {"session_id": "", "schema_valid": False, "error": "provider down"},
                 "IT-102": {
                     "session_id": "",
                     "schema_valid": False,
                     "error": None,
                     "needs_confirmation": True,
-                    "classification": {"confidence": 0.4},
+                    "classification": {
+                        "work_item_type": "service_request",
+                        "confidence": 0.58,
+                        "rationale": "ambiguous ask",
+                    },
                 },
             }
         )
-        report = IntakeLoop(ReplayTransport(FIXTURES, out), fake).run_once()  # type: ignore[arg-type]
-        assert report.commented == ["IT-103"]
-        assert any(k == "IT-101" and "provider down" in r for k, r in report.skipped)
-        assert any(k == "IT-102" and "confirmation" in r for k, r in report.skipped)
-        assert not (out / "IT-101.md").exists()
-        assert not (out / "IT-102.md").exists()
+        report = IntakeLoop(ReplayTransport(FIXTURES, out), fake, state=state).run_once()  # type: ignore[arg-type]
+        assert report.commented == ["IT-101", "IT-102", "IT-103"]
+        body = (out / "IT-102.md").read_text(encoding="utf-8")
+        assert "could not decide incident or request" in body
+        assert "`service_request`, p=0.58" in body
+        assert "a person should pick" in body
+        assert "OpsPilot suggestion" not in body
+        # Processed once: the comment is the hand-off, not a retry loop.
+        assert state.has("IT-102")
+        assert fake.calls.count("IT-102") == 1
 
     def test_run_exception_skips_item_and_continues(self, tmp_path: Path) -> None:
         class Boom(FakeRunClient):

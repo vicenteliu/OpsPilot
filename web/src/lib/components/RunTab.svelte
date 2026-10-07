@@ -55,29 +55,24 @@
 
   let lastRunInput = $state<Record<string, unknown> | null>(null);
 
-  // English playbooks are the default; service_request only has a zh variant
-  // so far (multilingual support — zh playbooks remain first-class).
-  const PLAYBOOK_BY_TYPE: Record<string, string> = {
-    incident: 'pb_ticket_summary_en',
-    service_request: 'pb_request_fulfillment_zh',
-  };
-
-  // Run-tab work-item-type selector. 'auto' omits playbook_id so the backend
-  // classifies (and may ask for confirmation); the others force a playbook.
+  // Run-tab work-item-type selector. 'auto' leaves the input as it is, so the
+  // backend classifies (and may ask for confirmation); the others declare the
+  // type on the input, as Telegram and JSM intake do, and the server runs the
+  // playbook it is configured with for that type.
   let selectedWorkItemType = $state<'auto' | 'incident' | 'service_request'>('auto');
 
-  function selectedPlaybookId(): string | undefined {
-    return selectedWorkItemType === 'auto' ? undefined : PLAYBOOK_BY_TYPE[selectedWorkItemType];
+  function declareType(input: Record<string, unknown>, workItemType: string): Record<string, unknown> {
+    return { ...input, work_item_type: workItemType };
   }
 
-  async function runWith(input: Record<string, unknown>, playbookId?: string) {
+  async function runWith(input: Record<string, unknown>) {
     fetchError = null;
     result = null;
     statusLines = [];
     lastRunInput = input;
     loading = true;
     try {
-      for await (const event of runTicketStream(input, selectedModelId || undefined, playbookId)) {
+      for await (const event of runTicketStream(input, selectedModelId || undefined)) {
         if (event.type === 'status') {
           statusLines = [...statusLines, event.message];
         } else if (event.type === 'result') {
@@ -107,12 +102,12 @@
         return;
       }
     }
-    await runWith(input, selectedPlaybookId());
+    await runWith(selectedWorkItemType === 'auto' ? input : declareType(input, selectedWorkItemType));
   }
 
   function confirmWorkItemType(workItemType: string) {
     if (!lastRunInput) return;
-    runWith(lastRunInput, PLAYBOOK_BY_TYPE[workItemType] ?? PLAYBOOK_BY_TYPE.incident);
+    runWith(declareType(lastRunInput, workItemType));
   }
 
   function copyText(text: string) {

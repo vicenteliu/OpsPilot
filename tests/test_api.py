@@ -195,6 +195,35 @@ def test_resolve_playbook_selects_by_playbook_id() -> None:
     assert pb_req.output_schema == "request_fulfillment_v1"
 
 
+def test_declared_service_request_runs_the_configured_request_playbook() -> None:
+    """#234: the web UI's type pick is a declaration on the input, so the server
+    runs whichever request playbook it was configured with — here the
+    ``OPSPILOT_REQUEST_PLAYBOOK`` default — and no client has to name one."""
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from opspilot.api.routes.run import _resolve_run_plan
+    from opspilot.api.types import ApiRunRequest
+    from opspilot.orchestrator.types import load_playbook
+
+    pb_dir = Path(__file__).resolve().parents[1] / "playbooks"
+    state = SimpleNamespace(
+        playbook=load_playbook(pb_dir / "pb_ticket_summary_en"),
+        request_fulfillment_pb=load_playbook(pb_dir / "pb_request_fulfillment_en"),
+        chat_provider=object(),
+    )
+    body = ApiRunRequest(input={**_SAMPLE_TICKET, "work_item_type": "service_request"})
+
+    with patch("opspilot.api.routes.run.classify_work_item") as mock_cls:
+        _, pb, classification, needs_conf = _resolve_run_plan(body, state, Path("unused.json"))
+
+    assert pb.id == "pb_request_fulfillment_en"
+    assert pb.output_schema == "request_fulfillment_v1"
+    assert classification is None
+    assert needs_conf is False
+    mock_cls.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # Classification routing (#6 — declared-first, classify on absence)
 # ---------------------------------------------------------------------------

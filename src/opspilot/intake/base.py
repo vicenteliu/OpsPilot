@@ -126,6 +126,26 @@ def render_comment(result: dict[str, Any], *, session_id: str) -> str:
     return "\n".join(lines)
 
 
+def render_needs_person_comment(classification: dict[str, Any]) -> str:
+    """Render a run withheld below the Classification threshold (ADR-0040).
+
+    Names the undecided decision and its probability, so the item reaches a
+    person where the work lives instead of being marked processed and dropped.
+    """
+    lean = classification.get("work_item_type", "?")
+    p = float(classification.get("confidence", 0.0))
+    return "\n".join(
+        [
+            "## OpsPilot: a person is needed",
+            "",
+            f"OpsPilot could not decide incident or request (leaning `{lean}`, p={p:.2f}); "
+            "a person should pick.",
+            "",
+            "_No suggestion was made; the system of record owns the final values._",
+        ]
+    )
+
+
 class IntakeState:
     """Processed-key state that survives adapter restarts (#58).
 
@@ -204,8 +224,6 @@ def _unusable(res: dict[str, Any]) -> str | None:
     """Reason this run response must not become a comment, or None."""
     if res.get("error"):
         return f"pipeline error: {res['error']}"
-    if res.get("needs_confirmation"):
-        return "classification needs human confirmation"
     if not res.get("schema_valid"):
         return "artifact failed schema validation"
     return None
@@ -246,6 +264,12 @@ class IntakeLoop:
                 report.skipped.append((item.key, f"run failed: {exc}"))
                 continue
             self._state.mark(item.key)
+            if res.get("needs_confirmation"):
+                # No run happened, so there is no session id to mark the comment
+                # with: a retry after a lost response can post it twice.
+                body = render_needs_person_comment(res.get("classification") or {})
+                self._deliver(item.key, body, "", report)
+                continue
             reason = _unusable(res)
             if reason:
                 logger.warning("no comment for %s: %s", item.key, reason)

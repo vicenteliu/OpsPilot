@@ -91,12 +91,17 @@ full JQL scope — there is deliberately no time cursor to miss things).
   retries automatically next pass.
 - A comment that fails to **post** is queued and re-posted next pass —
   the LLM is not re-run for it.
+- A run that **needs a person** — Classification under its confidence
+  threshold — is marked processed and gets a comment naming the undecided
+  decision and its probability instead of a suggestion. Set the issue type
+  and `--rerun` the key to run it as that type.
 - `--rerun IT-123` forces a fresh run for one key (the key must still
   match the JQL scope). The new suggestion is posted as a new comment.
 
 Double-posting is prevented by an idempotency marker: the run's session id
 is part of the comment footer, and the adapter checks existing comments for
-it before posting.
+it before posting. A needs-a-person comment has no session to mark, so a
+post whose response was lost can repeat once.
 
 ### Security notes
 
