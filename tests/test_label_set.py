@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import random
 import re
 from collections import Counter
 from pathlib import Path
@@ -30,8 +31,10 @@ from opspilot.label_set import (
     LabelSetError,
     Slot,
     check_row,
+    label_rows,
     near_duplicates,
     plan_slots,
+    relabel_rows,
     run_draft,
     run_trial,
 )
@@ -392,3 +395,198 @@ def test_cli_trial_prints_counts_not_rows(tmp_path: Path, monkeypatch: pytest.Mo
     assert "S04: channel 'fax' is not one of email, portal, chat" in result.output
     assert _subject("S01") not in result.output  # the labeller must not see rows
     assert (tmp_path / "label_set_v1" / "trial-google-gemini-test.jsonl").is_file()
+
+
+# ── Labelling (SPEC §6) ─────────────────────────────────────────────────────
+
+FIRST_PASS_NOTE = "first-pass-note-must-stay-hidden"
+
+
+def _set_file(tmp_path: Path, n: int, *, labelled: bool = False) -> Path:
+    intents = ["incident", "service_request", "ambiguous", "incident"]
+    rows = [
+        {
+            "id": f"LS1-{i:03d}",
+            "subject": f"subject {i}",
+            "body": f"body {i}",
+            "channel": "chat",
+            "topic": TOPICS[i % len(TOPICS)],
+            "draft_intent": intents[(i - 1) % 4],
+            "draft_security": "yes" if i == 1 else "no",
+            "work_item_type": "incident" if labelled else None,
+            "security": "no" if labelled else None,
+            "label_confidence": "high" if labelled else None,
+            "label_note": FIRST_PASS_NOTE if labelled else None,
+            "answer_space": None,
+            "drafted_by": "openrouter:model 2026-10-07",
+            "labelled_by": "vicenteliu" if labelled else None,
+            "labelled_at": "2026-10-06" if labelled else None,
+        }
+        for i in range(1, n + 1)
+    ]
+    path = tmp_path / "label_set_v1.jsonl"
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    return path
+
+
+class Keys:
+    """Answers the prompts in order, as a person at the terminal would."""
+
+    def __init__(self, *answers: str) -> None:
+        self.answers = list(answers)
+        self.prompts: list[str] = []
+
+    def __call__(self, prompt: str) -> str:
+        self.prompts.append(prompt)
+        return self.answers.pop(0)
+
+
+def _read(path: Path) -> list[dict[str, Any]]:
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+
+
+class TestLabel:
+    def test_labels_every_row_and_shows_nothing_but_subject_body_channel(
+        self, tmp_path: Path
+    ) -> None:
+        path = _set_file(tmp_path, 4)
+        shown: list[str] = []
+        keys = Keys(
+            *("i", "y", "h", ""),
+            *("r", "y", "l", "needs a second look"),
+            *("r", "n", "h", ""),
+            *("r", "n", "h", ""),
+        )
+        res = label_rows(path, by="vicenteliu", ask=keys, show=shown.append, today="2026-10-07")
+
+        assert res.finished and res.labelled == res.total == 4
+        assert res.low_confidence == 1
+        assert res.type_splits == 1  # LS1-004: drafted incident, labelled request
+        assert res.security_splits == 1  # LS1-002: drafted no, labelled yes
+        rows = _read(path)
+        types = [r["work_item_type"] for r in rows]
+        assert types == ["incident", "service_request", "service_request", "service_request"]
+        assert rows[1]["label_note"] == "needs a second look" and rows[0]["label_note"] is None
+        for r in rows:
+            assert r["answer_space"] == {"d2": "d2-v1", "d1": "d1-v1"}
+            assert (r["labelled_by"], r["labelled_at"]) == ("vicenteliu", "2026-10-07")
+
+        screen = "\n".join(shown + keys.prompts)
+        assert "subject 3" in screen and "body 3" in screen and "chat" in screen
+        assert "ambiguous" not in screen and "draft" not in screen
+        assert not any(topic in screen for topic in TOPICS)
+
+    def test_a_key_outside_the_choices_is_asked_again(self, tmp_path: Path) -> None:
+        path = _set_file(tmp_path, 2)
+        keys = Keys("x", "i", "maybe", "y", "", "h", "", "q")
+        res = label_rows(path, by="v", ask=keys, show=lambda s: None)
+        assert res.labelled == 1
+        first = _read(path)[0]
+        assert (first["work_item_type"], first["security"], first["label_confidence"]) == (
+            "incident",
+            "yes",
+            "high",
+        )
+
+    def test_q_saves_and_a_rerun_resumes_at_the_first_open_row(self, tmp_path: Path) -> None:
+        path = _set_file(tmp_path, 3)
+        res = label_rows(path, by="v", ask=Keys("i", "n", "h", "", "q"), show=lambda s: None)
+        assert not res.finished and res.labelled == 1
+        assert _read(path)[0]["work_item_type"] == "incident"
+
+        shown: list[str] = []
+        keys = Keys("r", "n", "h", "", "r", "n", "l", "")
+        res = label_rows(path, by="v", ask=keys, show=shown.append)
+        assert res.finished
+        assert "LS1-002 (2/3)" in shown[0]
+
+    def test_u_goes_back_and_the_row_is_labelled_again(self, tmp_path: Path) -> None:
+        path = _set_file(tmp_path, 2)
+        keys = Keys("i", "y", "h", "", "u", "r", "n", "l", "", "q")
+        label_rows(path, by="v", ask=keys, show=lambda s: None)
+        first, second = _read(path)
+        assert (first["work_item_type"], first["security"], first["label_confidence"]) == (
+            "service_request",
+            "no",
+            "low",
+        )
+        assert second["work_item_type"] is None
+
+    def test_needs_a_drafted_set(self, tmp_path: Path) -> None:
+        with pytest.raises(LabelSetError, match="draft the set first"):
+            label_rows(tmp_path / "missing.jsonl", by="v", ask=Keys(), show=lambda s: None)
+
+
+class TestRelabel:
+    def test_waits_for_every_row_to_be_labelled(self, tmp_path: Path) -> None:
+        path = _set_file(tmp_path, 12)
+        with pytest.raises(LabelSetError, match="label every row first"):
+            relabel_rows(path, by="v", ask=Keys(), show=lambda s: None, out=tmp_path / "re.jsonl")
+
+    def test_relabels_ten_blind_and_counts_agreement(self, tmp_path: Path) -> None:
+        path = _set_file(tmp_path, 12, labelled=True)
+        out = tmp_path / "relabel_v1.jsonl"
+        shown: list[str] = []
+        keys = Keys(*(["r", "n", "h"] + ["i", "n", "h"] * 9))
+        res = relabel_rows(
+            path,
+            by="vicenteliu",
+            ask=keys,
+            show=shown.append,
+            out=out,
+            today="2026-10-07",
+            rng=random.Random(1),
+        )
+        assert res.finished and res.total == 10
+        assert (res.type_agree, res.security_agree) == (9, 10)
+        picks = _read(out)
+        assert len({p["id"] for p in picks}) == 10
+        assert all(p["labelled_by"] == "vicenteliu" for p in picks)
+        assert FIRST_PASS_NOTE not in "\n".join(shown)  # the first pass stays hidden
+        assert not any("note" in p for p in keys.prompts)  # the relabel asks no note
+
+    def test_a_cut_short_relabel_resumes_on_the_same_sample(self, tmp_path: Path) -> None:
+        path = _set_file(tmp_path, 12, labelled=True)
+        out = tmp_path / "relabel_v1.jsonl"
+        first = Keys("i", "n", "h", "i", "n", "h", "i", "n", "h", "q")
+        res = relabel_rows(
+            path, by="v", ask=first, show=lambda s: None, out=out, rng=random.Random(1)
+        )
+        assert res.relabelled == 3
+        sample = [p["id"] for p in _read(out)]
+
+        rest = Keys(*(["i", "n", "h"] * 7))
+        res = relabel_rows(
+            path, by="v", ask=rest, show=lambda s: None, out=out, rng=random.Random(99)
+        )
+        assert res.finished
+        assert [p["id"] for p in _read(out)] == sample
+
+    def test_says_so_when_the_first_pass_was_today(self, tmp_path: Path) -> None:
+        path = _set_file(tmp_path, 12, labelled=True)
+        shown: list[str] = []
+        relabel_rows(
+            path,
+            by="v",
+            ask=Keys("q"),
+            show=shown.append,
+            out=tmp_path / "re.jsonl",
+            today="2026-10-06",
+        )
+        assert "a day later" in shown[0]
+
+
+def test_cli_label_prints_counts_once_the_set_is_done(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from opspilot import cli
+
+    path = _set_file(tmp_path, 2)
+    keys = "i\ny\nh\n\nr\nn\nl\nunsure\n"
+    result = CliRunner().invoke(
+        cli.app, ["labelset", "label", "--by", "vicenteliu", "--set", str(path)], input=keys
+    )
+    assert result.exit_code == 0, result.output
+    assert "all 2 labelled · 1 low-confidence" in result.output
+    assert "LS1-" not in result.output.split("all 2 labelled")[1]  # counts, never which rows
+    assert _read(path)[1]["label_note"] == "unsure"

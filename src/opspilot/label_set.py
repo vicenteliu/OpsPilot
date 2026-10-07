@@ -17,6 +17,10 @@ topic, shuffles, assigns ids, and writes the set with every label left empty.
 Every call's charge, as OpenRouter reports it, is appended to a ledger, and no
 call starts once the ledger reaches the cap (SPEC §5). A check made *before*
 each call can overshoot by at most one call.
+
+``label_rows`` and ``relabel_rows`` are the person's half (SPEC §6): a blind
+pass over the set that shows a row's subject, body and channel and nothing
+else, and a blind relabel of 10 random rows a day later for self-consistency.
 """
 
 from __future__ import annotations
@@ -25,6 +29,7 @@ import json
 import random
 import re
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from difflib import SequenceMatcher
@@ -446,3 +451,193 @@ def run_draft(
         ],
     )
     return DraftResult(out, len(rows), calls, cost, _spent(ledger))
+
+
+# ── Labelling (SPEC §6) ─────────────────────────────────────────────────────
+
+ANSWER_SPACE: Final[dict[str, str]] = {"d2": "d2-v1", "d1": "d1-v1"}
+RELABEL_PATH: Final = LABEL_SET_DIR / "relabel_v1.jsonl"
+RELABEL_ROWS: Final = 10
+
+_TYPE_KEYS: Final = {"i": "incident", "r": "service_request"}
+_SECURITY_KEYS: Final = {"y": "yes", "n": "no"}
+_CONFIDENCE_KEYS: Final = {"h": "high", "l": "low"}
+
+Ask = Callable[[str], str]
+Show = Callable[[str], None]
+
+
+def _ask_choice(ask: Ask, prompt: str, keys: dict[str, str], *, nav: bool) -> str:
+    """One of ``keys``, asked again until it is; with ``nav``, also u or q."""
+    while True:
+        answer = ask(prompt).strip().lower()
+        if answer in keys:
+            return keys[answer]
+        if nav and answer in ("u", "q"):
+            return answer
+
+
+def _ask_labels(
+    row: dict[str, Any], n: int, total: int, ask: Ask, show: Show, *, note: bool
+) -> dict[str, Any] | str:
+    """Show what the labeller may see, and nothing else; return the labels or u / q."""
+    show(f"\n── {row['id']} ({n}/{total}) · {row['channel']} ──")
+    show(f"Subject: {row['subject'] or '(none)'}")
+    show(row["body"] or "(no body)")
+    kind = _ask_choice(ask, "type? [i]ncident / [r]equest  (u back, q quit)", _TYPE_KEYS, nav=True)
+    if kind in ("u", "q"):
+        return kind
+    labels: dict[str, Any] = {
+        "work_item_type": kind,
+        "security": _ask_choice(ask, "security? [y]es / [n]o", _SECURITY_KEYS, nav=False),
+        "label_confidence": _ask_choice(
+            ask, "confidence? [h]igh / [l]ow", _CONFIDENCE_KEYS, nav=False
+        ),
+    }
+    if note:
+        labels["label_note"] = ask("note (enter to skip)").strip() or None
+    return labels
+
+
+def _label_loop(
+    targets: list[dict[str, Any]],
+    source: Callable[[dict[str, Any]], dict[str, Any]],
+    *,
+    ask: Ask,
+    show: Show,
+    stamp: dict[str, Any],
+    save: Callable[[], None],
+    note: bool,
+) -> None:
+    """Fill each target's labels in order, saving after every one, until done or q."""
+
+    def next_open(start: int) -> int:
+        open_ = (j for j in range(start, len(targets)) if targets[j]["work_item_type"] is None)
+        return next(open_, len(targets))
+
+    i = next_open(0)
+    while i < len(targets):
+        answer = _ask_labels(source(targets[i]), i + 1, len(targets), ask, show, note=note)
+        if isinstance(answer, str):
+            if answer == "q":
+                return
+            i = max(i - 1, 0)
+            continue
+        targets[i].update(answer)
+        targets[i].update(stamp)
+        save()
+        i = next_open(i + 1)
+
+
+@dataclass(frozen=True)
+class LabelResult:
+    labelled: int
+    total: int
+    low_confidence: int
+    type_splits: int  # the drafter meant one type and the labeller chose the other
+    security_splits: int
+
+    @property
+    def finished(self) -> bool:
+        return self.labelled == self.total
+
+
+def label_rows(
+    path: Path = OUT_PATH, *, by: str, ask: Ask, show: Show, today: str | None = None
+) -> LabelResult:
+    """Label the drafted set blind: each row shows its subject, body and channel only.
+
+    What the drafter intended, and the topic, stay hidden; afterwards only
+    counts are reported, never which rows, so tomorrow's relabel stays blind.
+    """
+    if not path.is_file():
+        raise LabelSetError(f"{path} not found: draft the set first")
+    rows = _read_jsonl(path)
+    stamp = {
+        "answer_space": dict(ANSWER_SPACE),
+        "labelled_by": by,
+        "labelled_at": today or datetime.now(UTC).date().isoformat(),
+    }
+    _label_loop(
+        rows,
+        lambda r: r,
+        ask=ask,
+        show=show,
+        stamp=stamp,
+        save=lambda: _write_jsonl(path, rows),
+        note=True,
+    )
+    done = [r for r in rows if r["work_item_type"] is not None]
+    return LabelResult(
+        labelled=len(done),
+        total=len(rows),
+        low_confidence=sum(r["label_confidence"] == "low" for r in done),
+        type_splits=sum(
+            r["draft_intent"] != "ambiguous" and r["draft_intent"] != r["work_item_type"]
+            for r in done
+        ),
+        security_splits=sum(r["draft_security"] != r["security"] for r in done),
+    )
+
+
+@dataclass(frozen=True)
+class RelabelResult:
+    relabelled: int
+    total: int
+    type_agree: int
+    security_agree: int
+
+    @property
+    def finished(self) -> bool:
+        return self.relabelled == self.total
+
+
+def relabel_rows(
+    path: Path = OUT_PATH,
+    *,
+    by: str,
+    ask: Ask,
+    show: Show,
+    out: Path = RELABEL_PATH,
+    today: str | None = None,
+    rng: random.Random | None = None,
+) -> RelabelResult:
+    """Relabel 10 random rows blind, a day after the first pass (SPEC §6).
+
+    The sample is written to ``out`` before the first question, so a run cut
+    short resumes on the same rows. The first-pass labels are never shown.
+    """
+    if not path.is_file():
+        raise LabelSetError(f"{path} not found: draft the set first")
+    rows = _read_jsonl(path)
+    if any(r["work_item_type"] is None for r in rows):
+        raise LabelSetError("label every row first; the relabel samples the finished set")
+    date = today or datetime.now(UTC).date().isoformat()
+    if any(r["labelled_at"] == date for r in rows):
+        show("note: some rows were labelled today; SPEC §6 relabels a day later")
+    if out.is_file():
+        picks = _read_jsonl(out)
+    else:
+        sample = (rng or random.Random()).sample([r["id"] for r in rows], RELABEL_ROWS)
+        picks = [
+            {"id": row_id, "work_item_type": None, "security": None, "label_confidence": None}
+            for row_id in sample
+        ]
+        _write_jsonl(out, picks)
+    by_id = {r["id"]: r for r in rows}
+    _label_loop(
+        picks,
+        lambda p: by_id[p["id"]],
+        ask=ask,
+        show=show,
+        stamp={"labelled_by": by, "labelled_at": date},
+        save=lambda: _write_jsonl(out, picks),
+        note=False,
+    )
+    done = [p for p in picks if p["work_item_type"] is not None]
+    return RelabelResult(
+        relabelled=len(done),
+        total=len(picks),
+        type_agree=sum(p["work_item_type"] == by_id[p["id"]]["work_item_type"] for p in done),
+        security_agree=sum(p["security"] == by_id[p["id"]]["security"] for p in done),
+    )
