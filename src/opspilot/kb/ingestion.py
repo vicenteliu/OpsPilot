@@ -31,11 +31,15 @@ will add a more granular audit_log row per document.
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
+import os
 import re
 import threading
 import time
-from collections.abc import Callable, Iterable
+import zlib
+from collections.abc import Callable, Iterable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -74,14 +78,44 @@ class IngestionError(OpsPilotError):
 # Two ingests of one source_path must not overlap. Each reads the file, looks
 # the stored document up, then replaces it across several writes to two stores;
 # a second run in between leaves vectors no chunk backs, or fails on the
-# source_path constraint (#256). Striped so memory stays bounded while other
-# files still run in parallel: two paths that share a stripe just take turns.
-# Process-local: another process ingesting the same KB is not covered.
-_PATH_LOCKS: Final = tuple(threading.Lock() for _ in range(64))
+# source_path constraint (#256). The runs can be threads of one process or
+# separate processes: production runs two API workers, and the CLI and TUI open
+# the same KB beside them (#260). So a path's turn is a thread lock within this
+# process and a file lock, beside the database, across processes. Striped so
+# the locks stay few while other files still run in parallel: two paths that
+# share a stripe just take turns. crc32 rather than hash(), which is salted per
+# process; every process must pick the same stripe.
+_STRIPES: Final = 64
+_PATH_LOCKS: Final = tuple(threading.Lock() for _ in range(_STRIPES))
 
 
-def _path_lock(path: Path) -> threading.Lock:
-    return _PATH_LOCKS[hash(str(path)) % len(_PATH_LOCKS)]
+@contextmanager
+def _path_lock(path: Path, lock_dir: Path | None) -> Iterator[None]:
+    stripe = zlib.crc32(str(path).encode("utf-8")) % _STRIPES
+    with _PATH_LOCKS[stripe]:
+        if lock_dir is None:
+            yield
+        else:
+            fd = os.open(lock_dir / f"{stripe:02d}.lock", os.O_RDWR | os.O_CREAT, 0o600)
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX)  # released when fd is closed
+                yield
+            finally:
+                os.close(fd)
+
+
+def _lock_dir(sqlite: SqliteStore) -> Path | None:
+    """Where the file locks live: beside the database, so every process that
+    opens this KB finds the same ones. None for an in-memory database, which no
+    other process can open."""
+    conn = sqlite._conn  # noqa: SLF001 — SqliteStore does not expose its file
+    with lock_for(conn):
+        db_file = str(conn.execute("PRAGMA database_list").fetchone()[2])
+    if not db_file:
+        return None
+    lock_dir = Path(db_file).with_name(Path(db_file).name + ".ingest-locks")
+    lock_dir.mkdir(exist_ok=True)
+    return lock_dir
 
 
 # ── Public dataclasses ────────────────────────────────────────────────
@@ -211,6 +245,7 @@ def ingest(
     run_id = new_ulid_id("run")
 
     files = discover_files(paths)
+    lock_dir = _lock_dir(sqlite)
     file_results: list[FileResult] = []
     chunks_total = 0
     redaction_hits_total = 0
@@ -219,7 +254,7 @@ def ingest(
 
     for path in files:
         try:
-            with _path_lock(path):
+            with _path_lock(path, lock_dir):
                 r = _ingest_one(
                     path,
                     sqlite=sqlite,

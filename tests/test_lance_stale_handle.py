@@ -91,3 +91,27 @@ def test_a_refresh_failure_does_not_fail_the_read(two_handles, monkeypatch) -> N
 
     monkeypatch.setattr(reader._table, "checkout_latest", _boom)
     assert reader.ann_search(_vec(1), top_k=5)
+
+
+# Writes pin the same way (#260). A delete or merge_insert runs against the
+# version the handle holds, so rows another handle wrote since are invisible to
+# it: the delete misses them, and the upsert inserts a second row instead of
+# updating the first.
+
+
+def test_the_other_worker_deletes_a_freshly_ingested_row(two_handles) -> None:
+    writer, reader = two_handles
+    writer.upsert_vectors([_rec(99)])
+    reader.delete_by_vector_ids(["vec_00000099"])
+    assert "vec_00000099" not in writer.vector_ids(), (
+        "the delete ran against the reader's older version and missed the row; "
+        "its chunk is gone, so the vector is now an orphan"
+    )
+
+
+def test_the_other_worker_updates_rather_than_duplicates(two_handles) -> None:
+    writer, reader = two_handles
+    writer.upsert_vectors([_rec(99)])
+    rows = writer.count()
+    reader.upsert_vectors([_rec(99)])
+    assert writer.count() == rows, "the upsert inserted a second vec_00000099"
