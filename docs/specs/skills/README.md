@@ -122,7 +122,7 @@ A skill can invoke three kinds of operations:
 
 | Kind | Examples | Registration |
 |---|---|---|
-| **Builtin tools** | `kb.search`, `memory.add`, `artifact.write` | Provided by OpsPilot core; no registration needed |
+| **Builtin tools** | `kb.search`, `artifact.write` | Provided by OpsPilot core; no registration needed |
 | **MCP tools** | `mcp__notion__*`, `mcp__slack__*` | Register the server in `mcp-config.template.yaml` |
 | **Sandbox actions** | shell / script / sql_readonly | Go through `sandbox/templates/action-request.template.yaml` |
 
@@ -184,7 +184,7 @@ skills/
 ## Hard nos
 
 - ❌ Never feed unredacted traces directly into the distillation pipeline
-- ❌ Community/unknown-tier skills must never invoke write-class tools (kb.write, memory.add, sandbox.apply)
+- ❌ Community/unknown-tier skills must never invoke write-class tools (kb.write, sandbox.apply)
 - ❌ Skills must never modify mcp-config at runtime (prevents prompt-injection routing tampering)
 - ❌ Skill descriptions must never contain prompt-injection statements ("ignore previous instructions" etc.) — statically scanned at load time
 - ❌ MCP API keys always come from env; never committed to the repo
