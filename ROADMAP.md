@@ -3,8 +3,9 @@
 Coarse-grained direction, not a commitment. Concrete work items live in
 [GitHub Issues](https://github.com/vicenteliu/OpsPilot/issues).
 
-Every claim below was checked against the code on 2026-08-19. If a line here
-disagrees with `src/`, the code wins and this file is the bug.
+Every claim below was checked against the code on 2026-08-19, and the Judgments
+entry and the JSM note on a Work item that needs a person on 2026-10-08. If a
+line here disagrees with `src/`, the code wins and this file is the bug.
 
 ## Shipped
 
@@ -33,7 +34,9 @@ auth (fail-closed for non-loopback binds), TLS via reverse proxy or uvicorn
 - Jira Service Management polling (`opspilot source jsm`) — JQL-scoped
   auto-run, dedupe by issue key, suggestion posted back as a comment;
   comment-only, no field mutation
-  ([ADR-0013](docs/adr/0013-jsm-intake-polling-comment-writeback.md))
+  ([ADR-0013](docs/adr/0013-jsm-intake-polling-comment-writeback.md)). A Work
+  item Classification could not decide gets a comment naming the decision and
+  its probability, instead of being marked processed and dropped (#223)
 - Persistent state, manual reruns, `--once`, and `--replay` fixture mode
 - Generic inbound webhook — `POST /api/intake`, accept-async with key dedupe
   ([ADR-0015](docs/adr/0015-webhook-intake-accept-async.md))
@@ -84,6 +87,38 @@ with Chinese translations, `CONTRIBUTING.md` / `SECURITY.md`, the dark-first web
 UI, and a brand mark generated from a single SVG source.
 
 ## Open
+
+**Judgments, the first slice**
+([ADR-0040](docs/adr/0040-decisions-on-a-work-item-are-judgments-a-playbook-writes-only-what-no-one-has-written.md),
+#224). A decision on a Work item is a Judgment when its answer set is written
+down in the repo: one answer back, with a probability. Jev's is calibrated
+against outcomes by the vendor's account; the Playbook's model scores its own.
+Decision 2, incident or request, goes first, and the label set is what tests
+either claim.
+
+*Shipped:*
+
+- The label set's drafting, `opspilot labelset trial / draft` (#239), and its
+  blind labelling with a next-day relabel of ten rows, `opspilot labelset label
+  / relabel` (#240), as `judgments/label_set/SPEC.md` defines them.
+- The Judgment protocol, decision 2's answer space
+  (`judgments/decisions/d2.yaml`, `d2-v1`), the Playbook's model as the baseline
+  engine, fallback on an engine's failure, and the stage in `_resolve_run_plan`
+  behind `OPSPILOT_JUDGMENTS=1`, off by default. Each Judgment is appended to
+  its Session's trace, and Classification now keeps its token usage, so the
+  baseline's cost is measured rather than assumed (#241).
+
+*Not yet:*
+
+- The `typesafe` engine for Jev. Its API reference was not reachable from the
+  session that built the stage, and the adapter waits for it rather than being
+  written against a guess.
+- The label set itself: drafted, then labelled and relabelled by a person.
+- Decision 2's threshold and the report: Jev against the Playbook's model by
+  accuracy, Brier score, cost per call and p50 / p95 latency. **Until the
+  threshold is measured, the stage refuses to start.**
+- The rest of ADR-0040's order of work, #225–#231; filed and not scheduled,
+  #232 and #233.
 
 **The first end-to-end run.** On 2026-08-19 the Memory / Consultation /
 Working-set / distillation / bundle stack was driven end to end for the first
