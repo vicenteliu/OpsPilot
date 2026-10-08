@@ -1,4 +1,8 @@
-"""SQLite bootstrap for the memory subsystem.
+"""SQLite bootstrap: the KB's schema, in the database file every SQLite store shares.
+
+Inventory, Memory and its Conflicts, Consultations and Working sets open the same
+connection and create their own tables (see ``api/app.py``). This schema holds
+the KB's tables and its ingest runs, plus the schema version and an audit log.
 
 Loads ``docs/specs/memory/storage/sqlite-schema.sql`` from the spec directory, opens a
 connection to the target ``.db`` file, applies recommended PRAGMAs, and

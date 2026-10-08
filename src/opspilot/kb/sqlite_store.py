@@ -1,4 +1,4 @@
-"""SQLite-backed metadata store for the memory subsystem.
+"""SQLite-backed metadata store for the KB.
 
 Owns two tables (full schema in ``docs/specs/memory/storage/sqlite-schema.sql``):
 
