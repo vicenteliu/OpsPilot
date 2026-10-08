@@ -204,6 +204,9 @@ class LanceStore:
                 )
 
         rows = [r.to_arrow_record() for r in records]
+        # Writes pin like reads: against an older version, merge_insert misses
+        # rows another handle wrote since and inserts duplicates of them (#260).
+        self._refresh()
         # merge_insert is LanceDB's upsert idiom.
         (
             self._table.merge_insert(on="vector_id")
@@ -220,6 +223,8 @@ class LanceStore:
         # concerns; we still strip quotes defensively.
         sanitized = [v.replace("'", "''") for v in vector_ids]
         in_list = ",".join(f"'{v}'" for v in sanitized)
+        # Against an older version the delete misses rows written since (#260).
+        self._refresh()
         self._table.delete(f"vector_id IN ({in_list})")
 
     def count(self) -> int:
