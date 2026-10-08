@@ -54,7 +54,16 @@ from .kb.lance_store import LanceStore
 from .kb.retrieval import kb_search
 from .kb.sqlite_store import SqliteStore
 from .kb.storage_init import init_sqlite
-from .label_set import BUDGET_USD, DRAFT_PROMPT_PATH, OUT_PATH, run_draft, run_trial
+from .label_set import (
+    BUDGET_USD,
+    DRAFT_PROMPT_PATH,
+    OUT_PATH,
+    RELABEL_PATH,
+    label_rows,
+    relabel_rows,
+    run_draft,
+    run_trial,
+)
 from .orchestrator import RunRequest, load_playbook, run_ticket_summary
 from .orchestrator.ticket_summary import _format_doc_request
 from .providers import make_provider
@@ -1684,7 +1693,7 @@ def report_recurring(
 
 labelset_app = typer.Typer(
     name="labelset",
-    help="Draft the synthetic label set the Judgments are measured on (#224).",
+    help="Draft and label the synthetic set the Judgments are measured on (#224).",
     no_args_is_help=True,
 )
 app.add_typer(labelset_app)
@@ -1762,6 +1771,62 @@ def labelset_draft(
     typer.echo(
         f"wrote {res.out} · {res.rows} rows · {res.calls} calls"
         f" · ${res.cost_usd:.4f} this run, ${res.spent_usd:.4f} in all"
+    )
+
+
+def _ask_line(text: str) -> str:
+    return str(typer.prompt(text, default="", show_default=False))
+
+
+@labelset_app.command("label")
+def labelset_label(
+    by: str = typer.Option(..., "--by", help="The labeller's handle, recorded on each row."),
+    path: Path = typer.Option(OUT_PATH, "--set", help="The drafted set to label."),  # noqa: B008
+) -> None:
+    """Label the set blind: each row shows its subject, body and channel, nothing else.
+
+    i / r for the type, y / n for security, h / l for your confidence, then an
+    optional one-line note. u goes back a row and q stops. Progress is saved
+    after every row, so a rerun picks up where you stopped (SPEC §6).
+    """
+    try:
+        res = label_rows(path, by=by, ask=_ask_line, show=typer.echo)
+    except OpsPilotError as e:
+        _console.print(f"Error: {e}", style="red", markup=False)
+        raise typer.Exit(1) from e
+    if not res.finished:
+        typer.echo(f"\nsaved · {res.labelled}/{res.total} labelled; rerun to continue")
+        return
+    typer.echo(
+        f"\nall {res.total} labelled · {res.low_confidence} low-confidence"
+        f" · you and the drafter split on the type for {res.type_splits}"
+        f" and on security for {res.security_splits}"
+    )
+    typer.echo("Tomorrow: opspilot labelset relabel --by <you>")
+
+
+@labelset_app.command("relabel")
+def labelset_relabel(
+    by: str = typer.Option(..., "--by", help="The labeller's handle."),
+    path: Path = typer.Option(OUT_PATH, "--set", help="The labelled set."),  # noqa: B008
+    out: Path = typer.Option(RELABEL_PATH, "--out", "-o", help="Where the relabels go."),  # noqa: B008
+) -> None:
+    """A day after labelling, relabel 10 random rows blind and report the agreement.
+
+    The first-pass labels are never shown. Under 9 of 10 says as much about
+    the answer space as about the engines (SPEC §6).
+    """
+    try:
+        res = relabel_rows(path, by=by, ask=_ask_line, show=typer.echo, out=out)
+    except OpsPilotError as e:
+        _console.print(f"Error: {e}", style="red", markup=False)
+        raise typer.Exit(1) from e
+    if not res.finished:
+        typer.echo(f"\nsaved · {res.relabelled}/{res.total} relabelled; rerun to continue")
+        return
+    typer.echo(
+        f"\nagreement with the first pass: type {res.type_agree}/{res.total},"
+        f" security {res.security_agree}/{res.total}"
     )
 
 
