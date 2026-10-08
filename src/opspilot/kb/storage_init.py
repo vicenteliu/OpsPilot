@@ -1,14 +1,17 @@
-"""SQLite bootstrap: the KB's schema, in the database file every SQLite store shares.
+"""SQLite bootstrap: the KB's schema, in a database file other stores share.
 
-Inventory, Memory and its Conflicts, Consultations and Working sets open the same
-connection and create their own tables (see ``api/app.py``). This schema holds
-the KB's tables and its ingest runs, plus the schema version and an audit log.
+In the API, ``api/app.py`` opens one connection here and builds every SQLite
+store on it; each of the others creates its own tables. The CLI and the TUI
+call :func:`init_sqlite` per command and get connections of their own to the
+same file. This schema holds the KB's tables and its ingest runs, plus
+``schema_meta`` and an ``audit_log`` table that nothing writes yet.
 
 Loads ``docs/specs/memory/storage/sqlite-schema.sql`` from the spec directory, opens a
 connection to the target ``.db`` file, applies recommended PRAGMAs, and
 executes the schema as a single script. The schema itself is idempotent
 (``CREATE TABLE IF NOT EXISTS`` everywhere), so calling :func:`init_sqlite`
-twice on the same path is a no-op.
+twice on the same path changes no table, though it does rewrite the
+``schema_meta`` rows, ``created_at`` included.
 
 Usage::
 

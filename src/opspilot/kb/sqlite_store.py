@@ -1,12 +1,16 @@
 """SQLite-backed metadata store for the KB.
 
-Owns two tables (full schema in ``docs/specs/memory/storage/sqlite-schema.sql``):
+Writes the KB's tables (full schema in ``docs/specs/memory/storage/sqlite-schema.sql``):
 
-* ``kb_documents``  — one row per ingested source file
-* ``kb_chunks``     — chunk-level metadata + ``vector_id`` link to LanceDB
+* ``kb_documents``   — one row per ingested source file
+* ``kb_chunks``      — chunk-level metadata + ``vector_id`` link to LanceDB
+* ``kb_conflicts``   — chunk-level conflicts and how they were settled
+* ``kb_corrections`` — chunks a person overrode: the old content and who did it
+* ``kb_deletions``   — documents removed: what went, who decided, and why
 
-Plus an FTS5 keyword index over ``kb_chunks`` (BM25, ``unicode61``
-tokenizer with diacritic folding). Vector bodies live in LanceDB (see
+Plus an FTS5 keyword index over ``kb_chunks`` (BM25, ``trigram`` tokenizer
+since schema 1.1.0: substring matching across Chinese and English). Vector
+bodies live in LanceDB (see
 ``lance_store.py``); the contract between the two stores is the
 1:1 ``kb_chunks.vector_id ↔ chunks.vector_id`` mapping.
 
@@ -60,9 +64,9 @@ def _serialised[M: Callable[..., Any]](method: M) -> M:
 
     Every method here drives one shared ``sqlite3.Connection`` — the API keeps a
     single store on ``app.state.sqlite`` and reaches it from the default
-    multi-threaded executor, alongside four *other* stores on the same
-    connection. The lock therefore belongs to the connection, not to this class
-    (:mod:`opspilot.dblock`). Neither a statement sequence nor an ``execute`` →
+    multi-threaded executor, alongside every other store ``api/app.py`` builds
+    on the same connection. The lock therefore belongs to the connection, not to
+    this class (:mod:`opspilot.dblock`). Neither a statement sequence nor an ``execute`` →
     ``fetchone`` pair is atomic on that connection, and ``commit()`` is
     connection-scoped rather than thread-scoped. Unserialised, concurrent callers
     raise ``InterfaceError``, lose writes, and fail to read rows that are present

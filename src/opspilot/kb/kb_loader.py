@@ -92,7 +92,7 @@ def load_kb_fixture(
 
     # ── 3. Vectors (lance) — one embed call per chunk ───────────────────
     # ``classification=restricted`` = FTS-only by design; skip embed to
-    # keep parity with the ingestion pipeline (memory/ingestion.py D7).
+    # keep parity with the ingestion pipeline (kb/ingestion.py D7).
     records: list[VectorRecord] = []
     for c in chunks:
         md = c.get("metadata") or {}
