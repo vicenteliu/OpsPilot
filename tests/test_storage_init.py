@@ -81,6 +81,27 @@ def test_init_is_idempotent(tmp_path: Path) -> None:
         conn2.close()
 
 
+def test_reopening_keeps_created_at_and_refreshes_schema_version(tmp_path: Path) -> None:
+    """#247: ``created_at`` is written once, when the file is created; every open
+    used to overwrite it. ``schema_version`` follows the script, so it is rewritten."""
+    db = tmp_path / "kb.db"
+    conn = init_sqlite(db)
+    (created_at,) = conn.execute("SELECT value FROM schema_meta WHERE key='created_at'").fetchone()
+    assert created_at.startswith("20") and created_at.endswith("Z")
+    conn.execute("UPDATE schema_meta SET value='2020-01-01T00:00:00.000Z' WHERE key='created_at'")
+    conn.execute("UPDATE schema_meta SET value='0.9.0' WHERE key='schema_version'")
+    conn.commit()
+    conn.close()
+
+    conn = init_sqlite(db)
+    try:
+        meta = dict(conn.execute("SELECT key, value FROM schema_meta").fetchall())
+        assert meta["created_at"] == "2020-01-01T00:00:00.000Z"
+        assert meta["schema_version"] == "1.2.0"
+    finally:
+        conn.close()
+
+
 def test_init_applies_pragmas(tmp_path: Path) -> None:
     db = tmp_path / "kb.db"
     conn = init_sqlite(db)

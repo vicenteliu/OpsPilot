@@ -10,8 +10,8 @@ Loads ``docs/specs/memory/storage/sqlite-schema.sql`` from the spec directory, o
 connection to the target ``.db`` file, applies recommended PRAGMAs, and
 executes the schema as a single script. The schema itself is idempotent
 (``CREATE TABLE IF NOT EXISTS`` everywhere), so calling :func:`init_sqlite`
-twice on the same path changes no table, though it does rewrite the
-``schema_meta`` rows, ``created_at`` included.
+twice on the same path changes no table. It rewrites ``schema_version`` in
+``schema_meta`` and keeps ``created_at`` from the first initialisation (#247).
 
 Usage::
 

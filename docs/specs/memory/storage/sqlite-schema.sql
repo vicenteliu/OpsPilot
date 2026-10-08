@@ -29,8 +29,12 @@ CREATE TABLE IF NOT EXISTS schema_meta (
   updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 ) STRICT;
 
+-- init_sqlite runs this script on every open, so the two rows differ on
+-- purpose: schema_version follows the script and is rewritten each time;
+-- created_at is written once, when the file is first initialised (#247).
 INSERT OR REPLACE INTO schema_meta(key, value) VALUES
-  ('schema_version', '1.2.0'),
+  ('schema_version', '1.2.0');
+INSERT OR IGNORE INTO schema_meta(key, value) VALUES
   ('created_at',     strftime('%Y-%m-%dT%H:%M:%fZ','now'));
 
 ------------------------------------------------------------
