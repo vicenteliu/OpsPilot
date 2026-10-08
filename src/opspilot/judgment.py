@@ -26,7 +26,7 @@ from typing import Any, Final, Literal, Protocol
 
 import yaml
 
-from .errors import OpsPilotError
+from .errors import ConfigError, OpsPilotError
 from .orchestrator.classify import VALID_TYPES, classify_state
 from .orchestrator.types import PlaybookSpec
 from .providers.base import ProviderProtocol
@@ -153,3 +153,50 @@ def judge_with_fallback(
     except OpsPilotError as e:
         answer = fallback.judge(question, state, timeout_s=timeout_s)
         return replace(answer, fallback=f"{primary.name}: {e}")
+
+
+JUDGMENT_TIMEOUT_S: Final = 20.0
+WORK_ITEM_TYPE_FILE: Final = "d2.yaml"
+
+
+@dataclass(frozen=True)
+class Stage:
+    """The Judgments stage as the server runs it; it exists only when it is on.
+
+    ``threshold`` is the measured cut for decision 2: below it the outcome is
+    *needs a person*, the same path Classification's own cut takes today.
+    """
+
+    work_item_type: Question
+    threshold: float
+    primary: JudgmentEngine
+    fallback: JudgmentEngine | None = None
+    timeout_s: float = JUDGMENT_TIMEOUT_S
+
+    def decide(self, question: Question, state: str) -> Judgment:
+        if self.fallback is None:
+            return self.primary.judge(question, state, timeout_s=self.timeout_s)
+        return judge_with_fallback(
+            self.primary, self.fallback, question, state, timeout_s=self.timeout_s
+        )
+
+
+def build_stage(
+    decisions_dir: Path, classify_playbook: PlaybookSpec, provider: ProviderProtocol
+) -> Stage:
+    """The stage with the engines there are; refuse it until its threshold is measured.
+
+    Today the only engine is the Playbook's model, so it decides on its own.
+    """
+    path = decisions_dir / WORK_ITEM_TYPE_FILE
+    question = load_question(path)
+    if question.threshold is None:
+        raise ConfigError(
+            f"the Judgments stage is on but {path} has no threshold. Measure it on the "
+            "label set first (judgments/label_set/SPEC.md §7); it is never guessed."
+        )
+    return Stage(
+        work_item_type=question,
+        threshold=question.threshold,
+        primary=ClassificationJudge(classify_playbook, provider),
+    )

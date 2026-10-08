@@ -55,9 +55,12 @@ def classify_work_item(
     redactor: Redactor,
 ) -> ClassificationResult:
     """Classify a work item as ``incident`` vs ``service_request`` (single shot)."""
-    ticket = _load_ticket(input_path)
-    redacted = redactor.redact(_format_ticket(ticket)).text
-    return classify_state(redacted, playbook=playbook, provider=provider)
+    return classify_state(render_state(input_path, redactor), playbook=playbook, provider=provider)
+
+
+def render_state(input_path: Path, redactor: Redactor) -> str:
+    """The redacted rendering of a work item that a model, or a Judgment, is shown."""
+    return redactor.redact(_format_ticket(_load_ticket(input_path))).text
 
 
 def classify_state(

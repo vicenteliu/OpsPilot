@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import dataclasses
 import json
 import logging
@@ -14,10 +15,11 @@ from typing import Any
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
-from ...orchestrator.classify import classify_work_item, declared_type
+from ...orchestrator.classify import classify_work_item, declared_type, render_state
 from ...orchestrator.ticket_summary import run_ticket_summary
 from ...orchestrator.types import RunRequest as OrchestratorRunRequest
 from ...providers.registry import make_provider
+from ...session.types import TraceEvent
 from ..types import ApiRunRequest, ApiRunResponse, ApiTokenUsage
 
 router = APIRouter()
@@ -98,15 +100,29 @@ def _resolve_provider_and_playbook(body: ApiRunRequest, state: Any) -> tuple[Any
     return _apply_model_override(body, state, pb)
 
 
+def _trace_judgment(state: Any, session_id: str, classification: dict[str, Any] | None) -> None:
+    """Put the Judgment that chose this Session's playbook on its trace (ADR-0040).
+
+    Best-effort, the way escalation's back-reference is: a lost trace line must
+    not lose the Session that was just run.
+    """
+    judgment = (classification or {}).get("judgment")
+    if judgment is None or not session_id:
+        return
+    with contextlib.suppress(Exception), state.session_mgr.trace(session_id) as tw:
+        tw.write(TraceEvent.system(event="judgment", details=judgment))
+
+
 def _resolve_run_plan(
     body: ApiRunRequest, state: Any, ticket_path: Path
 ) -> tuple[Any, Any, dict[str, Any] | None, bool]:
     """Decide which playbook to run (declared-first).
 
     Precedence: explicit ``playbook_id`` > input-declared ``work_item_type`` >
-    LLM classification. Below the confidence threshold the run is withheld for a
-    human pick. Returns (provider, playbook, classification, needs_confirmation).
-    When needs_confirmation is True, provider/playbook are None.
+    the Judgments stage when it is on (ADR-0040) > LLM classification. Below the
+    threshold the run is withheld for a human pick. Returns (provider, playbook,
+    classification, needs_confirmation). When needs_confirmation is True,
+    provider/playbook are None.
 
     Blocking (classification does a provider call) — call inside an executor.
     """
@@ -120,6 +136,24 @@ def _resolve_run_plan(
             body, state, _select_playbook_for_type(declared, state)
         )
         return provider, pb, None, False
+
+    stage = getattr(state, "judgments", None)
+    if stage is not None:
+        judgment = stage.decide(stage.work_item_type, render_state(ticket_path, state.redactor))
+        # The shape every reader of `classification` already takes: the web's
+        # confirm banner, the JSM "needs a person" comment, Telegram.
+        decided: dict[str, Any] = {
+            "work_item_type": judgment.answer,
+            "confidence": judgment.probability,
+            "rationale": "",  # a Judgment gives no reasons, by design
+            "judgment": judgment.as_trace(),
+        }
+        if judgment.probability < stage.threshold:
+            return None, None, decided, True
+        provider, pb = _apply_model_override(
+            body, state, _select_playbook_for_type(judgment.answer, state)
+        )
+        return provider, pb, decided, False
 
     result = classify_work_item(
         ticket_path,
@@ -165,6 +199,7 @@ async def run_ticket(body: ApiRunRequest, request: Request) -> ApiRunResponse:
                 lance_store=state.lance,
                 mcp_registry=getattr(state, "mcp_registry", None),
             )
+            _trace_judgment(state, res.session_id, classification)
             return res, classification, False
 
         result, classification, needs_conf = await loop.run_in_executor(None, _plan_and_run)
@@ -239,6 +274,7 @@ async def run_ticket_stream(body: ApiRunRequest, request: Request) -> StreamingR
             mcp_registry=getattr(state, "mcp_registry", None),
             on_progress=on_progress,
         )
+        _trace_judgment(state, res.session_id, classification)
         return res, classification, False
 
     async def _run_in_thread() -> None:
