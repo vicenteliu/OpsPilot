@@ -32,6 +32,9 @@ _USD_PER_MILLION: Final[dict[str, tuple[float, float]]] = {
     "claude-sonnet-5": (3.0, 15.0),
     "claude-sonnet-4-6": (3.0, 15.0),
     "claude-haiku-4-5": (1.0, 5.0),
+    # Checked against docs.typesafe.ai/models on 2026-10-08. TypeSafe returns
+    # token counts, not a charge; it bills input tokens only.
+    "jev-1.13": (0.042, 0.0),
 }
 
 

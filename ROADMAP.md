@@ -107,12 +107,17 @@ either claim.
   behind `OPSPILOT_JUDGMENTS=1`, off by default. Each Judgment is appended to
   its Session's trace, and Classification now keeps its token usage, so the
   baseline's cost is measured rather than assumed (#241).
+- The `typesafe` engine: Jev, pinned to `jev-1.13.0`, asked decision 2 as a
+  Choice in the words of its decision file, with the chosen answer's
+  probability, one attempt and no retries, and a price from the input tokens.
+  With `TYPESAFE_API_KEY` set it decides and the Playbook's model is its
+  fallback; an answer from the fallback always goes to a person, since the
+  threshold is measured on the primary's probability (#265). Tested against
+  the documented request and response, not yet against the live API. Noul and
+  Score wait for the decisions that need them (#225, #227).
 
 *Not yet:*
 
-- The `typesafe` engine for Jev. Its API reference was not reachable from the
-  session that built the stage, and the adapter waits for it rather than being
-  written against a guess.
 - The label set itself: drafted, then labelled and relabelled by a person.
 - Decision 2's threshold and the report: Jev against the Playbook's model by
   accuracy, Brier score, cost per call and p50 / p95 latency. **Until the
