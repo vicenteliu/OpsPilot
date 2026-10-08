@@ -21,6 +21,7 @@ is exposed so PR-5 / PR-7 can call it after a large ingest.
 from __future__ import annotations
 
 import contextlib
+from collections import Counter, defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -237,6 +238,45 @@ class LanceStore:
         self._refresh()
         rows = self._table.search().select(["vector_id"]).limit(None).to_arrow()
         return {str(v) for v in rows.column("vector_id").to_pylist()}
+
+    def duplicate_rows(self) -> dict[str, list[dict[str, Any]]]:
+        """The rows of every ``vector_id`` held more than once, by vector_id.
+
+        Each row carries ``_rowid``, ``chunk_id`` and ``created_at``. The
+        vector_id column is read first, so only duplicated rows are fetched.
+        """
+        self._refresh()
+        ids = self._table.search().select(["vector_id"]).limit(None).to_arrow()
+        counts = Counter(str(v) for v in ids.column("vector_id").to_pylist())
+        held_twice = [v.replace("'", "''") for v, n in counts.items() if n > 1]
+        if not held_twice:
+            return {}
+        in_list = ",".join(f"'{v}'" for v in held_twice)
+        rows = (
+            self._table.search()
+            .where(f"vector_id IN ({in_list})")
+            .with_row_id(True)
+            .select(["vector_id", "chunk_id", "created_at"])
+            .limit(None)
+            .to_arrow()
+            .to_pylist()
+        )
+        groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for row in rows:
+            groups[str(row["vector_id"])].append(row)
+        return dict(groups)
+
+    def delete_rows(self, row_ids: Sequence[int]) -> None:
+        """Delete rows by ``_rowid``, in one commit.
+
+        A row id names one physical row, so the copy a caller keeps is never
+        touched. Compaction renumbers rows, which makes an id it has moved match
+        nothing rather than another row.
+        """
+        if not row_ids:
+            return
+        self._refresh()
+        self._table.delete(f"_rowid IN ({','.join(str(int(r)) for r in row_ids)})")
 
     # ── ANN search ───────────────────────────────────────────────────
 

@@ -344,6 +344,30 @@ def sweep_orphan_vectors(
     return orphans
 
 
+def dedupe_vectors(sqlite: SqliteStore, lance: LanceStore, *, dry_run: bool = False) -> list[str]:
+    """Keep one LanceDB row per ``vector_id``; return the ids held twice, sorted.
+
+    An upsert through a stale handle inserted a second row instead of updating
+    the first (fixed by #261). Every row is an ANN hit and retrieval adds a
+    vector score per hit, so a duplicated chunk's vector score counted twice.
+
+    The row kept is the one naming the chunk SQLite has for that vector_id,
+    else the newest. The others go in one delete by row id, so a vector is never
+    left without a row.
+    """
+    groups = lance.duplicate_rows()
+    if dry_run or not groups:
+        return sorted(groups)
+    chunks = sqlite.get_chunks_by_vector_ids(list(groups))
+    extra: list[int] = []
+    for vector_id, rows in groups.items():
+        chunk_id = chunks[vector_id]["id"] if vector_id in chunks else None
+        keep = max(rows, key=lambda r: (r["chunk_id"] == chunk_id, r["created_at"]))
+        extra += [int(r["_rowid"]) for r in rows if r is not keep]
+    lance.delete_rows(extra)
+    return sorted(groups)
+
+
 # ── Single-file step ──────────────────────────────────────────────────
 
 
