@@ -1,9 +1,17 @@
-"""Memory subsystem.
+"""The KB: ingested documents, chunked, stored and searched.
 
-* PR-2: markdown chunker
-* PR-3: Ollama provider (in ``providers/``, not here)
-* PR-4: SQLite + LanceDB stores + hybrid retrieval
-* PR-5: markitdown adapter + ingestion pipeline ← current
+Not Memory. The KB holds what was ingested, built from the handbook and
+other documents (ADR-0038); Memory holds the standing facts a person
+admits, and reaches an answer on a path of its own (``opspilot.memory``,
+ADR-0031).
+
+* ``ingestion`` + ``markitdown_adapter``: discover → markdown → redact →
+  chunk → embed → upsert
+* ``chunker`` / ``tokenizer``: Rust hot paths, with a Python fallback
+* ``sqlite_store`` (FTS5) + ``lance_store`` (vectors): the two stores
+* ``retrieval``: hybrid search, fused by weighted RRF
+* ``conflict``: chunk-level conflicts and how they were settled
+* ``kb_loader``: frozen fixtures (``chunks.jsonl`` + ``doc-meta.json``)
 """
 
 from .chunker import Chunk, ChunkConfig, chunk_markdown
