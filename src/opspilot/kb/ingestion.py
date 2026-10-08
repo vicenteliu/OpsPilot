@@ -40,6 +40,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final, Literal, get_args
 
+from ..dblock import lock_for
 from ..errors import OpsPilotError
 from ..ids import new_ulid_id
 from ..observability import record_ingest
@@ -432,6 +433,10 @@ def _ingest_one(
 
 
 # ── Helpers ───────────────────────────────────────────────────────────
+#
+# These reach past SqliteStore to its connection, so they take the lock its
+# methods take: in the API that connection is shared with seven other stores,
+# and commit() is connection-scoped (#166, #245).
 
 
 def _find_doc_by_source_path(sqlite: SqliteStore, source_path: str) -> tuple[str, str] | None:
@@ -439,11 +444,12 @@ def _find_doc_by_source_path(sqlite: SqliteStore, source_path: str) -> tuple[str
 
     ``idx_doc_source_path`` makes this O(log n).
     """
-    cur = sqlite._conn.execute(  # noqa: SLF001 — SqliteStore lacks a public lookup
-        "SELECT id, content_hash FROM kb_documents WHERE source_path = ?",
-        (source_path,),
-    )
-    r = cur.fetchone()
+    conn = sqlite._conn  # noqa: SLF001 — SqliteStore lacks a public lookup
+    with lock_for(conn):
+        r = conn.execute(
+            "SELECT id, content_hash FROM kb_documents WHERE source_path = ?",
+            (source_path,),
+        ).fetchone()
     if r is None:
         return None
     return (str(r["id"]), str(r["content_hash"]))
@@ -455,14 +461,12 @@ def _delete_doc_with_vectors(sqlite: SqliteStore, lance: LanceStore, doc_id: str
     SQLite handles ``kb_chunks`` via FK cascade; we have to fetch
     ``vector_id``s before the delete so we can also clear LanceDB.
     """
-    cur = sqlite._conn.execute(  # noqa: SLF001
-        "SELECT vector_id FROM kb_chunks WHERE document_id = ?", (doc_id,)
-    )
-    vector_ids = [r["vector_id"] for r in cur.fetchall()]
-    sqlite._conn.execute(  # noqa: SLF001
-        "DELETE FROM kb_documents WHERE id = ?", (doc_id,)
-    )
-    sqlite._conn.commit()
+    conn = sqlite._conn  # noqa: SLF001
+    with lock_for(conn):
+        cur = conn.execute("SELECT vector_id FROM kb_chunks WHERE document_id = ?", (doc_id,))
+        vector_ids = [r["vector_id"] for r in cur.fetchall()]
+        conn.execute("DELETE FROM kb_documents WHERE id = ?", (doc_id,))
+        conn.commit()
     if vector_ids:
         lance.delete_by_vector_ids(vector_ids)
 
@@ -481,29 +485,31 @@ def _write_ingest_run_row(
     redaction_hits: int,
 ) -> None:
     status = "succeeded" if docs_failed == 0 else "failed"
-    sqlite._conn.execute(  # noqa: SLF001
-        """
-        INSERT INTO ingest_runs (
-          id, kb_id, started_at, finished_at, status,
-          docs_total, docs_succeeded, docs_failed,
-          chunks_total, tokens_embedded, cost_usd,
-          redaction_hits, redaction_hard_fails
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0.0, ?, 0)
-        """,
-        (
-            run_id,
-            kb_id,
-            started_at,
-            finished_at,
-            status,
-            docs_total,
-            docs_succeeded,
-            docs_failed,
-            chunks_total,
-            redaction_hits,
-        ),
-    )
-    sqlite._conn.commit()
+    conn = sqlite._conn  # noqa: SLF001
+    with lock_for(conn):
+        conn.execute(
+            """
+            INSERT INTO ingest_runs (
+              id, kb_id, started_at, finished_at, status,
+              docs_total, docs_succeeded, docs_failed,
+              chunks_total, tokens_embedded, cost_usd,
+              redaction_hits, redaction_hard_fails
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0.0, ?, 0)
+            """,
+            (
+                run_id,
+                kb_id,
+                started_at,
+                finished_at,
+                status,
+                docs_total,
+                docs_succeeded,
+                docs_failed,
+                chunks_total,
+                redaction_hits,
+            ),
+        )
+        conn.commit()
 
 
 def _detect_language(text: str) -> str:
