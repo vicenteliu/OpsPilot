@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import logging
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 
 from opspilot.errors import ConfigError, ProviderError
@@ -16,6 +19,7 @@ from opspilot.judgment import (
     JudgmentError,
     Question,
     Stage,
+    TypeSafeJudge,
     build_stage,
     judge_with_fallback,
     load_question,
@@ -110,6 +114,104 @@ class TestClassificationJudge:
         assert provider.calls == []
 
 
+# ── Jev, through the typesafe provider kind ─────────────────────────────────
+
+_JEV_ANSWER = {
+    "model": "jev-1.13.0",
+    "answers": {
+        "d2": {
+            "type": "choice",
+            "choice": "service_request",
+            "probabilities": {"incident": 0.09, "service_request": 0.91},
+            "confidence": 0.82,
+        }
+    },
+    "usage": {"input_tokens": 312, "output_tokens": 20},
+}
+
+
+def _jev(handler: Callable[[httpx.Request], httpx.Response]) -> TypeSafeJudge:
+    return TypeSafeJudge("ts-test-key", client=httpx.Client(transport=httpx.MockTransport(handler)))
+
+
+class TestTypeSafeJudge:
+    def test_asks_the_question_as_its_file_states_it_and_reads_the_answer(self) -> None:
+        sent: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            sent.append(request)
+            return httpx.Response(200, json=_JEV_ANSWER)
+
+        q = load_question(D2)
+        j = _jev(handler).judge(q, "VPN access for a new starter", timeout_s=7.5)
+
+        [request] = sent
+        assert str(request.url) == "https://api.typesafe.ai/v1/systemone"
+        assert request.headers["Authorization"] == "Bearer ts-test-key"
+        assert request.extensions["timeout"]["read"] == 7.5
+        assert json.loads(request.content) == {
+            "state": "VPN access for a new starter",
+            "model": "jev-1.13.0",  # pinned: the threshold is measured on one version
+            "questions": {"d2": {"type": "choice", "instructions": q.text, "criteria": q.answers}},
+        }
+        assert (j.question, j.version, j.answer, j.engine) == (
+            "d2",
+            "d2-v1",
+            "service_request",
+            "typesafe:jev-1.13.0",
+        )
+        # The chosen answer's probability, not `confidence` (2p − 1 for two answers).
+        assert j.probability == 0.91
+        assert j.cost_usd == pytest.approx(312 * 0.042 / 1_000_000)  # input tokens only
+        assert j.latency_ms >= 0 and j.fallback is None
+
+    @pytest.mark.parametrize(
+        ("respond", "message"),
+        [
+            (httpx.ReadTimeout("slow"), r"timed out after 7\.5s"),
+            (httpx.ConnectError("refused"), "unreachable"),
+            (httpx.Response(429, text="slow down"), "HTTP 429: slow down"),
+            (httpx.Response(200, json={"answers": {}}), "unexpected response"),
+            (
+                httpx.Response(
+                    200,
+                    json={
+                        **_JEV_ANSWER,
+                        "answers": {
+                            # Named before its probability is looked for, so an
+                            # answer with none is still reported as outside.
+                            "d2": {"type": "choice", "choice": "task", "probabilities": {}}
+                        },
+                    },
+                ),
+                "'task', outside the answer space of d2-v1",
+            ),
+        ],
+    )
+    def test_every_failure_is_one_the_fallback_catches(
+        self, respond: httpx.Response | Exception, message: str
+    ) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            if isinstance(respond, Exception):
+                raise respond
+            return respond
+
+        with pytest.raises(JudgmentError, match=message):
+            _jev(handler).judge(load_question(D2), "s", timeout_s=7.5)
+
+    def test_refuses_a_question_kind_it_does_not_ask_yet(self) -> None:
+        sent: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            sent.append(request)
+            return httpx.Response(200, json=_JEV_ANSWER)
+
+        security = Question("d1", "d1-v1", "noul", "Security?", {"yes": "", "no": ""}, None)
+        with pytest.raises(JudgmentError, match="only choice questions"):
+            _jev(handler).judge(security, "s", timeout_s=5)
+        assert sent == []
+
+
 class _Down:
     name = "typesafe:jev-test"
 
@@ -131,12 +233,18 @@ class TestFallback:
         assert (j.engine, j.answer, j.fallback) == ("typesafe:jev-test", "incident", None)
         assert provider.calls == []
 
-    def test_a_failed_primary_hands_over_and_the_judgment_says_why(self) -> None:
+    def test_a_failed_primary_hands_over_and_the_judgment_and_the_log_say_why(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
         baseline, _ = _baseline(_REQUEST)
-        j = judge_with_fallback(_Down(), baseline, load_question(D2), "s", timeout_s=2)
+        with caplog.at_level(logging.WARNING, logger="opspilot.judgment"):
+            j = judge_with_fallback(_Down(), baseline, load_question(D2), "s", timeout_s=2)
         assert j.engine == baseline.name and j.answer == "service_request"
         assert j.fallback == "typesafe:jev-test: timed out after 2.0s"
         assert j.as_trace()["fallback"] == j.fallback
+        # A run that waits for a person has no Session, so the log is the record.
+        assert "typesafe:jev-test could not decide d2" in caplog.text
+        assert "timed out after 2.0s" in caplog.text
 
     def test_when_both_fail_the_error_reaches_the_caller(self) -> None:
         baseline, _ = _baseline(error=ProviderError("anthropic down"))
@@ -169,15 +277,42 @@ class TestBuildStage:
         with pytest.raises(ConfigError, match=r"no threshold\. Measure it on the label set"):
             build_stage(REPO_ROOT / DECISIONS_DIR, playbook, _Classifier(""))  # type: ignore[arg-type]
 
-    def test_with_a_measured_threshold_the_playbook_model_decides_alone(
+    def test_without_a_typesafe_key_the_playbook_model_decides_alone_and_the_log_says_so(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        playbook = load_playbook(REPO_ROOT / "playbooks" / "pb_classify_work_item_en")
+        with caplog.at_level(logging.WARNING, logger="opspilot.judgment"):
+            stage = build_stage(_decisions(tmp_path, "0.82"), playbook, _Classifier(_REQUEST))  # type: ignore[arg-type]
+        assert stage.threshold == 0.82 and stage.fallback is None
+        assert isinstance(stage.primary, ClassificationJudge)
+        assert "without TYPESAFE_API_KEY" in caplog.text
+        j = stage.decide(stage.work_item_type, "state")
+        assert (j.answer, j.probability, j.fallback) == ("service_request", 0.58, None)
+
+    def test_with_a_typesafe_key_jev_decides_and_the_playbook_model_falls_back(
         self, tmp_path: Path
     ) -> None:
         playbook = load_playbook(REPO_ROOT / "playbooks" / "pb_classify_work_item_en")
-        stage = build_stage(_decisions(tmp_path, "0.82"), playbook, _Classifier(_REQUEST))  # type: ignore[arg-type]
-        assert stage.threshold == 0.82 and stage.fallback is None
-        assert isinstance(stage.primary, ClassificationJudge)
-        j = stage.decide(stage.work_item_type, "state")
-        assert (j.answer, j.probability, j.fallback) == ("service_request", 0.58, None)
+        stage = build_stage(
+            _decisions(tmp_path, "0.82"),
+            playbook,
+            _Classifier(_REQUEST),  # type: ignore[arg-type]
+            typesafe_api_key=" ts-test-key\n",  # as a key file pastes it
+        )
+        assert isinstance(stage.primary, TypeSafeJudge)
+        assert stage.primary.name == "typesafe:jev-1.13.0"
+        assert isinstance(stage.fallback, ClassificationJudge)
+
+    @pytest.mark.parametrize("key", ["ts test key", "ts-test-’key", "ts-\x00-key"])
+    def test_a_malformed_typesafe_key_stops_the_start(self, tmp_path: Path, key: str) -> None:
+        playbook = load_playbook(REPO_ROOT / "playbooks" / "pb_classify_work_item_en")
+        with pytest.raises(ConfigError, match="TYPESAFE_API_KEY is malformed"):
+            build_stage(
+                _decisions(tmp_path, "0.82"),
+                playbook,
+                _Classifier(_REQUEST),  # type: ignore[arg-type]
+                typesafe_api_key=key,
+            )
 
     def test_with_a_fallback_the_stage_hands_over_on_failure(self) -> None:
         baseline, _ = _baseline(_REQUEST)
@@ -185,6 +320,24 @@ class TestBuildStage:
         assert stage.decide(stage.work_item_type, "s").fallback == (
             "typesafe:jev-test: timed out after 2.0s"
         )
+
+
+class TestNeedsAPerson:
+    def _judgment(self, probability: float, fallback: str | None = None) -> Judgment:
+        return Judgment("d2", "d2-v1", "incident", probability, "e", 1, 0.0, fallback)
+
+    def test_at_or_above_the_threshold_the_primary_s_answer_routes(self) -> None:
+        stage = Stage(load_question(D2), 0.8, primary=_Up())
+        assert not stage.needs_a_person(self._judgment(0.8))
+
+    def test_below_the_threshold_a_person_picks(self) -> None:
+        stage = Stage(load_question(D2), 0.8, primary=_Up())
+        assert stage.needs_a_person(self._judgment(0.79))
+
+    def test_a_fallback_s_answer_goes_to_a_person_however_sure_it_is(self) -> None:
+        # The threshold was measured on the primary's probability, not the fallback's.
+        stage = Stage(load_question(D2), 0.8, primary=_Up())
+        assert stage.needs_a_person(self._judgment(0.99, fallback="typesafe:jev: HTTP 529"))
 
 
 class _Engine:
@@ -210,7 +363,7 @@ _UNTYPED = {
 }
 
 
-def _app_with_stage(engine: _Engine) -> Any:
+def _app_with_stage(engine: _Engine | _Down, fallback: _Engine | None = None) -> Any:
     from collections.abc import AsyncIterator
     from contextlib import asynccontextmanager
     from unittest.mock import MagicMock
@@ -229,7 +382,7 @@ def _app_with_stage(engine: _Engine) -> Any:
         app.state.redactor = Redactor.from_yaml()
         app.state.classify_pb = MagicMock()
         app.state.classify_threshold = 0.7
-        app.state.judgments = Stage(load_question(D2), 0.8, primary=engine)
+        app.state.judgments = Stage(load_question(D2), 0.8, primary=engine, fallback=fallback)
         app.state.sqlite = app.state.lance = app.state.mcp_registry = None
         app.state.embed_fn = lambda text: [0.0]
         yield
@@ -299,6 +452,26 @@ class TestStageInTheRun:
         assert (data["classification"]["work_item_type"], data["classification"]["confidence"]) == (
             "incident",
             0.61,
+        )
+
+    def test_a_fallback_s_answer_waits_for_a_person_and_says_why(self) -> None:
+        from unittest.mock import patch
+
+        from fastapi.testclient import TestClient
+
+        app = _app_with_stage(_Down(), fallback=_Engine("service_request", 0.99))
+        with (
+            patch("opspilot.api.routes.run.run_ticket_summary") as run,
+            TestClient(app) as client,
+        ):
+            data = client.post("/api/run", json={"input": _UNTYPED}).json()
+
+        run.assert_not_called()
+        assert data["needs_confirmation"] is True
+        # The fallback's answer still preselects the person's pick.
+        assert data["classification"]["work_item_type"] == "service_request"
+        assert data["classification"]["judgment"]["fallback"] == (
+            "typesafe:jev-test: timed out after 2.0s"
         )
 
     def test_a_declared_type_skips_the_stage(self) -> None:

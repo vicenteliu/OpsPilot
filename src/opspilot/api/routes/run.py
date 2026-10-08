@@ -148,7 +148,7 @@ def _resolve_run_plan(
             "rationale": "",  # a Judgment gives no reasons, by design
             "judgment": judgment.as_trace(),
         }
-        if judgment.probability < stage.threshold:
+        if stage.needs_a_person(judgment):
             return None, None, decided, True
         provider, pb = _apply_model_override(
             body, state, _select_playbook_for_type(judgment.answer, state)

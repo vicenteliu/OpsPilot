@@ -6,12 +6,13 @@ of those answers with a probability. It writes nothing else: no reply, no
 reasoning.
 
 Two engines can answer. Jev, through the ``typesafe`` provider kind, returns a
-probability calibrated against outcomes. The Playbook's own model is the
-baseline every Judgment is measured against and the fallback when Jev cannot
-be reached; its probability is the confidence it scores itself, which is
-exactly what the label set exists to test. Each Judgment carries the engine
-that decided, its latency and its price, and why the primary engine did not
-decide when it did not, because the trace has to say all of it.
+probability calibrated against outcomes, by its vendor's account. The
+Playbook's own model is the baseline every Judgment is measured against and the
+fallback when Jev cannot be reached; its probability is the confidence it
+scores itself, which is exactly what the label set exists to test. Each
+Judgment carries the engine that decided, its latency and its price, and why
+the primary engine did not decide when it did not, because the trace has to
+say all of it.
 
 This is not the chat ``ProviderProtocol``: that carries no probabilities, and
 stretching it to fit would make every chat provider pretend to have one.
@@ -19,17 +20,22 @@ stretching it to fit would make every chat provider pretend to have one.
 
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any, Final, Literal, Protocol
 
+import httpx
 import yaml
 
 from .errors import ConfigError, OpsPilotError
 from .orchestrator.classify import VALID_TYPES, classify_state
 from .orchestrator.types import PlaybookSpec
 from .providers.base import ProviderProtocol
+from .providers.pricing import estimate_cost_usd
+
+logger = logging.getLogger("opspilot.judgment")
 
 DECISIONS_DIR: Final = Path("judgments/decisions")
 
@@ -135,6 +141,87 @@ class ClassificationJudge:
         )
 
 
+TYPESAFE_URL: Final = "https://api.typesafe.ai/v1/systemone"
+# Pinned, not `jev-latest`: a threshold is measured against one version, and an
+# alias moves under it when a new one ships (docs.typesafe.ai/models).
+JEV_MODEL: Final = "jev-1.13.0"
+
+
+class TypeSafeJudge:
+    """Jev, through the ``typesafe`` provider kind (docs.typesafe.ai/api).
+
+    The Question goes out as its file states it: its text as the instructions,
+    its answers and their meanings as the criteria. Nothing is reworded for
+    Jev, so it is asked the answer space the label set was labelled against.
+
+    The probability is the chosen answer's, not the response's ``confidence``:
+    for two answers that is 2p − 1, a measure of how peaked the distribution
+    is, and the threshold and the Brier score are both stated on p.
+
+    One attempt and no retries: a failure is what the fallback is for, and a
+    retry spends time a person is waiting through.
+    """
+
+    def __init__(self, api_key: str, *, client: httpx.Client | None = None) -> None:
+        self._api_key = api_key
+        self._client = client or httpx.Client()
+        self.name = f"typesafe:{JEV_MODEL}"
+
+    def judge(self, question: Question, state: str, *, timeout_s: float) -> Judgment:
+        if question.kind != "choice":
+            raise JudgmentError(
+                f"{self.name} asks only choice questions so far, not {question.kind} "
+                f"({question.id})"
+            )
+        body = {
+            "state": state,
+            "model": JEV_MODEL,
+            "questions": {
+                question.id: {
+                    "type": "choice",
+                    "instructions": question.text,
+                    "criteria": question.answers,
+                }
+            },
+        }
+        started = time.monotonic()
+        try:
+            r = self._client.post(
+                TYPESAFE_URL,
+                json=body,
+                headers={"Authorization": f"Bearer {self._api_key}"},
+                timeout=timeout_s,
+            )
+        except httpx.TimeoutException as e:
+            raise JudgmentError(f"timed out after {timeout_s}s") from e
+        except httpx.RequestError as e:
+            raise JudgmentError(f"unreachable: {e}") from e
+        latency_ms = int((time.monotonic() - started) * 1000)
+        if not r.is_success:
+            raise JudgmentError(f"HTTP {r.status_code}: {r.text[:200]}")
+        try:
+            data = r.json()
+            answer = data["answers"][question.id]
+            choice = str(answer["choice"])
+            if choice not in question.answers:
+                raise JudgmentError(
+                    f"answered {choice!r}, outside the answer space of {question.version}"
+                )
+            probability = float(answer["probabilities"][choice])
+            input_tokens = int(data["usage"]["input_tokens"])
+        except (ValueError, KeyError, TypeError) as e:
+            raise JudgmentError(f"unexpected response: {e!r}") from e
+        return Judgment(
+            question=question.id,
+            version=question.version,
+            answer=choice,
+            probability=probability,
+            engine=self.name,
+            latency_ms=latency_ms,
+            cost_usd=estimate_cost_usd(JEV_MODEL, input_tokens, 0),  # output is free
+        )
+
+
 def judge_with_fallback(
     primary: JudgmentEngine,
     fallback: JudgmentEngine,
@@ -151,6 +238,11 @@ def judge_with_fallback(
     try:
         return primary.judge(question, state, timeout_s=timeout_s)
     except OpsPilotError as e:
+        # Logged as well as recorded: an answer from the fallback goes to a
+        # person, and a run that never starts has no Session to trace it on.
+        logger.warning(
+            "%s could not decide %s, so %s did: %s", primary.name, question.id, fallback.name, e
+        )
         answer = fallback.judge(question, state, timeout_s=timeout_s)
         return replace(answer, fallback=f"{primary.name}: {e}")
 
@@ -163,8 +255,9 @@ WORK_ITEM_TYPE_FILE: Final = "d2.yaml"
 class Stage:
     """The Judgments stage as the server runs it; it exists only when it is on.
 
-    ``threshold`` is the measured cut for decision 2: below it the outcome is
-    *needs a person*, the same path Classification's own cut takes today.
+    ``threshold`` is the measured cut for decision 2, on the primary engine's
+    probability: below it the outcome is *needs a person*, the same path
+    Classification's own cut takes today.
     """
 
     work_item_type: Question
@@ -180,13 +273,26 @@ class Stage:
             self.primary, self.fallback, question, state, timeout_s=self.timeout_s
         )
 
+    def needs_a_person(self, judgment: Judgment) -> bool:
+        """Below the threshold, or answered by the fallback: either way a person picks.
+
+        The threshold was measured on the primary's probability, so it says
+        nothing about how far to trust the fallback's, however high.
+        """
+        return judgment.fallback is not None or judgment.probability < self.threshold
+
 
 def build_stage(
-    decisions_dir: Path, classify_playbook: PlaybookSpec, provider: ProviderProtocol
+    decisions_dir: Path,
+    classify_playbook: PlaybookSpec,
+    provider: ProviderProtocol,
+    *,
+    typesafe_api_key: str | None = None,
 ) -> Stage:
     """The stage with the engines there are; refuse it until its threshold is measured.
 
-    Today the only engine is the Playbook's model, so it decides on its own.
+    With a TypeSafe key, Jev decides and the Playbook's model is its fallback.
+    Without one, the Playbook's model decides alone, and the log says so.
     """
     path = decisions_dir / WORK_ITEM_TYPE_FILE
     question = load_question(path)
@@ -195,8 +301,21 @@ def build_stage(
             f"the Judgments stage is on but {path} has no threshold. Measure it on the "
             "label set first (judgments/label_set/SPEC.md §7); it is never guessed."
         )
+    baseline = ClassificationJudge(classify_playbook, provider)
+    key = (typesafe_api_key or "").strip()
+    if not key:
+        logger.warning(
+            "The Judgments stage is on without TYPESAFE_API_KEY: %s decides alone.",
+            baseline.name,
+        )
+        return Stage(work_item_type=question, threshold=question.threshold, primary=baseline)
+    # Refused here rather than on the first Work item, where it would cost a
+    # failed call per item or, outside ASCII, fail the run outright.
+    if not (key.isascii() and key.isprintable()) or " " in key:
+        raise ConfigError("TYPESAFE_API_KEY is malformed: it holds whitespace or non-ASCII.")
     return Stage(
         work_item_type=question,
         threshold=question.threshold,
-        primary=ClassificationJudge(classify_playbook, provider),
+        primary=TypeSafeJudge(key),
+        fallback=baseline,
     )
