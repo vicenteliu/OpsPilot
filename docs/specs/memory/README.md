@@ -1,59 +1,18 @@
-# Memory & RAG — Memory & Local KB
+# KB & RAG — Local Knowledge Base
 
-> **Status**: spec-only. This directory defines only the 3-tier memory abstraction, schemas, templates, and storage schemas; no runtime implementation here.
+> **Status**: spec-only. This directory defines the KB's schemas, templates and storage schemas; the implementation is `src/opspilot/kb/`, which executes `storage/sqlite-schema.sql` as it stands.
+>
+> **Not Memory.** The directory keeps its old name (see "memory" in `CONTEXT.md`) but holds no Memory spec. The three-tier memory model it used to describe (short-term / mid-term / long-term) was removed on 2026-08-18 (#179). **Memory** is `opspilot/memory/` (ADR-0031, revised by ADR-0035). The short-term tier's context policy is not memory and moved to `docs/specs/session/templates/context-budget.template.yaml`.
 
 ## TL;DR
-Memory is the context-persistence layer for an AI working across sessions. OpsPilot splits it into three tiers — **short-term / mid-term / long-term** — each mapped to an appropriate storage backend (in-memory + SQLite + LanceDB). RAG (Retrieval-Augmented Generation) is the "fetch context" action on top of the long-term tier.
+The KB holds the documents OpsPilot answers from, chunked and indexed in SQLite (metadata + FTS5 keyword index) and LanceDB (vectors). RAG (Retrieval-Augmented Generation) is the "fetch context" action on top of it.
 
-## Three-tier model
+## What the KB is
 
-```
-                ┌────────────────────────────────────────────────────────────────┐
-                │                  Session (current invocation)                   │
-                └───────────────────────┬────────────────────────────────────────┘
-                                        │
-        ┌───────────────────────────────┼───────────────────────────────┐
-        │                               │                               │
-        ▼                               ▼                               ▼
-┌──────────────┐              ┌──────────────────┐           ┌──────────────────┐
-│ short-term   │              │  mid-term        │           │  long-term (KB)  │
-│ memory       │              │  memory          │           │  knowledge base  │
-│              │              │                  │           │                  │
-│ conversation │              │  cross-session   │           │  docs + vector   │
-│ window +     │              │  project /       │           │  index           │
-│ rolling      │              │  workspace       │           │  RAG retrieval   │
-│ summary      │              │                  │           │                  │
-├──────────────┤              ├──────────────────┤           ├──────────────────┤
-│ TTL: session │              │ TTL: project     │           │ TTL: long-term   │
-│ store: in-mem│              │ store: SQLite    │           │ store: md +      │
-│ form: JSONL  │              │ form: markdown + │           │        LanceDB   │
-│    + summary │              │       record     │           │ form: markdown + │
-│              │              │                  │           │       chunks     │
-└──────────────┘              └──────────────────┘           └──────────────────┘
-```
-
-## Responsibilities
-
-### Short-term
-- **What**: the current session's conversation window + rolling summaries of over-long content + a scratchpad workspace
-- **Why**: context has a token ceiling; on overflow, content must be trimmed/summarized rather than naively truncated
-- **Source**: reuses `session/trace.jsonl` directly (existing schema); no rebuild
-- **Typical size**: a few KB to a few hundred KB
-- **In git**: no; on session archival the summary flows into mid-term
-
-### Mid-term
-- **What**: cross-session project knowledge + user preferences + decision records + TODOs
-- **Why**: avoids re-explaining project background every time; lets the AI act like an experienced colleague
-- **Types** (aligned with Claude Code memory): `user / feedback / project / reference`
-- **Storage**: SQLite (structured + FTS5 full-text search) + companion markdown sources (git-friendly)
-- **Typical size**: a few hundred records, a few MB
-- **In git**: project-level mid-term memory should be committed to git; personal preferences live in `~/.opspilot/memory/`
-
-### Long-term (KB / Knowledge Base)
-- **What**: company SOPs, runbooks, product docs, historical case summaries, wiki imports
+- **What**: SOPs, runbooks, product docs. ADR-0038 makes the SSC handbook the KB's single source and the KB a build artifact; that build is not written yet, and `ingest` takes whatever paths it is given
 - **Why**: the AI must ground ticket/incident answers in organization-private knowledge
 - **Storage**:
-  - **Source**: markdown files (git-managed, human-readable, auditable)
+  - **Source**: markdown, or any format `markitdown` converts to it (PDF, DOCX, …); the KB keeps the redacted markdown, in chunks, not the file
   - **Index**: LanceDB (vectors) + SQLite (metadata + FTS5 keyword)
 - **Pipeline**: ingest → chunk → embed → upsert; incremental rebuilds anchored on `content_hash`
 - **Typical size**: thousands to hundreds of thousands of chunks
@@ -90,7 +49,7 @@ docs/wiki ────▶ │ ingestion  │ ───▶ chunks ──┐
 
 ## Principles
 
-1. **Markdown is the source**: human-readable, git-diff friendly; SQLite/LanceDB are derived indices and can be rebuilt
+1. **Markdown is the source**: human-readable, git-diff friendly; documents, chunks and vectors are derived and a re-ingest rebuilds them. Conflict resolutions and corrections are not: they record a human decision, and a re-ingest keeps them (#194)
 2. **No PII in vectors**: ingestion must run `session/templates/redaction-rules.template.yaml` first, with a hard-fail PII check
 3. **Pin embedding model**: an embedding model upgrade = full index rebuild; version changes must be triggered explicitly
 4. **Hybrid retrieval by default**: vector (semantic) + BM25 (keyword) + metadata filter (structural); pure vector search easily misses keywords
@@ -101,7 +60,7 @@ docs/wiki ────▶ │ ingestion  │ ───▶ chunks ──┐
 ## Scope
 
 In scope:
-- Data model and lifecycle of the three memory tiers
+- KB data model: documents, chunks, conflicts and corrections
 - RAG ingestion + retrieval pipeline contracts
 - SQLite + LanceDB schemas and naming conventions
 - Interfaces with providers / session / sandbox / harness
@@ -139,22 +98,20 @@ memory/
 | Long-term vector store | **LanceDB** | Chroma / Weaviate / Qdrant / pgvector | embedded (no server process) + columnar (PyArrow) + incremental updates + git-friendly file layout |
 | Metadata / keyword | **SQLite + FTS5** | Postgres / Elastic | embedded, zero ops; FTS5 has built-in BM25; file-based just like LanceDB |
 | Source format | **Markdown + frontmatter** | JSON / DB-only | human-readable, git-diff friendly, cross-tool compatible (Obsidian / Foam / Logseq) |
-| Short-term | reuse session/trace | building a separate layer | avoids a duplicate schema; trace already has redaction and retention |
 
 ## Contracts with other directories
 
 | Upstream | Input to memory |
 |---|---|
 | `providers/` | embedding model (must have `capabilities.embeddings: true`) + pinned version |
-| `governance/` | data classification + redaction rules + retention policy |
+| `session/templates/` | redaction rules (`redaction-rules.template.yaml`), applied at ingest |
 | `playbooks/` | declared retrieval needs (scopes, top_k, filters) |
-| `session/` | writes the session summary into mid-term on archival; `tool_call: kb.search` in trace triggers retrieval |
+| `session/` | `tool_call: kb.search` in trace triggers retrieval |
 
 | Downstream | What memory provides |
 |---|---|
 | `session/` | retrieval results as `tool_result`; cited chunks written into the prompt |
 | `harness/` | KB-aware fixtures (including known sources that should be retrieved) |
-| `case-studies/` | cross-session knowledge distillation |
 
 ## Hard nos
 
@@ -166,7 +123,5 @@ memory/
 
 ## Open questions
 
-- [ ] Who decides when short-term summarization triggers: the session engine, the playbook, or the model itself?
-- [ ] Does mid-term "auto-harvest" (session archive → mid-term) need LLM extraction, or are rules enough?
 - [ ] Should running multiple embedding models in parallel (bge for Chinese / text-embedding-3 for English) be part of the default config?
 - [ ] Should Graph RAG / knowledge graph get its own `memory/graph/` layer?

@@ -220,7 +220,7 @@ Hard constraints (hard-coded in schema / pipeline):
 
 ### 16.1 Session (tool calls in trace)
 
-Tools memory exposes to session:
+Tools the KB exposes to session:
 
 ```yaml
 tool: "kb.search"
@@ -229,24 +229,11 @@ args:
   scopes: [...]
   top_k: 8
   filters: {...}
-
-tool: "memory.add"
-args:
-  type: "feedback" | "project" | ...
-  scope: "..."
-  title: "..."
-  body: "..."
-
-tool: "memory.search"
-args:
-  type_filter: ["feedback"]
-  scope: "..."
-  query: "..."
 ```
 
 ### 16.2 Sandbox
 
-The sandbox never accesses the SQLite/LanceDB data files directly; only the `kb.search` / `memory.search` tool calls are available.
+The sandbox never accesses the SQLite/LanceDB data files directly; only the `kb.search` tool call is available.
 
 ### 16.3 Harness
 
@@ -261,10 +248,10 @@ When the harness evaluates a RAG playbook:
 
 ## 17. Hard requirements
 
-- markdown is the source; SQLite/LanceDB can be rebuilt
-- all IDs are content-addressed (`mem_<sha8>` / `doc_<sha8>` / `chk_<sha8>`)
+- markdown is the source; documents, chunks and vectors can be rebuilt by re-ingesting, conflict resolutions and corrections cannot (#194)
+- all IDs are content-addressed (`doc_<sha8>` / `chk_<sha8>`)
 - the `embedding_model` field includes a concrete version; no mixing within a namespace
-- `redacted=true` is a precondition for storage
+- `redaction_passed=true` is a precondition for storage
 - `classification=restricted` documents do not enter the vector store
 - every retrieval result must carry a `citation` resolvable to `source_path:line_range`
 - the LanceDB data directory goes in `.gitignore`; markdown sources go in git

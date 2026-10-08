@@ -64,7 +64,7 @@
 ## 这个样例**不**演示什么 / What this sample omits
 
 - **sandbox 隔离执行**：ticket 摘要场景不需要执行命令；为保持端到端最小闭环，本样例无 sandbox action（如需，参考 `sandbox/templates/action-request.template.yaml`）
-- **mid-term memory 收割**：不演示 session 归档后写入中期 memory 的过程（参考 `memory/templates/short-term-config.template.yaml#harvest_to_mid_term`）
+- **mid-term memory 收割**：不演示 session 归档后写入中期 memory 的过程（参考 `session/templates/context-budget.template.yaml#harvest_to_mid_term`）
 - **多 provider 矩阵**：仅用一个 provider 跑（anthropic-claude）；harness 矩阵评估见 `harness/templates/eval-config.template.yaml`
 
 ## 阅读顺序 / Reading order

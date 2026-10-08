@@ -131,11 +131,13 @@ Minimal roles (recommended):
 - `trace-event.extensions.<vendor>` — custom event subtypes; must use a namespace prefix
 - Custom evaluators (harness) may read the trace but must not write back to the Session
 
-## 11. Memory integration
+## 11. KB integration
 
-Contract between Session and the `memory/` directory:
-- **Short-term memory** reuses `trace.jsonl`; context-window management and summarization policy are in `memory/templates/short-term-config.template.yaml`
-- **Retrieval injection**: triggered in the trace via `tool_call: kb.search` / `tool_call: memory.search`; results are written back via `tool_result` and referenced as footnotes in subsequent prompts
-- **Archive harvesting**: when a Session moves from `archived` into finalize, candidate facts are written to mid-term memory per the `harvest_to_mid_term` rules (candidate_review by default, requiring user confirmation)
+Contract between Session and the KB, whose specs live in the `memory/` directory (it keeps its old name):
+- **Retrieval injection**: triggered in the trace via `tool_call: kb.search`; results are written back via `tool_result` and referenced as footnotes in subsequent prompts
 - **Retrieval request/response** schema: see `memory/schemas/retrieval-query.schema.json`
-- **Hard requirement**: content entering memory must already be redacted (consistent with the redaction integration point in §5)
+- **Hard requirement**: content entering the KB must already be redacted (consistent with the redaction integration point in §5)
+
+Not part of this contract:
+- **Context window**: management and summarization policy are in `session/templates/context-budget.template.yaml` (moved out of `memory/` by #179). It is not memory, and ADR-0035 defers it until a stored Consultation's history can exceed the model's window
+- **Memory** (`opspilot/memory/`, ADR-0031 revised by ADR-0035): injected into chat turns (`orchestrator/chat_agent.py`), not into a Session. An entry is admitted, never harvested: a person writes it, or pins a sentence from a Consultation
