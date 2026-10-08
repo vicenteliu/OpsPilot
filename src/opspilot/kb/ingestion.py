@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import threading
 import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
@@ -68,6 +69,19 @@ HARD_FAIL_PLACEHOLDER_TYPES: Final[frozenset[str]] = frozenset(
 
 class IngestionError(OpsPilotError):
     """Raised when an ingest cannot proceed (PII hit / unsupported file)."""
+
+
+# Two ingests of one source_path must not overlap. Each reads the file, looks
+# the stored document up, then replaces it across several writes to two stores;
+# a second run in between leaves vectors no chunk backs, or fails on the
+# source_path constraint (#256). Striped so memory stays bounded while other
+# files still run in parallel: two paths that share a stripe just take turns.
+# Process-local: another process ingesting the same KB is not covered.
+_PATH_LOCKS: Final = tuple(threading.Lock() for _ in range(64))
+
+
+def _path_lock(path: Path) -> threading.Lock:
+    return _PATH_LOCKS[hash(str(path)) % len(_PATH_LOCKS)]
 
 
 # ── Public dataclasses ────────────────────────────────────────────────
@@ -205,15 +219,16 @@ def ingest(
 
     for path in files:
         try:
-            r = _ingest_one(
-                path,
-                sqlite=sqlite,
-                lance=lance,
-                redactor=redactor,
-                embed_fn=embed_fn,
-                namespace=namespace,
-                cfg=cfg,
-            )
+            with _path_lock(path):
+                r = _ingest_one(
+                    path,
+                    sqlite=sqlite,
+                    lance=lance,
+                    redactor=redactor,
+                    embed_fn=embed_fn,
+                    namespace=namespace,
+                    cfg=cfg,
+                )
             file_results.append(r)
             chunks_total += r.chunks_written
             redaction_hits_total += r.redaction_hits
