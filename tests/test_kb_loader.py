@@ -113,3 +113,35 @@ def test_load_kb_fixture_raises_when_paths_missing(
             chunks_jsonl_path=tmp_path / "nope.jsonl",
             embed_fn=_fake_embed,
         )
+
+
+def test_reloading_without_a_chunk_deletes_its_vector(
+    stores: tuple[SqliteStore, LanceStore], tmp_path: Path
+) -> None:
+    """A chunk the new load drops loses its vector as well as its row.
+
+    ``delete_chunks_not_in`` clears SQLite only. The vector used to stay
+    behind, named by no chunk, where no later delete would find it.
+    """
+    sqlite, lance = stores
+    load_kb_fixture(
+        sqlite=sqlite,
+        lance=lance,
+        doc_meta_path=DOC_META,
+        chunks_jsonl_path=CHUNKS,
+        embed_fn=_fake_embed,
+    )
+    lines = [line for line in CHUNKS.read_text(encoding="utf-8").splitlines() if line.strip()]
+    fewer = tmp_path / "chunks.jsonl"
+    fewer.write_text("\n".join(lines[:-1]) + "\n", encoding="utf-8")
+
+    load_kb_fixture(
+        sqlite=sqlite,
+        lance=lance,
+        doc_meta_path=DOC_META,
+        chunks_jsonl_path=fewer,
+        embed_fn=_fake_embed,
+    )
+
+    assert lance.vector_ids() == sqlite.chunk_vector_ids()
+    assert lance.count() == 2

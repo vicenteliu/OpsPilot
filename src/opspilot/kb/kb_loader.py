@@ -87,7 +87,17 @@ def load_kb_fixture(
     # used to happen as a side effect of upsert_document's INSERT OR REPLACE
     # cascade, which also discarded the surviving chunks' conflicts and
     # corrections (#144, #157); it is explicit and scoped now.
-    sqlite.delete_chunks_not_in(document_id, [str(c["id"]) for c in chunks])
+    keep = {str(c["id"]) for c in chunks}
+    stale_vectors = [
+        str(c["vector_id"])
+        for c in sqlite.get_chunks_by_document_id(document_id)
+        if str(c["id"]) not in keep
+    ]
+    sqlite.delete_chunks_not_in(document_id, keep)
+    # delete_chunks_not_in clears SQLite only; a dropped chunk's vector would
+    # otherwise stay, named by no chunk. Before the new vectors are written, so
+    # a vector_id the new set reuses is written back.
+    lance.delete_by_vector_ids(stale_vectors)
     sqlite.upsert_chunks(chunks)
 
     # ── 3. Vectors (lance) — one embed call per chunk ───────────────────
