@@ -109,10 +109,11 @@ either claim.
   baseline's cost is measured rather than assumed (#241).
 - The `typesafe` engine: Jev, pinned to `jev-1.13.0`, asked decision 2 as a
   Choice in the words of its decision file, with the chosen answer's
-  probability, one attempt and no retries, and a price from the input tokens. With `TYPESAFE_API_KEY` set it decides and the Playbook's model
-  is its fallback; an answer from the fallback always goes to a person, since
-  the threshold is measured on the primary's probability. Tested against the
-  documented request and response, not yet against the live API. Noul and
+  probability, one attempt and no retries, and a price from the input tokens.
+  With `TYPESAFE_API_KEY` set it decides and the Playbook's model is its
+  fallback; an answer from the fallback always goes to a person, since the
+  threshold is measured on the primary's probability (#265). Tested against
+  the documented request and response, not yet against the live API. Noul and
   Score wait for the decisions that need them (#225, #227).
 
 *Not yet:*
