@@ -37,7 +37,7 @@ PREFIX_HEX_LEN: Final[dict[str, int]] = {
     "chk": 8,  # kb chunk
     "doc": 8,  # kb document
     "fix": 8,  # harness fixture
-    "mem": 8,  # mid-term memory record
+    "mem": 8,  # Memory entry; random, not content-addressed (ADR-0035)
     "var": 8,  # skill variant
     "lnt": 8,  # wiki lint issue
     "wpg": 8,  # wiki page

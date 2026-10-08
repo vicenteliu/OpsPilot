@@ -1,7 +1,4 @@
-# Retrieval & rerank config template
-# Two use cases:
-#   1) kb.search     — long-term knowledge-base retrieval
-#   2) memory.search — mid-term memory retrieval (type filter)
+# Retrieval & rerank config template for kb.search, the KB's retrieval
 # Equivalent to schemas/retrieval-query.schema.json
 
 version: "1.0.0"
@@ -30,29 +27,6 @@ defaults:
       model_ref: "ollama-local/bge-reranker-v2-m3@2024-08"
     return_citations: true
     budget_usd: 0.02
-
-  # ── memory.search ──────────────────────────────────────
-  memory:
-    mode: "hybrid"
-    top_k: 5
-    scopes:
-      - "opspilot:user"
-      - "opspilot:feedback"
-      - "opspilot:project"
-    type_filter: []                 # empty = all types
-    hybrid:
-      vector_weight: 0.5
-      keyword_weight: 0.5
-      fusion: "rrf"
-      rrf_k: 60
-    rerank:
-      enabled: false                # mid-term records are usually few; reranking is unnecessary
-    confidence_boost:
-      high: 1.2
-      medium: 1.0
-      low: 0.7
-    return_citations: true
-    budget_usd: 0.005
 
 # Format for injecting citations into the prompt (suggested)
 citation_injection:
