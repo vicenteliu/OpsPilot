@@ -67,6 +67,7 @@ RUN pip install --no-index --find-links=./wheels --user opspilot \
 # discovered by opspilot.schemas). Specs live under docs/specs/.
 COPY --chown=opspilot:opspilot docs/specs ./docs/specs
 COPY --chown=opspilot:opspilot playbooks ./playbooks
+COPY --chown=opspilot:opspilot judgments/decisions ./judgments/decisions
 COPY --chown=opspilot:opspilot agent_skills ./agent_skills
 COPY --chown=opspilot:opspilot examples ./examples
 

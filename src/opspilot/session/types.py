@@ -334,6 +334,9 @@ class TraceEvent:
             # This Session was run from a Consultation (ADR-0032). The forward
             # link lives on the Consultation; this is the permanent half.
             "escalated_from",
+            # A Judgment chose this Session's playbook (ADR-0040): its answer,
+            # probability, engine, latency, price, and why it fell back if it did.
+            "judgment",
         ],
         details: dict[str, Any] | None = None,
         actor: str | None = None,

@@ -1,0 +1,19 @@
+# Decision 2 (ADR-0040): incident or request?
+#
+# The answer space is the one the label set is labelled against
+# (judgments/label_set/SPEC.md, d2-v1). Changing a definition changes what the
+# labels mean, so it takes a new version, and a relabel.
+id: d2
+version: d2-v1
+kind: choice
+question: Is this Work item an incident or a service request?
+answers:
+  incident: >-
+    Something is broken or degraded. It worked, or should work, and doesn't.
+  service_request: >-
+    An ask for something standard: access, an account, software, hardware, a
+    change to a mailbox or group. Nothing is broken.
+# Set from the label set, never guessed (SPEC §7): the lowest probability at
+# which the items routed without a person are at least 95% right. Empty until
+# that report has been run.
+threshold: null

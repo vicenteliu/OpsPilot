@@ -8,12 +8,12 @@ surfaced to a human-confirm step rather than auto-routed (ADR-0006).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from ..providers.base import ProviderProtocol
-from ..providers.types import Message, SamplingParams
+from ..providers.types import Message, SamplingParams, Usage
 from ..redaction import Redactor
 from ..schemas import validate as schema_validate
 from .errors import OrchestratorError
@@ -29,6 +29,9 @@ class ClassificationResult:
     work_item_type: str
     confidence: float
     rationale: str
+    # What the call cost, so the baseline every Judgment is measured against is
+    # priced from what it spent rather than assumed (ADR-0040).
+    usage: Usage = field(default_factory=Usage)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -52,13 +55,25 @@ def classify_work_item(
     redactor: Redactor,
 ) -> ClassificationResult:
     """Classify a work item as ``incident`` vs ``service_request`` (single shot)."""
-    ticket = _load_ticket(input_path)
-    rendered = _format_ticket(ticket)
-    redacted = redactor.redact(rendered).text
+    return classify_state(render_state(input_path, redactor), playbook=playbook, provider=provider)
 
+
+def render_state(input_path: Path, redactor: Redactor) -> str:
+    """The redacted rendering of a work item that a model, or a Judgment, is shown."""
+    return redactor.redact(_format_ticket(_load_ticket(input_path))).text
+
+
+def classify_state(
+    state: str,
+    *,
+    playbook: PlaybookSpec,
+    provider: ProviderProtocol,
+    timeout_ms: int = 90_000,
+) -> ClassificationResult:
+    """Classify an already-redacted rendering of a work item."""
     messages = [
         Message(role="system", content=playbook.system_prompt),
-        Message(role="user", content=redacted),
+        Message(role="user", content=state),
     ]
     resp = provider.chat(
         messages,
@@ -68,6 +83,7 @@ def classify_work_item(
             top_p=playbook.model.params.get("top_p"),
             max_tokens=playbook.model.params.get("max_tokens", 512),
         ),
+        timeout_ms=timeout_ms,
     )
     parsed, err = _parse_summary_json(resp.content)
     if err is not None:
@@ -77,4 +93,5 @@ def classify_work_item(
         work_item_type=parsed["work_item_type"],
         confidence=float(parsed["confidence"]),
         rationale=parsed["rationale"],
+        usage=resp.usage,
     )

@@ -36,6 +36,7 @@ from ..config import load_config
 from ..consultation import ConsultationStore, WorkingSetStore
 from ..embedding import EMBED_DIM, resolve_embedding
 from ..inventory import InventoryStore
+from ..judgment import DECISIONS_DIR, build_stage
 from ..kb.lance_store import LanceStore
 from ..kb.sqlite_store import SqliteStore
 from ..kb.storage_init import init_sqlite
@@ -140,6 +141,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         kind=vendor_doc_pb.model.kind,
         api_key=cfg.anthropic_api_key,
     )
+    # The Judgments stage (ADR-0040), off unless asked for. On, it refuses to
+    # start until decision 2's threshold has been measured on the label set.
+    judgments = (
+        build_stage(playbooks_base.parent / DECISIONS_DIR, classify_pb, chat_provider)
+        if os.environ.get("OPSPILOT_JUDGMENTS") == "1"
+        else None
+    )
 
     session_mgr = SessionManager(home=cfg.home)
     redactor = Redactor.from_yaml()
@@ -165,6 +173,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     app.state.web_search_enabled = web_search_available()
     app.state.classify_threshold = float(os.environ.get("OPSPILOT_CLASSIFY_THRESHOLD", "0.7"))
+    app.state.judgments = judgments
     app.state.vendor_doc_provider = vendor_doc_provider
     app.state.active_model_ref = active_model_ref
     app.state.sqlite = sqlite
