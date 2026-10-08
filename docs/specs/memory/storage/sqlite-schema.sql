@@ -1,8 +1,11 @@
--- OpsPilot Memory · SQLite Schema
--- Scope: mid-term memory + KB metadata/keyword index (FTS5)
+-- OpsPilot KB · SQLite Schema
+-- Scope: KB document and chunk metadata, the keyword index (FTS5), conflicts,
+--        corrections and ingest runs. Not Memory: opspilot/memory creates its
+--        own table in the same file (ADR-0031).
 -- Version: 1.2.0
 -- As of: 2026-05-06
--- Hard requirement: all content entering this DB must already be redacted (redacted=1).
+-- Hard requirement: KB content must already be redacted when it is written here
+-- (kb_documents.redaction_passed = 1). Memory entries are not (ADR-0035).
 --
 -- Changelog:
 --   1.2.0 (IT-KB): added valid_from / source_authority to kb_documents;
@@ -38,18 +41,20 @@ INSERT OR IGNORE INTO schema_meta(key, value) VALUES
   ('created_at',     strftime('%Y-%m-%dT%H:%M:%fZ','now'));
 
 ------------------------------------------------------------
--- 2. MID-TERM MEMORY
+-- 2. MEMORY RECORDS (removed)
 ------------------------------------------------------------
--- Equivalent to schemas/memory-record.schema.json
 -- ``memory_records`` (a typed mid-term memory table) was removed on 2026-08-18.
 -- It was specified, indexed and given CRUD, and nothing ever wrote to it. The
 -- Memory domain that replaces it lives in ``opspilot/memory/store.py`` and
 -- creates its own ``memory_entries`` table; see ADR-0031 and ADR-0035 for why
--- the typed/confidence-weighted/hard-expiry design was decided against.
+-- the typed/confidence-weighted/hard-expiry design was decided against. Nothing
+-- drops it, so a file initialised before then still has the empty table, its
+-- FTS table and its triggers.
 
-
--- FTS5 full-text index (external-content table; BM25 by default)
--- tokenize='trigram': matches substring queries on mixed Chinese/English content
+------------------------------------------------------------
+-- 3. KB DOCUMENTS
+------------------------------------------------------------
+-- Equivalent to schemas/kb-document.schema.json
 CREATE TABLE IF NOT EXISTS kb_documents (
   id                       TEXT PRIMARY KEY
                                 CHECK (id GLOB 'doc_[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'),
