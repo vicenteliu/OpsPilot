@@ -227,6 +227,12 @@ class LanceStore:
         # lancedb is untyped at the package level; count_rows returns int.
         return int(self._table.count_rows())
 
+    def vector_ids(self) -> set[str]:
+        """Every ``vector_id`` in the table, reading that column only."""
+        self._refresh()
+        rows = self._table.search().select(["vector_id"]).limit(None).to_arrow()
+        return {str(v) for v in rows.column("vector_id").to_pylist()}
+
     # ── ANN search ───────────────────────────────────────────────────
 
     def _refresh(self) -> None:

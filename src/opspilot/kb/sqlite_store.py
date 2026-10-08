@@ -404,6 +404,12 @@ class SqliteStore:
             out[row["vector_id"]] = row
         return out
 
+    @_serialised
+    def chunk_vector_ids(self) -> set[str]:
+        """Every ``vector_id`` a chunk names: the vectors LanceDB should hold."""
+        cur = self._conn.execute("SELECT vector_id FROM kb_chunks")
+        return {str(r["vector_id"]) for r in cur.fetchall()}
+
     # ── FTS5 keyword search ──────────────────────────────────────────
 
     @_serialised

@@ -284,6 +284,31 @@ def ingest(
     )
 
 
+# ── Orphan vectors ────────────────────────────────────────────────────
+
+
+def sweep_orphan_vectors(
+    sqlite: SqliteStore, lance: LanceStore, *, dry_run: bool = False
+) -> list[str]:
+    """Delete the LanceDB vectors no chunk names; return their ids, sorted.
+
+    Every delete reaches a vector through its chunk, so once the chunk is gone
+    nothing else will find the vector again. #256's race left such vectors.
+
+    LanceDB is read before SQLite. Ingest writes a chunk before its vector, and
+    deletes remove the chunk first, so a vector in the first read whose chunk is
+    live is still in the second. Read the other way round, a chunk and vector
+    written between the reads would look orphaned. A chunk re-created between
+    the SQLite read and the delete can still lose its vector, so run this while
+    nothing is ingesting into the KB.
+    """
+    in_lance = lance.vector_ids()
+    orphans = sorted(in_lance - sqlite.chunk_vector_ids())
+    if orphans and not dry_run:
+        lance.delete_by_vector_ids(orphans)
+    return orphans
+
+
 # ── Single-file step ──────────────────────────────────────────────────
 
 

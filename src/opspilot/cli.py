@@ -47,7 +47,7 @@ from .harness.reporter import render_result_table
 from .iteration.engine import IterationEngine
 from .iteration.types import IterationPolicy
 from .kb.conflict import resolve_conflict
-from .kb.ingestion import SOURCE_AUTHORITIES, IngestConfig, SourceAuthority
+from .kb.ingestion import SOURCE_AUTHORITIES, IngestConfig, SourceAuthority, sweep_orphan_vectors
 from .kb.ingestion import ingest as run_ingest
 from .kb.kb_loader import load_kb_fixture
 from .kb.lance_store import LanceStore
@@ -993,6 +993,39 @@ def kb_delete_cmd(
         f"{report['conflicts_removed']} conflict(s)"
     )
     _console.print(f"  · recorded as {report['id']} by {report['actor']}")
+
+
+@kb_app.command("sweep-vectors")
+def kb_sweep_vectors_cmd(
+    dry_run: bool = typer.Option(False, "--dry-run", help="List them; delete nothing."),
+    yes: bool = typer.Option(False, "--yes", help="Skip the confirmation."),
+) -> None:
+    """Delete LanceDB vectors that no chunk names any more.
+
+    Every delete reaches a vector through its chunk, so nothing else finds these
+    again (#256). Run it while nothing is ingesting into this KB.
+    """
+    from .embedding import EMBED_DIM
+
+    cfg = load_config()
+    sqlite, lance = _open_kb_stores(
+        home=cfg.home, embedding_dim=EMBED_DIM, embedding_model=cfg.embed_model
+    )
+    orphans = sweep_orphan_vectors(sqlite, lance, dry_run=True)
+    if not orphans:
+        _console.print("[green]no orphan vectors[/green]")
+        return
+    for vector_id in orphans[:20]:
+        _console.print(f"  · {vector_id}")
+    if len(orphans) > 20:
+        _console.print(f"  · … and {len(orphans) - 20} more")
+    if dry_run:
+        _console.print(f"{len(orphans)} orphan vector(s); nothing deleted (--dry-run)")
+        return
+    if not yes and not typer.confirm(f"Delete {len(orphans)} orphan vector(s)?"):
+        raise typer.Exit(code=1)
+    swept = sweep_orphan_vectors(sqlite, lance)
+    _console.print(f"[green]{len(swept)}[/green] orphan vector(s) deleted")
 
 
 @kb_app.command("deletions")
