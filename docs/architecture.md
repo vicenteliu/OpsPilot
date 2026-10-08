@@ -106,7 +106,7 @@ Six layers form a closed AI task loop:
 - **providers** — pluggable LLM backends (Ollama / OpenRouter / OpenAI / Anthropic / Gemini / Grok); unified auth, capability declarations, cost and fallback
 - **skills** — skill registry + authoring + distillation + iteration + tool/MCP bindings; a Skill is drafted from a problem description or distilled from a closed Working set, and admitted only by a commit (ADR-0027, ADR-0036)
 - **kb + memory** — the KB holds ingested documents (SQLite FTS5 + LanceDB, fused by RRF); Memory holds the standing facts a person admits, reaches an answer on its own anchor-filtered path, and opens a Conflict when it and the KB disagree (ADR-0031, ADR-0035)
-- **wiki** — LLM-maintained synthesis layer on top of the long-term KB: 5 page kinds + cross-links + lint; query answers can be written back as new pages
+- **wiki** — LLM-maintained synthesis layer on top of the KB: 5 page kinds + cross-links + lint; query answers can be written back as new pages
 - **session** — "context + trace + artifact + audit" bundle for every AI task; the carrier for compliance
 - **sandbox** — isolated execution layer for AI-proposed actions; L2: Docker hardened (seccomp + cap-drop + RO rootfs); L3: + gVisor `runsc` user-space kernel; default deny-all
 - **harness** — unit tests and regression gates for prompts and playbooks; required before model upgrades
