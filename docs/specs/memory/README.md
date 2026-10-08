@@ -119,15 +119,11 @@ memory/
 ├── README.md                              # this file
 ├── SPEC.md                                # detailed spec (incl. RAG pipeline)
 ├── schemas/
-│   ├── memory-record.schema.json          # mid-term memory record
 │   ├── kb-document.schema.json            # long-term KB document
 │   ├── kb-chunk.schema.json               # chunk + vector ref
 │   └── retrieval-query.schema.json        # retrieval request/response
 ├── templates/
-│   ├── memory-record.template.md          # mid-term: markdown + frontmatter
 │   ├── kb-document.template.md            # long-term: sample KB document
-│   ├── short-term-config.template.yaml    # short-term: window/summary policy
-│   ├── mid-term-config.template.yaml      # mid-term: SQLite/namespaces
 │   ├── kb-config.template.yaml            # long-term: KB paths and namespaces
 │   ├── ingestion.template.yaml            # ingestion pipeline
 │   └── retrieval.template.yaml            # retrieval/reranking config
