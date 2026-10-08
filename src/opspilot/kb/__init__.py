@@ -1,16 +1,20 @@
 """The KB: ingested documents, chunked, stored and searched.
 
-Not Memory. The KB holds what was ingested, built from the handbook and
-other documents (ADR-0038); Memory holds the standing facts a person
-admits, and reaches an answer on a path of its own (``opspilot.memory``,
-ADR-0031).
+Not Memory. The KB holds what was ingested; Memory holds the standing facts a
+person admits, and reaches an answer on a path of its own (``opspilot.memory``,
+ADR-0031). ADR-0038 makes the SSC handbook the KB's single source and the KB a
+build artifact. That build is not written yet: ``ingest`` takes whatever paths
+it is given.
 
 * ``ingestion`` + ``markitdown_adapter``: discover → markdown → redact →
-  chunk → embed → upsert
-* ``chunker`` / ``tokenizer``: Rust hot paths, with a Python fallback
+  chunk → embed → upsert → conflict detection
+* ``storage_init``: opens the SQLite file, applies the schema and its migrations
 * ``sqlite_store`` (FTS5) + ``lance_store`` (vectors): the two stores
 * ``retrieval``: hybrid search, fused by weighted RRF
 * ``conflict``: chunk-level conflicts and how they were settled
+* ``chunker``: a Rust hot path, with a Python fallback
+* ``tokenizer``: a token counter (Rust, with a Python fallback) that nothing in
+  ``src/`` calls today
 * ``kb_loader``: frozen fixtures (``chunks.jsonl`` + ``doc-meta.json``)
 """
 
@@ -38,32 +42,32 @@ from .sqlite_store import FtsHit, SqliteStore
 from .storage_init import init_sqlite, open_sqlite
 
 __all__ = [
-    # PR-2
+    # chunker
     "Chunk",
     "ChunkConfig",
     "chunk_markdown",
-    # PR-4 — storage init
+    # storage_init
     "init_sqlite",
     "open_sqlite",
-    # PR-4 — SQLite store
+    # sqlite_store
     "FtsHit",
     "SqliteStore",
-    # PR-4 — Lance store
+    # lance_store
     "AnnHit",
     "LanceStore",
     "VectorRecord",
-    # PR-4 — retrieval
+    # retrieval
     "DEFAULT_KEYWORD_WEIGHT",
     "DEFAULT_VECTOR_WEIGHT",
     "EmbedFn",
     "Hit",
     "RRF_K",
     "kb_search",
-    # PR-5 — markitdown adapter
+    # markitdown_adapter
     "AdapterError",
     "AdapterResult",
     "to_markdown",
-    # PR-5 — ingestion
+    # ingestion
     "FileResult",
     "HARD_FAIL_PLACEHOLDER_TYPES",
     "IngestConfig",
