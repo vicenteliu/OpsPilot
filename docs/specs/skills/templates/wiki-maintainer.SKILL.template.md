@@ -20,7 +20,6 @@ requires:
   tools:
     - "kb.search"                   # search existing wiki pages + KB raw sources
     - "kb.write"                    # register pages back into the KB
-    - "memory.add"                  # record maintenance decisions in mid-term memory
     - "artifact.write"              # write page files + lint patches
   mcps:
     - "fs-readonly"                 # read the wiki directory tree (list_directory + read_file)

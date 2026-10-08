@@ -68,7 +68,7 @@
         "tools": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "Builtin tools (e.g. kb.search, memory.add, artifact.write)"
+          "description": "Builtin tools (e.g. kb.search, artifact.write)"
         },
         "mcps": {
           "type": "array",
