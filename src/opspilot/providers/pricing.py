@@ -14,6 +14,9 @@ one hardcoded Sonnet rate applied to every Anthropic model, overstating Haiku
 
 OpenRouter is deliberately absent: it returns the real charge on the response
 (``usage.cost``), and a figure the provider computed cannot go stale.
+
+TypeSafe's Jev is absent until its price is read from docs.typesafe.ai (#224).
+It bills input tokens only, so its row will read ``"jev": (input, 0.0)``.
 """
 
 from __future__ import annotations

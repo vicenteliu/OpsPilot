@@ -16,6 +16,7 @@ from opspilot.judgment import (
     JudgmentError,
     Question,
     Stage,
+    TypeSafeJudge,
     build_stage,
     judge_with_fallback,
     load_question,
@@ -167,17 +168,20 @@ class TestBuildStage:
     def test_refuses_to_start_until_the_threshold_is_measured(self) -> None:
         playbook = load_playbook(REPO_ROOT / "playbooks" / "pb_classify_work_item_en")
         with pytest.raises(ConfigError, match=r"no threshold\. Measure it on the label set"):
-            build_stage(REPO_ROOT / DECISIONS_DIR, playbook, _Classifier(""))  # type: ignore[arg-type]
+            build_stage(REPO_ROOT / DECISIONS_DIR, playbook, _Classifier(""), "ts-key")  # type: ignore[arg-type]
 
-    def test_with_a_measured_threshold_the_playbook_model_decides_alone(
-        self, tmp_path: Path
-    ) -> None:
+    def test_jev_decides_and_the_playbook_model_is_the_fallback(self, tmp_path: Path) -> None:
         playbook = load_playbook(REPO_ROOT / "playbooks" / "pb_classify_work_item_en")
-        stage = build_stage(_decisions(tmp_path, "0.82"), playbook, _Classifier(_REQUEST))  # type: ignore[arg-type]
-        assert stage.threshold == 0.82 and stage.fallback is None
-        assert isinstance(stage.primary, ClassificationJudge)
-        j = stage.decide(stage.work_item_type, "state")
-        assert (j.answer, j.probability, j.fallback) == ("service_request", 0.58, None)
+        stage = build_stage(_decisions(tmp_path, "0.82"), playbook, _Classifier(_REQUEST), "ts-key")  # type: ignore[arg-type]
+        assert stage.threshold == 0.82
+        assert isinstance(stage.primary, TypeSafeJudge)
+        assert stage.primary.name == "typesafe:jev-latest"
+        assert isinstance(stage.fallback, ClassificationJudge)
+
+    def test_refuses_to_start_without_a_typesafe_key(self, tmp_path: Path) -> None:
+        playbook = load_playbook(REPO_ROOT / "playbooks" / "pb_classify_work_item_en")
+        with pytest.raises(ConfigError, match="TYPESAFE_API_KEY"):
+            build_stage(_decisions(tmp_path, "0.82"), playbook, _Classifier(""), None)  # type: ignore[arg-type]
 
     def test_with_a_fallback_the_stage_hands_over_on_failure(self) -> None:
         baseline, _ = _baseline(_REQUEST)

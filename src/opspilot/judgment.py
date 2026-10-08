@@ -30,6 +30,8 @@ from .errors import ConfigError, OpsPilotError
 from .orchestrator.classify import VALID_TYPES, classify_state
 from .orchestrator.types import PlaybookSpec
 from .providers.base import ProviderProtocol
+from .providers.pricing import estimate_cost_usd
+from .providers.typesafe import DEFAULT_MODEL, TypeSafeClient
 
 DECISIONS_DIR: Final = Path("judgments/decisions")
 
@@ -135,6 +137,94 @@ class ClassificationJudge:
         )
 
 
+# Two facts the TypeSafe docs settle and the session that wrote this could not
+# read (docs.typesafe.ai was not reachable from it, #224). Until each is filled
+# in from the docs, nothing is assumed:
+# - which field a threshold is set against: the answer's ``confidence``, or
+#   ``probabilities[choice]``. None: Jev does not decide, and the fallback does
+#   and says why.
+# - the list price per million input tokens: an absent ``jev`` row in
+#   ``providers/pricing.py`` prices a call at 0.0, shown as nothing.
+JEV_PROBABILITY_FIELD: Literal["confidence", "probabilities"] | None = None
+
+
+class TypeSafeJudge:
+    """Jev, through the ``typesafe`` provider kind, answering a Choice question.
+
+    The question goes as the decision file writes it: its text as the
+    instructions, its answers as the criteria. Noul and Score are asked by the
+    decisions that need them (#225, #227).
+    """
+
+    def __init__(self, client: TypeSafeClient, model: str = DEFAULT_MODEL) -> None:
+        self._client = client
+        self._model = model
+        self.name = f"typesafe:{model}"
+
+    def judge(self, question: Question, state: str, *, timeout_s: float) -> Judgment:
+        if question.kind != "choice":
+            raise JudgmentError(f"{self.name} asks only choice questions, not {question.kind}")
+        if JEV_PROBABILITY_FIELD is None:
+            raise JudgmentError(
+                "which probability Jev's threshold reads is unverified against docs.typesafe.ai"
+            )
+        started = time.monotonic()
+        data = self._client.system_one(
+            state,
+            {
+                question.id: {
+                    "type": "choice",
+                    "instructions": question.text,
+                    "criteria": question.answers,
+                }
+            },
+            model=self._model,
+            timeout_s=timeout_s,
+        )
+        latency_ms = int((time.monotonic() - started) * 1000)
+        try:
+            answer = data["answers"].get(question.id)
+            if answer is None:
+                raise JudgmentError(f"{self.name} returned no answer to {question.id}")
+            if answer.get("type") != "choice":
+                raise JudgmentError(
+                    f"{self.name} answered {question.id} with {answer.get('type')!r}, not a choice"
+                )
+            choice = answer["choice"]
+            confidence, probabilities = float(answer["confidence"]), answer["probabilities"]
+            input_tokens = data["usage"].get("input_tokens") or 0
+            output_tokens = data["usage"].get("output_tokens") or 0
+        except (KeyError, TypeError, ValueError, AttributeError) as e:
+            raise JudgmentError(f"{self.name}: malformed answer to {question.id}: {data!r}") from e
+        if choice not in question.answers:
+            raise JudgmentError(
+                f"{self.name} answered {choice!r}, not one of {question.id}'s answers"
+            )
+        try:
+            probability = (
+                confidence
+                if JEV_PROBABILITY_FIELD == "confidence"
+                else float(probabilities[choice])
+            )
+        except (KeyError, TypeError, ValueError) as e:
+            raise JudgmentError(f"{self.name}: no probability for {choice!r}: {data!r}") from e
+        if not 0 <= probability <= 1:
+            raise JudgmentError(
+                f"{self.name}: probability must be between 0 and 1, not {probability}"
+            )
+        return Judgment(
+            question=question.id,
+            version=question.version,
+            answer=choice,
+            probability=probability,
+            engine=self.name,
+            latency_ms=latency_ms,
+            cost_usd=estimate_cost_usd(
+                str(data.get("model", self._model)), input_tokens, output_tokens
+            ),
+        )
+
+
 def judge_with_fallback(
     primary: JudgmentEngine,
     fallback: JudgmentEngine,
@@ -182,11 +272,15 @@ class Stage:
 
 
 def build_stage(
-    decisions_dir: Path, classify_playbook: PlaybookSpec, provider: ProviderProtocol
+    decisions_dir: Path,
+    classify_playbook: PlaybookSpec,
+    provider: ProviderProtocol,
+    typesafe_api_key: str | None,
 ) -> Stage:
-    """The stage with the engines there are; refuse it until its threshold is measured.
+    """Jev decides, the Playbook's model is the fallback; refuse to start until both can.
 
-    Today the only engine is the Playbook's model, so it decides on its own.
+    The threshold must be measured on the label set, and Jev needs its key: a
+    stage switched on without one would only ever run the fallback.
     """
     path = decisions_dir / WORK_ITEM_TYPE_FILE
     question = load_question(path)
@@ -195,8 +289,11 @@ def build_stage(
             f"the Judgments stage is on but {path} has no threshold. Measure it on the "
             "label set first (judgments/label_set/SPEC.md §7); it is never guessed."
         )
+    if not typesafe_api_key:
+        raise ConfigError("the Judgments stage is on but TYPESAFE_API_KEY is not set.")
     return Stage(
         work_item_type=question,
         threshold=question.threshold,
-        primary=ClassificationJudge(classify_playbook, provider),
+        primary=TypeSafeJudge(TypeSafeClient(typesafe_api_key)),
+        fallback=ClassificationJudge(classify_playbook, provider),
     )

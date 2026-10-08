@@ -142,9 +142,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         api_key=cfg.anthropic_api_key,
     )
     # The Judgments stage (ADR-0040), off unless asked for. On, it refuses to
-    # start until decision 2's threshold has been measured on the label set.
+    # start until decision 2's threshold has been measured on the label set,
+    # and without the key Jev, its primary engine, needs.
     judgments = (
-        build_stage(playbooks_base.parent / DECISIONS_DIR, classify_pb, chat_provider)
+        build_stage(
+            playbooks_base.parent / DECISIONS_DIR,
+            classify_pb,
+            chat_provider,
+            os.environ.get("TYPESAFE_API_KEY"),
+        )
         if os.environ.get("OPSPILOT_JUDGMENTS") == "1"
         else None
     )

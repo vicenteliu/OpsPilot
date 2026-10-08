@@ -110,9 +110,14 @@ either claim.
 
 *Not yet:*
 
-- The `typesafe` engine for Jev. Its API reference was not reachable from the
-  session that built the stage, and the adapter waits for it rather than being
-  written against a guess.
+- The `typesafe` engine for Jev: a thin `httpx` client and `TypeSafeJudge`,
+  wired as the stage's primary engine with the Playbook's model as fallback,
+  are written against typesafe-sdk 0.7.2's OpenAPI-generated wire shapes and
+  tested with mocks. Two facts wait for docs.typesafe.ai, which was not
+  reachable from that session: whether the threshold reads `confidence` or
+  `probabilities[choice]` (until then Jev does not decide), and the price per
+  million input tokens (until then a call is priced at nothing). The live
+  smoke test waits with them.
 - The label set itself: drafted, then labelled and relabelled by a person.
 - Decision 2's threshold and the report: Jev against the Playbook's model by
   accuracy, Brier score, cost per call and p50 / p95 latency. **Until the
