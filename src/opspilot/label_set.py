@@ -26,12 +26,13 @@ else, and a blind relabel of 10 random rows a day later for self-consistency.
 from __future__ import annotations
 
 import json
+import math
 import random
 import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, Final
@@ -446,6 +447,7 @@ def run_draft(
                 "drafted_by": r["drafted_by"],
                 "labelled_by": None,
                 "labelled_at": None,
+                "labelled_time": None,
             }
             for i, r in enumerate(rows, start=1)
         ],
@@ -458,6 +460,11 @@ def run_draft(
 ANSWER_SPACE: Final[dict[str, str]] = {"d2": "d2-v1", "d1": "d1-v1"}
 RELABEL_PATH: Final = LABEL_SET_DIR / "relabel_v1.jsonl"
 RELABEL_ROWS: Final = 10
+# "A day later" (SPEC §6), measured from the first pass's last label, with
+# room to start the relabel a few hours earlier in the day than the sitting ended.
+RELABEL_AFTER: Final = timedelta(hours=20)
+# Longer than the one sitting SPEC §6 expects (80–90 minutes).
+_SITTING: Final = timedelta(hours=2)
 
 _TYPE_KEYS: Final = {"i": "incident", "r": "service_request"}
 _SECURITY_KEYS: Final = {"y": "yes", "n": "no"}
@@ -465,6 +472,38 @@ _CONFIDENCE_KEYS: Final = {"h": "high", "l": "low"}
 
 Ask = Callable[[str], str]
 Show = Callable[[str], None]
+Clock = Callable[[], datetime]
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _labelled(by: str, at: datetime) -> dict[str, str]:
+    """Who labelled a row and when: the UTC date SPEC §2 records, and the moment."""
+    at = at.astimezone(UTC)
+    return {
+        "labelled_by": by,
+        "labelled_at": at.date().isoformat(),
+        "labelled_time": at.isoformat(timespec="seconds"),
+    }
+
+
+def _last_labelled(rows: list[dict[str, Any]]) -> datetime:
+    """When the last of these rows was labelled, or the latest it can have been.
+
+    A row labelled before ``labelled_time`` was recorded has only the UTC date
+    its sitting began on, and a sitting can run past midnight, so it counts
+    as labelled a sitting's length after the end of that day.
+    """
+
+    def at(row: dict[str, Any]) -> datetime:
+        if row.get("labelled_time"):
+            return datetime.fromisoformat(row["labelled_time"])
+        day = datetime.fromisoformat(row["labelled_at"]).replace(tzinfo=UTC)
+        return day + timedelta(days=1) + _SITTING
+
+    return max(at(r) for r in rows)
 
 
 def _ask_choice(ask: Ask, prompt: str, keys: dict[str, str], *, nav: bool) -> str:
@@ -505,11 +544,11 @@ def _label_loop(
     *,
     ask: Ask,
     show: Show,
-    stamp: dict[str, Any],
+    stamp: Callable[[], dict[str, Any]],
     save: Callable[[], None],
     note: bool,
 ) -> None:
-    """Fill each target's labels in order, saving after every one, until done or q."""
+    """Fill each target's labels in order, stamping and saving each one, until done or q."""
 
     def next_open(start: int) -> int:
         open_ = (j for j in range(start, len(targets)) if targets[j]["work_item_type"] is None)
@@ -524,7 +563,7 @@ def _label_loop(
             i = max(i - 1, 0)
             continue
         targets[i].update(answer)
-        targets[i].update(stamp)
+        targets[i].update(stamp())
         save()
         i = next_open(i + 1)
 
@@ -543,27 +582,24 @@ class LabelResult:
 
 
 def label_rows(
-    path: Path = OUT_PATH, *, by: str, ask: Ask, show: Show, today: str | None = None
+    path: Path = OUT_PATH, *, by: str, ask: Ask, show: Show, clock: Clock = _utc_now
 ) -> LabelResult:
     """Label the drafted set blind: each row shows its subject, body and channel only.
 
     What the drafter intended, and the topic, stay hidden; afterwards only
     counts are reported, never which rows, so tomorrow's relabel stays blind.
+    Each row is stamped with the moment it is labelled, which the relabel's
+    wait is measured from.
     """
     if not path.is_file():
         raise LabelSetError(f"{path} not found: draft the set first")
     rows = _read_jsonl(path)
-    stamp = {
-        "answer_space": dict(ANSWER_SPACE),
-        "labelled_by": by,
-        "labelled_at": today or datetime.now(UTC).date().isoformat(),
-    }
     _label_loop(
         rows,
         lambda r: r,
         ask=ask,
         show=show,
-        stamp=stamp,
+        stamp=lambda: {"answer_space": dict(ANSWER_SPACE), **_labelled(by, clock())},
         save=lambda: _write_jsonl(path, rows),
         note=True,
     )
@@ -599,22 +635,30 @@ def relabel_rows(
     ask: Ask,
     show: Show,
     out: Path = RELABEL_PATH,
-    today: str | None = None,
+    clock: Clock = _utc_now,
     rng: random.Random | None = None,
 ) -> RelabelResult:
     """Relabel 10 random rows blind, a day after the first pass (SPEC §6).
 
-    The sample is written to ``out`` before the first question, so a run cut
-    short resumes on the same rows. The first-pass labels are never shown.
+    Until ``RELABEL_AFTER`` has passed since the first pass's last label it
+    refuses, before a sample is drawn or a row shown. The sample is written to
+    ``out`` before the first question, so a run cut short resumes on the same
+    rows. The first-pass labels are never shown.
     """
     if not path.is_file():
         raise LabelSetError(f"{path} not found: draft the set first")
     rows = _read_jsonl(path)
     if any(r["work_item_type"] is None for r in rows):
         raise LabelSetError("label every row first; the relabel samples the finished set")
-    date = today or datetime.now(UTC).date().isoformat()
-    if any(r["labelled_at"] == date for r in rows):
-        show("note: some rows were labelled today; SPEC §6 relabels a day later")
+    now = clock()
+    opens = _last_labelled(rows) + RELABEL_AFTER
+    if now < opens:
+        minutes = math.ceil((opens - now).total_seconds() / 60)
+        raise LabelSetError(
+            "too soon: SPEC §6 relabels a day after the first pass, once its labels are"
+            f" forgotten; come back after {opens.astimezone():%Y-%m-%d %H:%M %Z}"
+            f" (in {minutes // 60}h{minutes % 60:02d}m)"
+        )
     if out.is_file():
         picks = _read_jsonl(out)
     else:
@@ -630,7 +674,7 @@ def relabel_rows(
         lambda p: by_id[p["id"]],
         ask=ask,
         show=show,
-        stamp={"labelled_by": by, "labelled_at": date},
+        stamp=lambda: _labelled(by, clock()),
         save=lambda: _write_jsonl(out, picks),
         note=False,
     )

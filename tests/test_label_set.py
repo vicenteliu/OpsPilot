@@ -8,10 +8,13 @@ redraft loop and the budget can all be exercised offline.
 from __future__ import annotations
 
 import hashlib
+import itertools
 import json
 import random
 import re
 from collections import Counter
+from collections.abc import Callable
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +32,7 @@ from opspilot.label_set import (
     SECURITY_BY_INTENT,
     TOPICS,
     LabelSetError,
+    RelabelResult,
     Slot,
     check_row,
     label_rows,
@@ -331,7 +335,7 @@ class TestDraft:
         assert list(rows[0]) == [
             "id", "subject", "body", "channel", "topic", "draft_intent", "draft_security",
             "work_item_type", "security", "label_confidence", "label_note", "answer_space",
-            "drafted_by", "labelled_by", "labelled_at",
+            "drafted_by", "labelled_by", "labelled_at", "labelled_time",
         ]  # fmt: skip
         for r in rows:
             assert r["drafted_by"].startswith(f"openrouter:{MODEL} ")
@@ -445,6 +449,17 @@ def _read(path: Path) -> list[dict[str, Any]]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
 
 
+def _at(when: str) -> Callable[[], datetime]:
+    """A clock that always reads ``when``."""
+    return lambda: datetime.fromisoformat(when)
+
+
+def _ticking(start: str, minutes: int) -> Callable[[], datetime]:
+    """A clock that moves on ``minutes`` every time it is read."""
+    reads = itertools.count()
+    return lambda: datetime.fromisoformat(start) + timedelta(minutes=minutes * next(reads))
+
+
 class TestLabel:
     def test_labels_every_row_and_shows_nothing_but_subject_body_channel(
         self, tmp_path: Path
@@ -457,7 +472,13 @@ class TestLabel:
             *("r", "n", "h", ""),
             *("r", "n", "h", ""),
         )
-        res = label_rows(path, by="vicenteliu", ask=keys, show=shown.append, today="2026-10-07")
+        res = label_rows(
+            path,
+            by="vicenteliu",
+            ask=keys,
+            show=shown.append,
+            clock=_at("2026-10-07T12:00:00+00:00"),
+        )
 
         assert res.finished and res.labelled == res.total == 4
         assert res.low_confidence == 1
@@ -469,12 +490,32 @@ class TestLabel:
         assert rows[1]["label_note"] == "needs a second look" and rows[0]["label_note"] is None
         for r in rows:
             assert r["answer_space"] == {"d2": "d2-v1", "d1": "d1-v1"}
-            assert (r["labelled_by"], r["labelled_at"]) == ("vicenteliu", "2026-10-07")
+            assert (r["labelled_by"], r["labelled_at"], r["labelled_time"]) == (
+                "vicenteliu",
+                "2026-10-07",
+                "2026-10-07T12:00:00+00:00",
+            )
 
         screen = "\n".join(shown + keys.prompts)
         assert "subject 3" in screen and "body 3" in screen and "chat" in screen
         assert "ambiguous" not in screen and "draft" not in screen
         assert not any(topic in screen for topic in TOPICS)
+
+    def test_each_row_is_stamped_when_it_is_labelled_not_when_the_sitting_began(
+        self, tmp_path: Path
+    ) -> None:
+        path = _set_file(tmp_path, 3)
+        clock = _ticking("2026-10-08T23:59:00+00:00", minutes=1)
+        label_rows(
+            path, by="v", ask=Keys(*(["i", "n", "h", ""] * 3)), show=lambda s: None, clock=clock
+        )
+        rows = _read(path)
+        assert [r["labelled_time"] for r in rows] == [
+            "2026-10-08T23:59:00+00:00",
+            "2026-10-09T00:00:00+00:00",
+            "2026-10-09T00:01:00+00:00",
+        ]
+        assert [r["labelled_at"] for r in rows] == ["2026-10-08", "2026-10-09", "2026-10-09"]
 
     def test_a_key_outside_the_choices_is_asked_again(self, tmp_path: Path) -> None:
         path = _set_file(tmp_path, 2)
@@ -534,7 +575,7 @@ class TestRelabel:
             ask=keys,
             show=shown.append,
             out=out,
-            today="2026-10-07",
+            clock=_at("2026-10-08T12:00:00+00:00"),
             rng=random.Random(1),
         )
         assert res.finished and res.total == 10
@@ -562,18 +603,92 @@ class TestRelabel:
         assert res.finished
         assert [p["id"] for p in _read(out)] == sample
 
-    def test_says_so_when_the_first_pass_was_today(self, tmp_path: Path) -> None:
-        path = _set_file(tmp_path, 12, labelled=True)
+
+class TestRelabelWaitsADay:
+    """SPEC §6 relabels a day later so the first-pass labels are forgotten.
+
+    On 2026-10-08 a sitting began before 17:00 PDT and ended at 18:09 PDT,
+    after midnight UTC, and a relabel ten minutes later passed a check that
+    compared UTC dates.
+    """
+
+    def _labelled_across_utc_midnight(self, tmp_path: Path) -> Path:
+        path = _set_file(tmp_path, 12)
+        keys = Keys(*(["i", "n", "h", ""] * 12))
+        clock = _ticking("2026-10-08T23:50:00+00:00", minutes=7)  # the last row at 01:07
+        label_rows(path, by="v", ask=keys, show=lambda s: None, clock=clock)
+        return path
+
+    def _relabel(self, path: Path, now: str) -> RelabelResult:
+        out = path.with_name("re.jsonl")
+        return relabel_rows(
+            path, by="v", ask=Keys("q"), show=lambda s: None, out=out, clock=_at(now)
+        )
+
+    def test_ten_minutes_after_a_sitting_that_crossed_utc_midnight_is_refused(
+        self, tmp_path: Path
+    ) -> None:
+        path = self._labelled_across_utc_midnight(tmp_path)
+        out = tmp_path / "re.jsonl"
+        keys = Keys()
         shown: list[str] = []
-        relabel_rows(
+        with pytest.raises(LabelSetError, match="a day after the first pass"):
+            relabel_rows(
+                path,
+                by="v",
+                ask=keys,
+                show=shown.append,
+                out=out,
+                clock=_at("2026-10-09T01:17:00+00:00"),
+            )
+        assert not out.exists() and not shown and not keys.prompts  # no sample, no row seen
+
+    def test_a_day_after_the_sitting_it_proceeds(self, tmp_path: Path) -> None:
+        path = self._labelled_across_utc_midnight(tmp_path)
+        out = tmp_path / "re.jsonl"
+        shown: list[str] = []
+        res = relabel_rows(
             path,
             by="v",
             ask=Keys("q"),
             show=shown.append,
-            out=tmp_path / "re.jsonl",
-            today="2026-10-06",
+            out=out,
+            clock=_at("2026-10-10T01:07:00+00:00"),
         )
-        assert "a day later" in shown[0]
+        assert res.total == 10 and out.is_file()
+        assert "(1/10)" in shown[0]
+
+    def test_it_opens_twenty_hours_after_the_last_label(self, tmp_path: Path) -> None:
+        path = self._labelled_across_utc_midnight(tmp_path)
+        with pytest.raises(LabelSetError, match=r"\(in 0h01m\)"):
+            self._relabel(path, "2026-10-09T21:06:00+00:00")
+        assert self._relabel(path, "2026-10-09T21:07:00+00:00").total == 10
+
+    def test_the_wait_counts_from_the_last_row_labelled(self, tmp_path: Path) -> None:
+        path = _set_file(tmp_path, 12)
+        first = Keys(*(["i", "n", "h", ""] * 11), "q")
+        label_rows(
+            path, by="v", ask=first, show=lambda s: None, clock=_at("2026-10-01T12:00:00+00:00")
+        )
+        last = Keys("i", "n", "h", "")
+        label_rows(
+            path, by="v", ask=last, show=lambda s: None, clock=_at("2026-10-09T01:00:00+00:00")
+        )
+        with pytest.raises(LabelSetError, match="a day after the first pass"):
+            self._relabel(path, "2026-10-09T01:10:00+00:00")
+
+    @pytest.mark.parametrize(
+        "now",
+        ["2026-10-06T23:00:00+00:00", "2026-10-07T01:19:00+00:00", "2026-10-07T21:59:00+00:00"],
+        ids=["same UTC day", "next UTC day", "a minute short"],
+    )
+    def test_a_row_with_only_a_date_waits_from_a_sitting_past_the_end_of_that_day(
+        self, tmp_path: Path, now: str
+    ) -> None:
+        path = _set_file(tmp_path, 12, labelled=True)  # labelled_at 2026-10-06 and no time
+        with pytest.raises(LabelSetError, match="a day after the first pass"):
+            self._relabel(path, now)
+        assert self._relabel(path, "2026-10-07T22:00:00+00:00").total == 10
 
 
 def test_cli_label_prints_counts_once_the_set_is_done(
@@ -588,5 +703,21 @@ def test_cli_label_prints_counts_once_the_set_is_done(
     )
     assert result.exit_code == 0, result.output
     assert "all 2 labelled · 1 low-confidence" in result.output
+    assert "In 20 hours or later: opspilot labelset relabel" in result.output
     assert "LS1-" not in result.output.split("all 2 labelled")[1]  # counts, never which rows
     assert _read(path)[1]["label_note"] == "unsure"
+
+
+def test_cli_relabel_refuses_too_soon_and_says_when(tmp_path: Path) -> None:
+    from opspilot import cli
+
+    path = _set_file(tmp_path, 12)
+    label_rows(path, by="v", ask=Keys(*(["i", "n", "h", ""] * 12)), show=lambda s: None)
+    out = tmp_path / "re.jsonl"
+    result = CliRunner().invoke(
+        cli.app, ["labelset", "relabel", "--by", "v", "--set", str(path), "--out", str(out)]
+    )
+    assert result.exit_code == 1
+    message = " ".join(result.output.split())
+    assert "too soon" in message and "(in 20h00m)" in message
+    assert not out.exists()
