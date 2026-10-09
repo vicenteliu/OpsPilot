@@ -115,10 +115,15 @@ either claim.
   threshold is measured on the primary's probability (#265). Tested against
   the documented request and response, not yet against the live API. Noul and
   Score wait for the decisions that need them (#225, #227).
+- The label set, `judgments/label_set/label_set_v1.jsonl`: 80 rows drafted by
+  `openai/gpt-6.1-sol` through OpenRouter, which kept 10 of 10 trial rows to
+  their slots against `google/gemini-3.8-flash`'s 9, for $0.17 in all, and
+  labelled blind by one person on 2026-10-08. 17 rows are low-confidence: the
+  ambiguous subset the report reads separately (#267).
 
 *Not yet:*
 
-- The label set itself: drafted, then labelled and relabelled by a person.
+- The label set's relabel: 10 random rows, blind, a day after labelling.
 - Decision 2's threshold and the report: Jev against the Playbook's model by
   accuracy, Brier score, cost per call and p50 / p95 latency. **Until the
   threshold is measured, the stage refuses to start.**
