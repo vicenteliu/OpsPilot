@@ -64,6 +64,7 @@ from .label_set import (
     BUDGET_USD,
     DRAFT_PROMPT_PATH,
     OUT_PATH,
+    RELABEL_AFTER,
     RELABEL_PATH,
     label_rows,
     relabel_rows,
@@ -1854,7 +1855,8 @@ def labelset_label(
         f" · you and the drafter split on the type for {res.type_splits}"
         f" and on security for {res.security_splits}"
     )
-    typer.echo("Tomorrow: opspilot labelset relabel --by <you>")
+    hours = int(RELABEL_AFTER.total_seconds() // 3600)
+    typer.echo(f"In {hours} hours or later: opspilot labelset relabel --by <you>")
 
 
 @labelset_app.command("relabel")

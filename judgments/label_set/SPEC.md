@@ -49,7 +49,7 @@ seen before) exist in the schema and stay empty until their slice.
 | `label_note` | person, optional | one line, only when the reason isn't obvious |
 | `answer_space` | script | `{"d2": "d2-v1", "d1": "d1-v1"}` at labelling time |
 | `drafted_by` | script | exact model id via OpenRouter + date |
-| `labelled_by` · `labelled_at` | script | the labeller's handle, date |
+| `labelled_by` · `labelled_at` · `labelled_time` | script | the labeller's handle; the UTC date; the UTC time to the second, stamped as each row is labelled. Rows labelled before `labelled_time` was added have the date only |
 
 `draft_intent` against `work_item_type` is recorded because the disagreement is information: rows
 where the drafter and the person split are the ambiguous ones, whatever the drafter intended.
@@ -112,8 +112,10 @@ security.
 - **One sitting**, shuffled order, about a minute a row (80–90 minutes).
 - **Binary on purpose**: `d2-v1` has no "can't tell". Pick the more likely type and mark
   `label_confidence: low`. The low-confidence rows are the ambiguous subset in the report.
-- **Self-consistency**: a day later, relabel 10 random rows blind. The agreement rate goes in the
-  report; if it is under 9 of 10, that says as much about the answer space as about the engines.
+- **Self-consistency**: a day later, relabel 10 random rows blind. A day means at least 20 hours
+  after the first pass's last `labelled_time`; a row with only a date (the day its sitting began)
+  counts from two hours after the end of that UTC day. The relabel refuses to start sooner. The agreement rate goes in the report; if it is
+  under 9 of 10, that says as much about the answer space as about the engines.
 
 ## 7. How the report uses it
 
