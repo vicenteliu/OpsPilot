@@ -32,6 +32,10 @@ _USD_PER_MILLION: Final[dict[str, tuple[float, float]]] = {
     "claude-sonnet-5": (3.0, 15.0),
     "claude-sonnet-4-6": (3.0, 15.0),
     "claude-haiku-4-5": (1.0, 5.0),
+    # Prompts of 100K tokens or fewer; above that it is (0.5, 2.5), which no
+    # call this table prices comes near. From Anthropic's model list as cached
+    # on 2026-10-06, not yet checked against the live price page.
+    "claude-haiku-5-5": (0.10, 0.50),
     # Checked against docs.typesafe.ai/models on 2026-10-08. TypeSafe returns
     # token counts, not a charge; it bills input tokens only.
     "jev-1.13": (0.042, 0.0),

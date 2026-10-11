@@ -3,7 +3,7 @@
 # 仅当输入未声明 work_item_type 时由 orchestrator 调用（declared-first 策略）。
 
 id: "pb_classify_work_item_zh"
-version: "1.0.0"
+version: "1.1.0"
 
 description: |
   Classify a redacted IT work item (JSON) as incident vs service_request.
@@ -11,18 +11,23 @@ description: |
   to work_item_classification_v1 {work_item_type, confidence, rationale}.
   Low confidence routes to a human-confirm step (declared-first policy).
 
+  v1.1.0: claude-haiku-5-5 at low effort, in place of claude-haiku-4-5.
+
 system_prompt: "prompt.md"
 output_schema: "work_item_classification_v1"
 
 model:
   provider_id: "anthropic"
   kind: "anthropic"
-  name: "claude-haiku-4-5-20251001"
+  name: "claude-haiku-5-5"
   version: "2025-01"
   params:
-    temperature: 0.0
-    top_p: 0.9
-    max_tokens: 512
+    # Haiku 5.5 rejects a non-default temperature or top_p (HTTP 400) and thinks
+    # by default; thinking counts toward max_tokens, so it gets room before the
+    # JSON answer, and low effort keeps a one-field decision cheap and fast.
+    thinking: "adaptive"
+    effort: "low"
+    max_tokens: 2048
 
 defaults:
   retention_class: "low"

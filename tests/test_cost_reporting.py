@@ -29,6 +29,7 @@ class TestPriceTable:
         assert estimate_cost_usd("claude-sonnet-5", m, 0) == 3.0
         assert estimate_cost_usd("claude-opus-5", m, 0) == 5.0
         assert estimate_cost_usd("claude-fable-5", 0, m) == 50.0
+        assert estimate_cost_usd("claude-haiku-5-5", m, m) == 0.6
 
     def test_a_dated_snapshot_resolves_to_its_family(self) -> None:
         """The playbook names models like `claude-haiku-4-5-20251001`."""

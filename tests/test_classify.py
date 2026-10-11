@@ -96,3 +96,34 @@ def test_declared_type() -> None:
     assert declared_type({"work_item_type": "service_request"}) == "service_request"
     assert declared_type({"work_item_type": "problem"}) is None
     assert declared_type({}) is None
+
+
+class _RecordingProvider(_FakeProvider):
+    """Keeps the model and sampling params each call was sent with."""
+
+    def chat(
+        self, messages: Any, *, model: str, params: Any, tools: Any = None, timeout_ms: int = 90_000
+    ) -> ChatResponse:
+        self.sent = (model, params)
+        return super().chat(messages, model=model, params=params, timeout_ms=timeout_ms)
+
+
+@pytest.mark.parametrize("lang", ["en", "zh"])
+def test_classification_runs_on_haiku_5_5_with_the_params_it_accepts(
+    tmp_path: Path, lang: str
+) -> None:
+    """Haiku 5.5 rejects a non-default temperature or top_p (HTTP 400) and thinks by
+    default, so the playbook sends neither, asks for low effort, and leaves room
+    in max_tokens for thinking before the JSON answer."""
+    provider = _RecordingProvider(
+        json.dumps({"work_item_type": "incident", "confidence": 0.9, "rationale": "r"})
+    )
+    pb = load_playbook(REPO_ROOT / "playbooks" / f"pb_classify_work_item_{lang}")
+    classify_work_item(
+        _ticket(tmp_path), playbook=pb, provider=provider, redactor=Redactor.from_yaml()
+    )
+    model, params = provider.sent
+    assert model == "claude-haiku-5-5"
+    assert params.temperature is None and params.top_p is None
+    assert (params.thinking, params.effort) == ("adaptive", "low")
+    assert params.max_tokens >= 2048
