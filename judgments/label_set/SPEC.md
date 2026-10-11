@@ -127,6 +127,11 @@ security.
 - Cost per call and p50/p95 latency, each engine run three times over the set.
 - Published whichever engine wins.
 
+`opspilot labelset report` produces it. Every call is appended to `runs_v1.jsonl` as it returns,
+so a run cut short resumes and the report can be recomputed without calling anything
+(`--no-call`). A failed call is counted as a failure and kept out of accuracy. The report never
+writes `d2.yaml`: the threshold is set from it by a person.
+
 ## 8. Decided before drafting (2026-09-24)
 
 1. **Drafter**: one batch of 10 is drafted by a GPT model and one by a Gemini model through

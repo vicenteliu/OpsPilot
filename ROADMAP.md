@@ -125,8 +125,10 @@ either claim.
 
 - The label set's relabel: 10 random rows, blind, a day after labelling.
 - Decision 2's threshold and the report: Jev against the Playbook's model by
-  accuracy, Brier score, cost per call and p50 / p95 latency. **Until the
-  threshold is measured, the stage refuses to start.**
+  accuracy, Brier score, cost per call and p50 / p95 latency. `opspilot
+  labelset report` runs both engines three times over the set and writes it;
+  it has not yet been run with both keys. **Until the threshold is measured,
+  the stage refuses to start.**
 - The rest of ADR-0040's order of work, #225–#231; filed and not scheduled,
   #232 and #233.
 

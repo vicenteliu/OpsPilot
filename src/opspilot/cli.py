@@ -46,6 +46,14 @@ from .harness import load_fixture, load_golden, run_harness
 from .harness.reporter import render_result_table
 from .iteration.engine import IterationEngine
 from .iteration.types import IterationPolicy
+from .judgment import (
+    DECISIONS_DIR,
+    JUDGMENT_TIMEOUT_S,
+    WORK_ITEM_TYPE_FILE,
+    ClassificationJudge,
+    TypeSafeJudge,
+    load_question,
+)
 from .kb.conflict import resolve_conflict
 from .kb.ingestion import (
     SOURCE_AUTHORITIES,
@@ -60,12 +68,15 @@ from .kb.lance_store import LanceStore
 from .kb.retrieval import kb_search
 from .kb.sqlite_store import SqliteStore
 from .kb.storage_init import init_sqlite
+from .label_report import RUNS, RUNS_PATH, report_markdown, run_engines
 from .label_set import (
     BUDGET_USD,
     DRAFT_PROMPT_PATH,
     OUT_PATH,
     RELABEL_AFTER,
     RELABEL_PATH,
+    LabelSetError,
+    _read_jsonl,
     label_rows,
     relabel_rows,
     run_draft,
@@ -1882,6 +1893,67 @@ def labelset_relabel(
         f"\nagreement with the first pass: type {res.type_agree}/{res.total},"
         f" security {res.security_agree}/{res.total}"
     )
+
+
+@labelset_app.command("report")
+def labelset_report(
+    path: Path = typer.Option(OUT_PATH, "--set", help="The labelled set."),  # noqa: B008
+    runs_out: Path = typer.Option(RUNS_PATH, "--runs", help="Every call, appended as it returns."),  # noqa: B008
+    relabel: Path = typer.Option(RELABEL_PATH, "--relabel", help="The relabel, if done."),  # noqa: B008
+    out: Path | None = typer.Option(None, "--out", "-o", help="Also write the report here."),  # noqa: B008
+    runs: int = typer.Option(RUNS, "--runs-per-engine", min=1, help="Passes over the set."),
+    no_call: bool = typer.Option(False, "--no-call", help="Report from the runs file only."),
+) -> None:
+    """Run Jev and the Playbook's model over the labelled set and report decision 2 (SPEC §7).
+
+    Each engine answers every row three times. Every call is saved as it
+    returns, so a rerun resumes and only retries what failed; ``--no-call``
+    recomputes the report from the runs file. Needs TYPESAFE_API_KEY and the
+    classification Playbook's provider key. Writes nothing to d2.yaml: the
+    threshold is set from the report by a person.
+    """
+    try:
+        if not path.is_file():
+            raise LabelSetError(f"{path} not found; run from the repo root")
+        rows = _read_jsonl(path)
+        question = load_question(DECISIONS_DIR / WORK_ITEM_TYPE_FILE)
+        if not no_call:
+            key = os.environ.get("TYPESAFE_API_KEY", "").strip()
+            if not key:
+                raise LabelSetError("TYPESAFE_API_KEY is not set; Jev is one of the two engines")
+            cfg = load_config()
+            pb = load_playbook(
+                (cfg.playbooks_dir or Path("playbooks")) / "pb_classify_work_item_en"
+            )
+            provider = make_provider(
+                pb.model.provider_id, kind=pb.model.kind, api_key=cfg.anthropic_api_key
+            )
+            made = run_engines(
+                rows,
+                question,
+                [TypeSafeJudge(key), ClassificationJudge(pb, provider)],
+                runs=runs,
+                out=runs_out,
+                redactor=Redactor.from_yaml(),
+                timeout_s=JUDGMENT_TIMEOUT_S,
+                show=typer.echo,
+            )
+            typer.echo(f"{made} calls made; every call is in {runs_out}\n")
+        if not runs_out.is_file():
+            raise LabelSetError(f"{runs_out} not found; run without --no-call first")
+        md = report_markdown(
+            rows,
+            _read_jsonl(runs_out),
+            _read_jsonl(relabel) if relabel.is_file() else None,
+            question,
+        )
+    except OpsPilotError as e:
+        _console.print(f"Error: {e}", style="red", markup=False)
+        raise typer.Exit(1) from e
+    typer.echo(md)
+    if out is not None:
+        out.write_text(md, encoding="utf-8")
+        typer.echo(f"wrote {out}")
 
 
 # ──────────────────────────────────────────────────────────────────────────
