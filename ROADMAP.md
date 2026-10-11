@@ -122,14 +122,19 @@ either claim.
   their slots against `google/gemini-3.8-flash`'s 9, for $0.17 in all, and
   labelled blind by one person on 2026-10-08. 17 rows are low-confidence: the
   ambiguous subset the report reads separately (#267). The blind relabel of
-  10 random rows, on 2026-10-11, agreed with the first pass on all 10 for type
-  and for security (`relabel_v1.jsonl`, #271).
+  10 random rows ran twice. The first agreed with the first pass on 9 of 10
+  for type and 10 of 10 for security, and its file was lost; the second, on a
+  fresh sample on 2026-10-11, agreed on all 10 for both (`relabel_v1.jsonl`,
+  #271). Together: 19 of 20 for type, 20 of 20 for security.
+- Decision 2's threshold, 0.94 on Jev's probability
+  (`judgments/decisions/d2.yaml`): the lowest at which the items Jev routes
+  without a person are at least 95% right on the label set. It is set on the
+  same 80 rows it is measured on, so it is a measured start, not a guarantee.
 
 *Not yet:*
 
-- Decision 2's threshold and the report: Jev against the Playbook's model by
-  accuracy, Brier score, cost per call and p50 / p95 latency. **Until the
-  threshold is measured, the stage refuses to start.**
+- Decision 2's report: Jev against the Playbook's model by accuracy, Brier
+  score, cost per call and p50 / p95 latency.
 - The rest of ADR-0040's order of work, #225–#231; filed and not scheduled,
   #232 and #233.
 
