@@ -112,18 +112,21 @@ either claim.
   probability, one attempt and no retries, and a price from the input tokens.
   With `TYPESAFE_API_KEY` set it decides and the Playbook's model is its
   fallback; an answer from the fallback always goes to a person, since the
-  threshold is measured on the primary's probability (#265). Tested against
-  the documented request and response, not yet against the live API. Noul and
+  threshold is measured on the primary's probability (#265). A live call on
+  2026-10-09, through `scripts/typesafe_smoke.py` (#266), showed the API
+  accepts the pinned name although `/v1/models` lists only the aliases: Jev
+  decided a sample itself, with no fallback, in 170 ms for $0.000016. Noul and
   Score wait for the decisions that need them (#225, #227).
 - The label set, `judgments/label_set/label_set_v1.jsonl`: 80 rows drafted by
   `openai/gpt-6.1-sol` through OpenRouter, which kept 10 of 10 trial rows to
   their slots against `google/gemini-3.8-flash`'s 9, for $0.17 in all, and
   labelled blind by one person on 2026-10-08. 17 rows are low-confidence: the
-  ambiguous subset the report reads separately (#267).
+  ambiguous subset the report reads separately (#267). The blind relabel of
+  10 random rows, on 2026-10-11, agreed with the first pass on all 10 for type
+  and for security (`relabel_v1.jsonl`, #271).
 
 *Not yet:*
 
-- The label set's relabel: 10 random rows, blind, a day after labelling.
 - Decision 2's threshold and the report: Jev against the Playbook's model by
   accuracy, Brier score, cost per call and p50 / p95 latency. `opspilot
   labelset report` runs both engines three times over the set and writes it;
