@@ -121,11 +121,12 @@ either claim.
   `openai/gpt-6.1-sol` through OpenRouter, which kept 10 of 10 trial rows to
   their slots against `google/gemini-3.8-flash`'s 9, for $0.17 in all, and
   labelled blind by one person on 2026-10-08. 17 rows are low-confidence: the
-  ambiguous subset the report reads separately (#267).
+  ambiguous subset the report reads separately (#267). The blind relabel of
+  10 random rows, on 2026-10-11, agreed with the first pass on all 10 for type
+  and for security (`relabel_v1.jsonl`, #271).
 
 *Not yet:*
 
-- The label set's relabel: 10 random rows, blind, a day after labelling.
 - Decision 2's threshold and the report: Jev against the Playbook's model by
   accuracy, Brier score, cost per call and p50 / p95 latency. **Until the
   threshold is measured, the stage refuses to start.**

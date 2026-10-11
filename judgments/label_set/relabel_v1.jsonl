@@ -1,0 +1,10 @@
+{"id": "LS1-049", "work_item_type": "service_request", "security": "yes", "label_confidence": "low", "labelled_by": "vicenteliu", "labelled_at": "2026-10-11", "labelled_time": "2026-10-11T10:41:49+00:00"}
+{"id": "LS1-052", "work_item_type": "service_request", "security": "yes", "label_confidence": "high", "labelled_by": "vicenteliu", "labelled_at": "2026-10-11", "labelled_time": "2026-10-11T10:42:55+00:00"}
+{"id": "LS1-077", "work_item_type": "incident", "security": "no", "label_confidence": "high", "labelled_by": "vicenteliu", "labelled_at": "2026-10-11", "labelled_time": "2026-10-11T10:43:21+00:00"}
+{"id": "LS1-065", "work_item_type": "incident", "security": "yes", "label_confidence": "low", "labelled_by": "vicenteliu", "labelled_at": "2026-10-11", "labelled_time": "2026-10-11T10:43:56+00:00"}
+{"id": "LS1-019", "work_item_type": "incident", "security": "yes", "label_confidence": "high", "labelled_by": "vicenteliu", "labelled_at": "2026-10-11", "labelled_time": "2026-10-11T10:44:35+00:00"}
+{"id": "LS1-023", "work_item_type": "service_request", "security": "yes", "label_confidence": "low", "labelled_by": "vicenteliu", "labelled_at": "2026-10-11", "labelled_time": "2026-10-11T10:45:02+00:00"}
+{"id": "LS1-067", "work_item_type": "incident", "security": "no", "label_confidence": "high", "labelled_by": "vicenteliu", "labelled_at": "2026-10-11", "labelled_time": "2026-10-11T10:45:30+00:00"}
+{"id": "LS1-032", "work_item_type": "incident", "security": "no", "label_confidence": "high", "labelled_by": "vicenteliu", "labelled_at": "2026-10-11", "labelled_time": "2026-10-11T10:46:01+00:00"}
+{"id": "LS1-038", "work_item_type": "incident", "security": "no", "label_confidence": "high", "labelled_by": "vicenteliu", "labelled_at": "2026-10-11", "labelled_time": "2026-10-11T10:46:25+00:00"}
+{"id": "LS1-053", "work_item_type": "service_request", "security": "no", "label_confidence": "high", "labelled_by": "vicenteliu", "labelled_at": "2026-10-11", "labelled_time": "2026-10-11T10:47:04+00:00"}
