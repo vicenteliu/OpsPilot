@@ -124,14 +124,20 @@ either claim.
   ambiguous subset the report reads separately (#267). The blind relabel of
   10 random rows, on 2026-10-11, agreed with the first pass on all 10 for type
   and for security (`relabel_v1.jsonl`, #271).
+- The report, `opspilot labelset report`, run on 2026-10-11: each engine
+  answered the 80 rows three times, every call kept in `runs_v1.jsonl`, the
+  result in `report_v1.md`. Jev was 87.1% right (Brier 0.102) at $0.000019 a
+  call and 179 ms p95; the Playbook's model, Claude Haiku 4.5, 88.8% (Brier
+  0.083) at $0.001031 and 1284 ms. On the 17 low-confidence rows, 51.0% and
+  58.8%. The lowest probability that routes items at least 95% right is 0.940
+  for Jev (208 of 240 calls) and 0.750 for the Playbook's model (207 of 240)
+  (#270).
 
 *Not yet:*
 
-- Decision 2's threshold and the report: Jev against the Playbook's model by
-  accuracy, Brier score, cost per call and p50 / p95 latency. `opspilot
-  labelset report` runs both engines three times over the set and writes it;
-  it has not yet been run with both keys. **Until the threshold is measured,
-  the stage refuses to start.**
+- Decision 2's threshold in `d2.yaml`, set by a person from the report, which
+  never writes it. `d2.yaml` holds one threshold, the primary engine's.
+  **Until it is set, the stage refuses to start.**
 - The rest of ADR-0040's order of work, #225–#231; filed and not scheduled,
   #232 and #233.
 
