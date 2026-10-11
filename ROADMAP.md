@@ -126,15 +126,22 @@ either claim.
   for type and 10 of 10 for security, and its file was lost; the second, on a
   fresh sample on 2026-10-11, agreed on all 10 for both (`relabel_v1.jsonl`,
   #271). Together: 19 of 20 for type, 20 of 20 for security.
+- The report, `opspilot labelset report`, run on 2026-10-11: each engine
+  answered the 80 rows three times, every call kept in `runs_v1.jsonl`, the
+  result in `report_v1.md`. Jev was 87.1% right (Brier 0.102) at $0.000019 a
+  call and 179 ms p95; the Playbook's model, Claude Haiku 4.5, 88.8% (Brier
+  0.083) at $0.001031 and 1284 ms. On the 17 low-confidence rows, 51.0% and
+  58.8%. The lowest probability that routes items at least 95% right is 0.940
+  for Jev (208 of 240 calls) and 0.750 for the Playbook's model (207 of 240)
+  (#270).
 - Decision 2's threshold, 0.94 on Jev's probability
   (`judgments/decisions/d2.yaml`): the lowest at which the items Jev routes
   without a person are at least 95% right on the label set. It is set on the
   same 80 rows it is measured on, so it is a measured start, not a guarantee.
+  `d2.yaml` holds one threshold, the primary engine's.
 
 *Not yet:*
 
-- Decision 2's report: Jev against the Playbook's model by accuracy, Brier
-  score, cost per call and p50 / p95 latency.
 - The rest of ADR-0040's order of work, #225–#231; filed and not scheduled,
   #232 and #233.
 
