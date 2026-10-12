@@ -72,7 +72,10 @@ class TestDecisionFile:
         assert tuple(q.answers) == VALID_TYPES
         # Measured on the label set (judgments/label_set/report_v1.md), never guessed,
         # and only for the engine it was measured on.
-        assert q.thresholds == {"typesafe:jev-1.13.0": 0.94}
+        assert q.thresholds == {
+            "typesafe:jev-1.13.0": 0.94,
+            "playbook:anthropic/claude-haiku-5-5": 0.70,
+        }
 
     def test_d1_is_the_security_answer_space_the_label_set_is_labelled_against(self) -> None:
         q = load_question(REPO_ROOT / DECISIONS_DIR / "d1.yaml")
@@ -297,6 +300,14 @@ class TestBuildStage:
         playbook = load_playbook(REPO_ROOT / "playbooks" / "pb_classify_work_item_en")
         with pytest.raises(ConfigError, match=rf"no threshold for {PLAYBOOK}\. Measure it"):
             build_stage(_decisions(tmp_path, {}), playbook, _Classifier(""))  # type: ignore[arg-type]
+
+    def test_without_a_key_the_committed_file_runs_the_playbook_model_at_its_own_cut(
+        self,
+    ) -> None:
+        """d2.yaml as committed: classification's model has its own measured threshold."""
+        playbook = load_playbook(REPO_ROOT / "playbooks" / "pb_classify_work_item_en")
+        stage = build_stage(REPO_ROOT / DECISIONS_DIR, playbook, _Classifier(_REQUEST))  # type: ignore[arg-type]
+        assert stage.primary.name == PLAYBOOK and stage.threshold == 0.70
 
     def test_without_a_key_jev_s_threshold_is_not_lent_to_the_playbook_model(
         self, tmp_path: Path
