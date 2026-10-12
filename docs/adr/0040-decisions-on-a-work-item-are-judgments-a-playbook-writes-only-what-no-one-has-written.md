@@ -2,6 +2,12 @@
 
 Status: accepted (2026-09-23)
 
+> **Revised 2026-10-12** (#225, #281): decision 1 was measured on the label set, against d1-v1
+> and against a narrower d1-v2 relabelled blind. No cut stopped every labelled security item
+> without stopping nearly every Work item, so by this ADR's own rule it is not ready to be
+> automated. Until it is, the stage runs decision 2 without it and says so at startup;
+> "Security runs first" below holds once decision 1 is measured for its engine.
+
 A Work item reaches a suggestion through a string of decisions, and today a
 language model makes every one of them in prose. Classification is one call
 that returns a type and a confidence the model scored itself; the run holds back

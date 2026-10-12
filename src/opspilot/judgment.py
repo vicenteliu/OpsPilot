@@ -387,7 +387,9 @@ class Stage:
     decision 2 runs only when nothing declared the type.
     """
 
-    security: Decision
+    # None until decision 1 is measured for the engine that would decide it:
+    # measured on the label set, it is not ready to be automated (#225).
+    security: Decision | None
     work_item_type: Decision
 
     def stops_for_security(self, judgment: Judgment) -> bool:
@@ -397,6 +399,7 @@ class Stage:
         "not security" is the one mistake the next step cannot undo, so a
         fallback's "no" is not trusted either.
         """
+        assert self.security is not None, "decision 1 is not asked while it is unmeasured"
         return judgment.fallback is not None or p_yes(judgment) >= self.security.threshold
 
     def needs_a_person(self, judgment: Judgment) -> bool:
@@ -424,6 +427,30 @@ def _decision(
     return Decision(question, threshold, primary=primary, fallback=fallback)
 
 
+def _security(
+    decisions_dir: Path, primary: JudgmentEngine, fallback: JudgmentEngine | None
+) -> Decision | None:
+    """Decision 1 at its engine's measured cut, or None while it has none, and the log says so.
+
+    Unlike decision 2, an unmeasured decision 1 does not stop the stage: on the
+    label set no cut stopped the labelled security items without stopping
+    nearly every Work item, so it is not ready to be automated (#225). Running
+    without it is said loudly, because a security issue then goes unstopped.
+    """
+    path = decisions_dir / SECURITY_FILE
+    question = load_question(path)
+    threshold = question.thresholds.get(primary.name)
+    if threshold is None:
+        logger.warning(
+            "The Judgments stage runs WITHOUT decision 1: %s has no threshold for %s, so a "
+            "possible security issue is not stopped (#225).",
+            path,
+            primary.name,
+        )
+        return None
+    return Decision(question, threshold, primary=primary, fallback=fallback)
+
+
 def build_stage(
     decisions_dir: Path,
     classify_playbook: PlaybookSpec,
@@ -431,12 +458,12 @@ def build_stage(
     *,
     typesafe_api_key: str | None = None,
 ) -> Stage:
-    """The stage with the engines there are; refuse it until each decision's engine is measured.
+    """The stage with the engines there are; refuse it until decision 2's engine is measured.
 
     With a TypeSafe key, Jev decides both and the Playbook's model is its
     fallback: Classification for decision 2, the Question asked as written for
     decision 1. Without one, the Playbook's model decides alone, and the log
-    says so.
+    says so. Decision 1 runs only once it is measured for its engine.
     """
     asked = QuestionJudge(classify_playbook, provider)
     classified = ClassificationJudge(classify_playbook, provider)
@@ -448,11 +475,11 @@ def build_stage(
             raise ConfigError("TYPESAFE_API_KEY is malformed: it holds whitespace or non-ASCII.")
         jev = TypeSafeJudge(key)
         return Stage(
-            security=_decision(decisions_dir, SECURITY_FILE, jev, asked),
+            security=_security(decisions_dir, jev, asked),
             work_item_type=_decision(decisions_dir, WORK_ITEM_TYPE_FILE, jev, classified),
         )
     stage = Stage(
-        security=_decision(decisions_dir, SECURITY_FILE, asked, None),
+        security=_security(decisions_dir, asked, None),
         work_item_type=_decision(decisions_dir, WORK_ITEM_TYPE_FILE, classified, None),
     )
     logger.warning(
