@@ -158,8 +158,8 @@ def render_security_comment(security: dict[str, Any]) -> str:
             f"event out ({security['fallback']})."
         )
     else:
-        p = float(security.get("probability") or 0.0)
-        p_yes = p if security.get("answer") == "yes" else 1 - p
+        # The P(yes) the stage cut on, as the stage computed it.
+        p_yes = float(security.get("p_yes") or 0.0)
         why = f"this Work item may report a security event (p(yes)={p_yes:.2f})."
     return "\n".join(
         [

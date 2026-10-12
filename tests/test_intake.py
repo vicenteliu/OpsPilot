@@ -194,7 +194,7 @@ class TestIntakeLoop:
         ("security", "says"),
         [
             (
-                {"answer": "yes", "probability": 0.62, "fallback": None},
+                {"answer": "yes", "probability": 0.62, "p_yes": 0.62, "fallback": None},
                 "may report a security event (p(yes)=0.62)",
             ),
             (

@@ -656,6 +656,7 @@ class TestStageInTheRun:
         assert data["needs_confirmation"] is True and data["session_id"] == ""
         assert data["classification"] is None
         assert data["security"]["stops"] is True and data["security"]["answer"] == "yes"
+        assert data["security"]["p_yes"] == 0.62  # the value the stage cut on
 
     def test_when_jev_cannot_answer_security_the_run_stops_for_a_person(self) -> None:
         from unittest.mock import patch
@@ -702,6 +703,22 @@ class TestStageInTheRun:
         assert data["needs_confirmation"] is True
         assert data["security"]["stops"] is True and data["security"]["answer"] is None
         assert data["security"]["fallback"].startswith("no engine could answer")
+
+    def test_the_work_item_is_rendered_once_for_both_decisions(self) -> None:
+        from unittest.mock import patch
+
+        from fastapi.testclient import TestClient
+
+        from opspilot.api.routes.run import render_state
+
+        app = _app_with_stage(_Engine("service_request", 0.93))
+        with (
+            patch("opspilot.api.routes.run.render_state", wraps=render_state) as rendered,
+            patch("opspilot.api.routes.run.run_ticket_summary", return_value=_run_result()),
+            TestClient(app) as client,
+        ):
+            client.post("/api/run", json={"input": _UNTYPED})
+        assert rendered.call_count == 1
 
 
 def _stream_result(text: str) -> dict[str, Any]:
