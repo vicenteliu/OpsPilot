@@ -1,0 +1,24 @@
+# Decision 9 (ADR-0040): seen before? Is this handbook page a known fix?
+#
+# Asked of each candidate page kb_search offers for a Work item; code builds the
+# list, the engine only picks (ADR-0040). The answer space the label set's
+# `known_fix` column is labelled against (judgments/label_set/SPEC.md, d9-v1).
+# ADR-0040 plans a Score then a Noul here; the label set measures the Noul, the
+# page fixes it or it does not, so that is what d9-v1 asks.
+id: d9
+version: d9-v1
+kind: noul
+question: >-
+  Is this handbook page a known fix for the Work item: was it written for this
+  problem?
+answers:
+  # Quoted: unquoted, YAML reads yes and no as true and false.
+  "yes": >-
+    Following the page would resolve the Work item as reported, without
+    anything the page does not say.
+  "no": >-
+    It is about the same subject but a different problem, or about something
+    else.
+# Set from the label set, never guessed (ADR-0040), keyed by the engine it was
+# measured on; empty until that report has been run.
+thresholds: {}

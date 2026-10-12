@@ -16,6 +16,7 @@ Two columns now, the rest later. Each is labelled against a versioned answer spa
 |---|---|---|---|---|
 | `work_item_type` | 2 · Incident or request? | `incident` · `service_request` | `d2-v1` | #224 (this slice) |
 | `security` | 1 · Security issue? | `yes` · `no` | `d1-v2` (was `d1-v1`) | #225 |
+| `known_fix` | 9 · Seen before? | the candidate pages that fix the row, or none | `d9-v1` | #226 |
 
 **`d2-v1`**, the definitions the Playbook's classifier already uses
 (`playbooks/pb_classify_work_item_en/prompt.md`):
@@ -55,6 +56,7 @@ seen before) exist in the schema and stay empty until their slice.
 | `draft_security` | drafter | `yes` · `no`; hidden, never ground truth |
 | `work_item_type` | **person** | `d2-v1` |
 | `security` | **person** | `d1-v2`; the `d1-v1` label it replaced is kept as `security_d1_v1` |
+| `known_fix` | **person** | `d9-v1`: the `source_path` of each candidate page that fixes the row, `[]` for none; with `known_fix_labelled_by` and `known_fix_labelled_time` |
 | `label_confidence` | **person** | `high` · `low`. Low = "I picked, but it could go the other way" |
 | `label_note` | person, optional | one line, only when the reason isn't obvious |
 | `answer_space` | script | `{"d2": "d2-v1", "d1": "d1-v1"}` at labelling time |
@@ -139,6 +141,16 @@ security.
   label given before and to the drafter's intent, but by the labeller who had seen these rows
   twice. Each answer goes to `security_d1_v2.jsonl`, and the set changes only once every row has
   one. The d1-v1 relabel and review are not read against `d1-v2` labels.
+
+- **Known fix** (#226, `d9-v1`): each row's candidate pages are its `kb_search` hits over the
+  SSC-built KB (`opspilot kb ingest --profile ssc`), grouped by page in rank order, searched on
+  the subject then the body, redacted and whitespace-collapsed exactly as the run's prefetch
+  does, top 5 hits. They are written once to
+  `candidates_d9_v1.jsonl` (`opspilot labelset candidates`), each page with its title, path and
+  best hit as its excerpt, so labelling and every engine see the same candidates whatever the KB
+  becomes. The labeller marks the pages that fix the row, or none (`opspilot labelset
+  label-known-fix`), seeing the row and the candidates and no engine's answer. A fix the
+  candidates do not include is recorded as none: decision 9 can only pick from what it is offered.
 
 ## 7. How the report uses it
 

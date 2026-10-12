@@ -80,6 +80,7 @@ from .label_report import (
 )
 from .label_set import (
     BUDGET_USD,
+    CANDIDATES_PATH,
     DRAFT_PROMPT_PATH,
     OUT_PATH,
     RELABEL_AFTER,
@@ -88,6 +89,9 @@ from .label_set import (
     SECURITY_RELABEL_PATH,
     LabelSetError,
     _read_jsonl,
+    _write_jsonl,
+    build_candidates,
+    label_known_fix,
     label_rows,
     relabel_rows,
     relabel_security,
@@ -95,7 +99,7 @@ from .label_set import (
     run_trial,
 )
 from .orchestrator import RunRequest, load_playbook, run_ticket_summary
-from .orchestrator.ticket_summary import _format_doc_request
+from .orchestrator.ticket_summary import _format_doc_request, _strip_redaction_placeholders
 from .providers import make_provider
 from .redaction import Redactor
 from .report import build_recurring_report
@@ -2020,6 +2024,91 @@ def labelset_relabel_security(
     typer.echo(
         f"\nlabelled {res.labelled} of {res.total} against {d1.version} · changed {res.changed}"
         f" · security yes on {yes} of {len(rows)} rows"
+    )
+
+
+@labelset_app.command("candidates")
+def labelset_candidates(
+    path: Path = typer.Option(OUT_PATH, "--set", help="The labelled set."),  # noqa: B008
+    out: Path = typer.Option(CANDIDATES_PATH, "--out", "-o", help="Where the candidates go."),  # noqa: B008
+    kb_id: str = typer.Option("opspilot:public-kb", "--kb-id", help="KB namespace to search."),
+    top_k: int = typer.Option(5, "--top-k", min=1, help="Hits per row: the prefetch's default."),
+) -> None:
+    """Each row's candidate known fixes: its kb_search hits, by page (decision 9, #226).
+
+    Searches the KB as it is built now (`kb ingest --profile ssc`) and writes the
+    list once: labelling and every engine then see the same candidates, however
+    the KB changes later.
+    """
+    from .embedding import EMBED_DIM
+
+    try:
+        if out.exists():
+            raise LabelSetError(f"{out} exists and the labels are made against it; move it aside")
+        if not path.is_file():
+            raise LabelSetError(f"{path} not found; run from the repo root")
+        rows = _read_jsonl(path)
+        cfg = load_config()
+        embed_fn, model = _kb_embedding(cfg, None, "nomic-embed-text-v2-moe")
+        sqlite, lance = _open_kb_stores(
+            home=cfg.home, embedding_dim=EMBED_DIM, embedding_model=model
+        )
+
+        def describe(doc_id: str) -> dict[str, Any]:
+            doc = sqlite.get_document(doc_id) or {}
+            return {"source_path": doc.get("source_path"), "title": doc.get("title")}
+
+        redactor = Redactor.from_yaml()
+
+        def search(query: str) -> list[Any]:
+            # As the run's prefetch searches: redacted, placeholders stripped.
+            q = _strip_redaction_placeholders(redactor.redact(query).text)
+            return kb_search(
+                q, sqlite=sqlite, lance=lance, embed_fn=embed_fn, top_k=top_k, namespace=kb_id
+            )
+
+        found = build_candidates(rows, search=search, describe=describe)
+    except OpsPilotError as e:
+        _console.print(f"Error: {e}", style="red", markup=False)
+        raise typer.Exit(1) from e
+    today = datetime.now(UTC).date().isoformat()
+    _write_jsonl(out, [{**c, "embedding_model": model, "searched_on": today} for c in found])
+    pages = {p["source_path"] for c in found for p in c["candidates"]}
+    typer.echo(f"wrote {out} · {len(found)} rows · {len(pages)} distinct pages offered")
+
+
+@labelset_app.command("label-known-fix")
+def labelset_label_known_fix(
+    by: str = typer.Option(..., "--by", help="The labeller's handle, recorded on each row."),
+    path: Path = typer.Option(OUT_PATH, "--set", help="The labelled set."),  # noqa: B008
+    candidates: Path = typer.Option(CANDIDATES_PATH, "--candidates", help="Each row's pages."),  # noqa: B008
+) -> None:
+    """Label which candidate pages are a known fix for each row, or none (decision 9, #226).
+
+    Each row shows its subject, body and channel and its numbered candidate
+    pages; answer with the numbers that fix it (1,3) or 0 for none. u goes back
+    and q stops; every answer is saved as it is given.
+    """
+    try:
+        d9 = load_question(DECISIONS_DIR / "d9.yaml")
+        res = label_known_fix(
+            path,
+            candidates=candidates,
+            by=by,
+            ask=_ask_line,
+            show=typer.echo,
+            version=d9.version,
+            definition=d9.answers["yes"],
+        )
+    except OpsPilotError as e:
+        _console.print(f"Error: {e}", style="red", markup=False)
+        raise typer.Exit(1) from e
+    if not res.finished:
+        typer.echo(f"\nsaved · {res.labelled}/{res.total} labelled; rerun to continue")
+        return
+    typer.echo(
+        f"\nlabelled {res.labelled} of {res.total} against {d9.version}"
+        f" · a known fix for {res.with_a_fix} of them"
     )
 
 
