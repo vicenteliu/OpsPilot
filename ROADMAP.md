@@ -122,8 +122,10 @@ either claim.
   their slots against `google/gemini-3.8-flash`'s 9, for $0.17 in all, and
   labelled blind by one person on 2026-10-08. 17 rows are low-confidence: the
   ambiguous subset the report reads separately (#267). The blind relabel of
-  10 random rows, on 2026-10-11, agreed with the first pass on all 10 for type
-  and for security (`relabel_v1.jsonl`, #271).
+  10 random rows ran twice. The first agreed with the first pass on 9 of 10
+  for type and 10 of 10 for security, and its file was lost; the second, on a
+  fresh sample on 2026-10-11, agreed on all 10 for both (`relabel_v1.jsonl`,
+  #271). Together: 19 of 20 for type, 20 of 20 for security.
 - The report, `opspilot labelset report`, run on 2026-10-11: each engine
   answered the 80 rows three times, every call kept in `runs_v1.jsonl`, the
   result in `report_v1.md`. Jev was 87.1% right (Brier 0.102) at $0.000019 a
@@ -132,12 +134,14 @@ either claim.
   58.8%. The lowest probability that routes items at least 95% right is 0.940
   for Jev (208 of 240 calls) and 0.750 for the Playbook's model (207 of 240)
   (#270).
+- Decision 2's threshold, 0.94 on Jev's probability
+  (`judgments/decisions/d2.yaml`): the lowest at which the items Jev routes
+  without a person are at least 95% right on the label set. It is set on the
+  same 80 rows it is measured on, so it is a measured start, not a guarantee.
+  `d2.yaml` holds one threshold, the primary engine's.
 
 *Not yet:*
 
-- Decision 2's threshold in `d2.yaml`, set by a person from the report, which
-  never writes it. `d2.yaml` holds one threshold, the primary engine's.
-  **Until it is set, the stage refuses to start.**
 - The rest of ADR-0040's order of work, #225–#231; filed and not scheduled,
   #232 and #233.
 

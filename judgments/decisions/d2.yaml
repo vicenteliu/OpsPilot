@@ -14,6 +14,13 @@ answers:
     An ask for something standard: access, an account, software, hardware, a
     change to a mailbox or group. Nothing is broken.
 # Set from the label set, never guessed (SPEC §7): the lowest probability at
-# which the items routed without a person are at least 95% right. Empty until
-# that report has been run.
-threshold: null
+# which the items routed without a person are at least 95% right.
+#
+# 0.94 on Jev's probability (typesafe:jev-1.13.0), from
+# judgments/label_set/report_v1.md, run on 2026-10-11: at 0.94, 208 of its 240
+# answers (three passes over 80 rows) route without a person and 95.2% of
+# those are right. The stage applies it to its primary engine only; an answer
+# from the fallback always goes to a person. Measured on the same 80 rows it
+# is reported on, with no held-out split, so measure it again when the label
+# set grows or JEV_MODEL changes.
+threshold: 0.94

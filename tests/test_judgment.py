@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -69,7 +70,8 @@ class TestDecisionFile:
         q = load_question(D2)
         assert (q.id, q.kind, q.version) == ("d2", "choice", ANSWER_SPACE["d2"])
         assert tuple(q.answers) == VALID_TYPES
-        assert q.threshold is None  # measured from the label set, never guessed
+        # Measured on the label set (judgments/label_set/report_v1.md), never guessed.
+        assert q.threshold == 0.94
 
     @pytest.mark.parametrize(
         ("body", "message"),
@@ -266,16 +268,18 @@ class TestFallback:
 
 
 def _decisions(tmp_path: Path, threshold: str) -> Path:
-    text = D2.read_text(encoding="utf-8").replace("threshold: null", f"threshold: {threshold}")
+    text = re.sub(
+        r"^threshold: .*$", f"threshold: {threshold}", D2.read_text(encoding="utf-8"), flags=re.M
+    )
     (tmp_path / "d2.yaml").write_text(text, encoding="utf-8")
     return tmp_path
 
 
 class TestBuildStage:
-    def test_refuses_to_start_until_the_threshold_is_measured(self) -> None:
+    def test_refuses_to_start_until_the_threshold_is_measured(self, tmp_path: Path) -> None:
         playbook = load_playbook(REPO_ROOT / "playbooks" / "pb_classify_work_item_en")
         with pytest.raises(ConfigError, match=r"no threshold\. Measure it on the label set"):
-            build_stage(REPO_ROOT / DECISIONS_DIR, playbook, _Classifier(""))  # type: ignore[arg-type]
+            build_stage(_decisions(tmp_path, "null"), playbook, _Classifier(""))  # type: ignore[arg-type]
 
     def test_without_a_typesafe_key_the_playbook_model_decides_alone_and_the_log_says_so(
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
