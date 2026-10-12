@@ -56,7 +56,9 @@ class Question:
     kind: Kind
     text: str
     answers: dict[str, str]  # answer → what it means, in order for a Score
-    threshold: float | None  # set from the label set; None until measured
+    # Engine name → its cut, set from the label set. A probability is on its
+    # engine's own scale, so a cut means nothing for any other engine (#274).
+    thresholds: dict[str, float]
 
 
 def load_question(path: Path) -> Question:
@@ -64,22 +66,29 @@ def load_question(path: Path) -> Question:
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     kind = data.get("kind")
     answers = data.get("answers") or {}
-    threshold = data.get("threshold")
+    thresholds = data.get("thresholds") or {}
+    if "threshold" in data:
+        raise JudgmentError(
+            f"{path}: `threshold` is now `thresholds`, keyed by the engine it was measured on"
+        )
+    if not isinstance(thresholds, dict):
+        raise JudgmentError(f"{path}: thresholds must be keyed by engine, not {thresholds!r}")
     if kind not in _KINDS:
         raise JudgmentError(f"{path}: kind must be one of {', '.join(_KINDS)}, not {kind!r}")
     if kind == "noul" and set(answers) != {"yes", "no"}:
         raise JudgmentError(f"{path}: a noul question answers yes or no")
     if len(answers) < 2:
         raise JudgmentError(f"{path}: a question needs at least two answers")
-    if threshold is not None and not 0 <= float(threshold) <= 1:
-        raise JudgmentError(f"{path}: threshold must be between 0 and 1, not {threshold}")
+    for engine, cut in thresholds.items():
+        if not 0 <= float(cut) <= 1:
+            raise JudgmentError(f"{path}: {engine}'s threshold must be between 0 and 1, not {cut}")
     return Question(
         id=str(data["id"]),
         version=str(data["version"]),
         kind=kind,
         text=str(data["question"]),
         answers={str(k): str(v) for k, v in answers.items()},
-        threshold=None if threshold is None else float(threshold),
+        thresholds={str(k): float(v) for k, v in thresholds.items()},
     )
 
 
@@ -289,33 +298,37 @@ def build_stage(
     *,
     typesafe_api_key: str | None = None,
 ) -> Stage:
-    """The stage with the engines there are; refuse it until its threshold is measured.
+    """The stage with the engines there are; refuse it until its primary's threshold is measured.
 
     With a TypeSafe key, Jev decides and the Playbook's model is its fallback.
-    Without one, the Playbook's model decides alone, and the log says so.
+    Without one, the Playbook's model decides alone, and the log says so. The
+    threshold is the one measured for the engine that decides: another
+    engine's says nothing about its probability (#274).
     """
     path = decisions_dir / WORK_ITEM_TYPE_FILE
     question = load_question(path)
-    if question.threshold is None:
-        raise ConfigError(
-            f"the Judgments stage is on but {path} has no threshold. Measure it on the "
-            "label set first (judgments/label_set/SPEC.md §7); it is never guessed."
-        )
     baseline = ClassificationJudge(classify_playbook, provider)
     key = (typesafe_api_key or "").strip()
-    if not key:
+    primary: JudgmentEngine
+    fallback: JudgmentEngine | None
+    if key:
+        # Refused here rather than on the first Work item, where it would cost a
+        # failed call per item or, outside ASCII, fail the run outright.
+        if not (key.isascii() and key.isprintable()) or " " in key:
+            raise ConfigError("TYPESAFE_API_KEY is malformed: it holds whitespace or non-ASCII.")
+        primary, fallback = TypeSafeJudge(key), baseline
+    else:
+        primary, fallback = baseline, None
+    threshold = question.thresholds.get(primary.name)
+    if threshold is None:
+        raise ConfigError(
+            f"the Judgments stage is on but {path} has no threshold for {primary.name}. "
+            "Measure it on the label set first (judgments/label_set/SPEC.md §7); it is never "
+            "guessed, and one measured on another engine says nothing about this one."
+        )
+    if fallback is None:
         logger.warning(
             "The Judgments stage is on without TYPESAFE_API_KEY: %s decides alone.",
-            baseline.name,
+            primary.name,
         )
-        return Stage(work_item_type=question, threshold=question.threshold, primary=baseline)
-    # Refused here rather than on the first Work item, where it would cost a
-    # failed call per item or, outside ASCII, fail the run outright.
-    if not (key.isascii() and key.isprintable()) or " " in key:
-        raise ConfigError("TYPESAFE_API_KEY is malformed: it holds whitespace or non-ASCII.")
-    return Stage(
-        work_item_type=question,
-        threshold=question.threshold,
-        primary=TypeSafeJudge(key),
-        fallback=baseline,
-    )
+    return Stage(work_item_type=question, threshold=threshold, primary=primary, fallback=fallback)
