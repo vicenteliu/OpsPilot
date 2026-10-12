@@ -737,7 +737,10 @@ def relabel_security(
         answers = [{"id": r["id"], "before": r["security"], "after": None} for r in rows]
         _write_jsonl(out, answers)
     by_id = {r["id"]: r for r in rows}
-    moved = [e["id"] for e in answers if by_id[e["id"]]["security"] != e["before"]]
+    # A finished pass has already written its answers in, so a row may hold either.
+    moved = [
+        e["id"] for e in answers if by_id[e["id"]]["security"] not in (e["before"], e["after"])
+    ]
     if moved:
         raise LabelSetError(
             f"the set changed under the saved pass ({', '.join(moved)}); "
@@ -767,7 +770,8 @@ def relabel_security(
     if len(done) == len(answers):
         for e in answers:
             row = by_id[e["id"]]
-            row["security_d1_v1"] = e["before"]
+            # The first pass's d1-v1 label, kept once: a later pass must not overwrite it.
+            row.setdefault("security_d1_v1", e["before"])
             row["security"] = e["after"]
             row["answer_space"] = {**(row.get("answer_space") or {}), "d1": version}
         _write_jsonl(path, rows)

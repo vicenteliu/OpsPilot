@@ -129,7 +129,8 @@ security.
 - **Security review** (#225, added after labelling): decision 1's threshold is set so that every
   labelled security item reaches a person, so each `security: yes` is a row the stage stops on.
   Every row whose `security` label and `draft_security` split is reviewed once more against
-  `d1-v1` (`opspilot labelset review-security`). The reviewer sees the row and the label they
+  `d1-v1`, with `opspilot labelset review-security` (since replaced by `relabel-security`; its
+  record is `security_review_v1.jsonl`). The reviewer sees the row and the label they
   gave it; the drafter's intent stays hidden. Each answer, before and after, goes to
   `security_review_v1.jsonl`, and the set changes only once every split row has been reviewed.
   The review is not blind, and the report says so.

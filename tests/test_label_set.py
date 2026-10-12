@@ -791,6 +791,15 @@ class TestRelabelSecurity:
         res = _relabel(path, Keys("n", "u", "y", "y", "n", "n"))
         assert res.changed == 0
 
+    def test_a_rerun_after_a_finished_pass_reports_it_and_keeps_the_first_label(
+        self, tmp_path: Path
+    ) -> None:
+        path = _labelled_set(tmp_path)
+        _relabel(path, Keys("n", "y", "n", "n"))
+        res = _relabel(path, Keys())  # nothing left to ask
+        assert (res.labelled, res.changed, res.finished) == (4, 1, True)
+        assert [r["security_d1_v1"] for r in _read(path)] == ["yes", "yes", "no", "no"]
+
     def test_a_saved_pass_refuses_a_set_that_changed_under_it(self, tmp_path: Path) -> None:
         path = _labelled_set(tmp_path)
         _relabel(path, Keys("n", "q"))
