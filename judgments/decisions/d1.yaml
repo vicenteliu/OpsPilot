@@ -1,23 +1,32 @@
 # Decision 1 (ADR-0040): is this a security issue?
 #
 # The answer space the label set's `security` column is labelled against
-# (judgments/label_set/SPEC.md, d1-v1). Changing a definition changes what the
+# (judgments/label_set/SPEC.md, d1-v2). Changing a definition changes what the
 # labels mean, so it takes a new version, and a relabel.
 id: d1
-version: d1-v1
+version: d1-v2
 kind: noul
 question: >-
-  Does this Work item report, or may it report, a security event (a phishing
-  link, a strange sign-in, a lost device)?
+  Does this Work item report, or may it report, a security event: a sign of
+  compromise or exposure?
 answers:
   # Quoted: unquoted, YAML reads yes and no as true and false.
   "yes": >-
-    It could involve compromise or exposure: a suspicious link or attachment, an
-    unexpected sign-in or MFA prompt, a lost or stolen device, malware
-    behaviour, credentials shared or requested, data sent to the wrong place.
-    When in doubt, yes.
+    It shows a sign of compromise or exposure: a suspicious link, attachment or
+    message; an unexpected sign-in, MFA prompt or account change; a lost or
+    stolen device; malware behaviour; a password or other credential that
+    someone else may have, or that was shared with or asked for by someone who
+    should not have it; data sent to, or seen by, the wrong people. When in
+    doubt about compromise or exposure, yes.
   "no": >-
-    None of the above: nothing in it could involve compromise or exposure.
+    Nothing in it suggests compromise or exposure. A routine request or fault
+    about access, accounts, passwords, MFA, keys or certificates is no unless it
+    shows one of the signs above.
+# d1-v1 counted any credential "shared or requested". On the label set, the 28
+# rows it labelled yes beyond the 12 written as security items scored like the
+# rows labelled no for both engines, so a cut that stopped them all stopped
+# nearly every Work item (report_d1_v1.md). d1-v2 keeps the signs of compromise
+# and makes routine asks no.
 # Set from the label set, never guessed (ADR-0040): the value at which every
 # labelled security item reaches a person. Keyed by the engine it was measured
 # on (#274), and empty until that report has been run.

@@ -23,6 +23,7 @@ from typer.testing import CliRunner
 
 from opspilot.errors import ProviderError
 from opspilot.label_set import (
+    ANSWER_SPACE,
     BATCH_SIZE,
     BATCHES,
     DRAFT_PROMPT_PATH,
@@ -39,7 +40,7 @@ from opspilot.label_set import (
     near_duplicates,
     plan_slots,
     relabel_rows,
-    review_security,
+    relabel_security,
     run_draft,
     run_trial,
 )
@@ -490,7 +491,7 @@ class TestLabel:
         assert types == ["incident", "service_request", "service_request", "service_request"]
         assert rows[1]["label_note"] == "needs a second look" and rows[0]["label_note"] is None
         for r in rows:
-            assert r["answer_space"] == {"d2": "d2-v1", "d1": "d1-v1"}
+            assert r["answer_space"] == ANSWER_SPACE
             assert (r["labelled_by"], r["labelled_at"], r["labelled_time"]) == (
                 "vicenteliu",
                 "2026-10-07",
@@ -724,101 +725,109 @@ def test_cli_relabel_refuses_too_soon_and_says_when(tmp_path: Path) -> None:
     assert not out.exists()
 
 
-# ── Reviewing the security column where it and the drafter split (#225) ─────
+# ── Relabelling the security column against a new answer space (#225) ───────
 
-D1_TEXT = "d1-v1 definition shown to the reviewer"
+D1_TEXT = "d1-v2 definition shown to the labeller"
 
 
-def _split_set(tmp_path: Path) -> Path:
-    """Four labelled rows: 1 agrees with the drafter on yes, 2 and 3 split, 4 agrees on no."""
+def _labelled_set(tmp_path: Path) -> Path:
+    """Four rows labelled against d1-v1: two yes, two no."""
     path = _set_file(tmp_path, 4, labelled=True)
     rows = _read(path)
-    for row, (label, drafted) in zip(
-        rows, [("yes", "yes"), ("yes", "no"), ("yes", "no"), ("no", "no")], strict=True
-    ):
-        row["security"], row["draft_security"] = label, drafted
+    for row, label in zip(rows, ["yes", "yes", "no", "no"], strict=True):
+        row["security"] = label
+        row["answer_space"] = {"d2": "d2-v1", "d1": "d1-v1"}
     path.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
     return path
 
 
-def _review(path: Path, keys: Keys, shown: list[str] | None = None) -> Any:
-    return review_security(
+def _relabel(path: Path, keys: Keys, shown: list[str] | None = None) -> Any:
+    return relabel_security(
         path,
         by="vicenteliu",
         ask=keys,
         show=(shown.append if shown is not None else lambda s: None),
-        out=path.parent / "security_review_v1.jsonl",
+        version="d1-v2",
         definition=D1_TEXT,
-        clock=_at("2026-10-12T01:00:00+00:00"),
+        out=path.parent / "security_d1_v2.jsonl",
+        clock=_at("2026-10-12T03:00:00+00:00"),
     )
 
 
-class TestReviewSecurity:
-    def test_reviews_only_the_split_rows_and_applies_what_changed(self, tmp_path: Path) -> None:
-        path = _split_set(tmp_path)
+class TestRelabelSecurity:
+    def test_labels_every_row_blind_and_keeps_the_old_label_beside_the_new(
+        self, tmp_path: Path
+    ) -> None:
+        path = _labelled_set(tmp_path)
         shown: list[str] = []
-        res = _review(path, Keys("n", "y"), shown)
+        res = _relabel(path, Keys("n", "y", "n", "n"), shown)
 
-        assert (res.reviewed, res.total, res.changed, res.finished) == (2, 2, 1, True)
+        assert (res.labelled, res.total, res.changed, res.finished) == (4, 4, 1, True)
         text = "\n".join(shown)
-        assert "LS1-002" in text and "LS1-003" in text
-        assert "LS1-001" not in text and "LS1-004" not in text
-        assert D1_TEXT in text and "you labelled: yes" in text
-        assert "draft" not in text and TOPICS[2] not in text  # the drafter stays hidden
-        assert [r["security"] for r in _read(path)] == ["yes", "no", "yes", "no"]
-        log = _read(path.parent / "security_review_v1.jsonl")
-        assert [(e["id"], e["before"], e["after"]) for e in log] == [
-            ("LS1-002", "yes", "no"),
-            ("LS1-003", "yes", "yes"),
-        ]
-        assert {e["reviewed_by"] for e in log} == {"vicenteliu"}
-        assert {e["reviewed_time"] for e in log} == {"2026-10-12T01:00:00+00:00"}
+        assert D1_TEXT in text and all(f"LS1-00{i}" in text for i in range(1, 5))
+        assert "you labelled" not in text and "draft" not in text  # blind to both
+        rows = _read(path)
+        assert [r["security"] for r in rows] == ["no", "yes", "no", "no"]
+        assert [r["security_d1_v1"] for r in rows] == ["yes", "yes", "no", "no"]
+        assert {r["answer_space"]["d1"] for r in rows} == {"d1-v2"}
+        assert {r["answer_space"]["d2"] for r in rows} == {"d2-v1"}  # the type label stands
+        log = _read(path.parent / "security_d1_v2.jsonl")
+        assert [(e["id"], e["after"]) for e in log][0] == ("LS1-001", "no")
+        assert {e["labelled_time"] for e in log} == {"2026-10-12T03:00:00+00:00"}
 
     def test_q_leaves_the_set_untouched_and_a_rerun_finishes_the_same_rows(
         self, tmp_path: Path
     ) -> None:
-        path = _split_set(tmp_path)
+        path = _labelled_set(tmp_path)
         before = path.read_text(encoding="utf-8")
-        res = _review(path, Keys("n", "q"))
-        assert (res.reviewed, res.finished) == (1, False)
+        res = _relabel(path, Keys("n", "q"))
+        assert (res.labelled, res.finished) == (1, False)
         assert path.read_text(encoding="utf-8") == before  # applied only once all are done
+        res = _relabel(path, Keys("y", "n", "n"))
+        assert (res.labelled, res.changed, res.finished) == (4, 1, True)
 
-        res = _review(path, Keys("y"))
-        assert (res.reviewed, res.changed, res.finished) == (2, 1, True)
-        assert _read(path)[1]["security"] == "no"
-
-    def test_u_goes_back_and_the_row_is_reviewed_again(self, tmp_path: Path) -> None:
-        path = _split_set(tmp_path)
-        res = _review(path, Keys("n", "u", "y", "y"))
+    def test_u_goes_back_and_the_row_is_labelled_again(self, tmp_path: Path) -> None:
+        path = _labelled_set(tmp_path)
+        res = _relabel(path, Keys("n", "u", "y", "y", "n", "n"))
         assert res.changed == 0
-        assert [r["security"] for r in _read(path)] == ["yes", "yes", "yes", "no"]
 
-    def test_a_saved_review_refuses_a_set_that_changed_under_it(self, tmp_path: Path) -> None:
-        path = _split_set(tmp_path)
-        _review(path, Keys("n", "q"))
+    def test_a_rerun_after_a_finished_pass_reports_it_and_keeps_the_first_label(
+        self, tmp_path: Path
+    ) -> None:
+        path = _labelled_set(tmp_path)
+        _relabel(path, Keys("n", "y", "n", "n"))
+        res = _relabel(path, Keys())  # nothing left to ask
+        assert (res.labelled, res.changed, res.finished) == (4, 1, True)
+        assert [r["security_d1_v1"] for r in _read(path)] == ["yes", "yes", "no", "no"]
+
+    def test_a_saved_pass_refuses_a_set_that_changed_under_it(self, tmp_path: Path) -> None:
+        path = _labelled_set(tmp_path)
+        _relabel(path, Keys("n", "q"))
         rows = _read(path)
-        rows[2]["security"] = "no"  # edited between sittings, not by the review
+        rows[2]["security"] = "yes"  # edited between sittings
         path.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
         with pytest.raises(
-            LabelSetError, match=r"the set changed under the saved review \(LS1-003\)"
+            LabelSetError, match=r"the set changed under the saved pass \(LS1-003\)"
         ):
-            _review(path, Keys("y"))
+            _relabel(path, Keys("n"))
 
     def test_needs_a_labelled_set(self, tmp_path: Path) -> None:
         with pytest.raises(LabelSetError, match="label every row first"):
-            _review(_set_file(tmp_path, 3), Keys())
+            _relabel(_set_file(tmp_path, 3), Keys())
 
 
-def test_cli_review_security_shows_the_definition_and_prints_counts(tmp_path: Path) -> None:
+def test_cli_relabel_security_shows_d1_s_definitions_and_prints_counts(tmp_path: Path) -> None:
     from opspilot import cli
 
-    path = _split_set(tmp_path)
-    out = tmp_path / "security_review_v1.jsonl"
+    path = _labelled_set(tmp_path)
+    out = tmp_path / "security_d1_v2.jsonl"
     result = CliRunner().invoke(
         cli.app,
-        ["labelset", "review-security", "--by", "v", "--set", str(path), "--out", str(out)],
-        input="n\ny\n",
+        ["labelset", "relabel-security", "--by", "v", "--set", str(path), "--out", str(out)],
+        input="n\ny\nn\nn\n",
     )
     assert result.exit_code == 0, result.output
-    assert "When in doubt, yes." in result.output  # d1.yaml's own words
-    assert "reviewed 2 of 2 · changed 1 · security yes on 2 of 4 rows" in result.output
+    assert "routine request" in result.output  # d1.yaml's own words, the no side too
+    assert (
+        "labelled 4 of 4 against d1-v2 · changed 1 · security yes on 1 of 4 rows" in result.output
+    )

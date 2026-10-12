@@ -84,7 +84,8 @@ class TestDecisionFile:
         q = load_question(REPO_ROOT / DECISIONS_DIR / "d1.yaml")
         assert (q.id, q.kind, q.version) == ("d1", "noul", ANSWER_SPACE["d1"])
         assert set(q.answers) == {"yes", "no"}  # quoted in the file, not YAML booleans
-        assert "When in doubt, yes." in q.answers["yes"]
+        assert "When in doubt about compromise or exposure, yes." in q.answers["yes"]
+        assert "routine request" in q.answers["no"]  # d1-v2: routine asks are not security
         assert q.thresholds == {}  # measured from the label set, never guessed
 
     @pytest.mark.parametrize(
@@ -272,7 +273,7 @@ class TestQuestionJudge:
         judge, provider = self._judge('{"answer": "yes", "probability": 0.9}')
         q = load_question(D1)
         j = judge.judge(q, "Lost my laptop on the train", timeout_s=7.5)
-        assert (j.question, j.version, j.answer, j.probability) == ("d1", "d1-v1", "yes", 0.9)
+        assert (j.question, j.version, j.answer, j.probability) == ("d1", q.version, "yes", 0.9)
         assert j.engine == judge.name and j.engine.startswith("playbook:")
         assert j.cost_usd == 0.00027  # what the call cost, kept
         [call] = provider.calls

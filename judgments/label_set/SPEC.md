@@ -15,7 +15,7 @@ Two columns now, the rest later. Each is labelled against a versioned answer spa
 | Column | Decision | Answer space | Version | Used by |
 |---|---|---|---|---|
 | `work_item_type` | 2 · Incident or request? | `incident` · `service_request` | `d2-v1` | #224 (this slice) |
-| `security` | 1 · Security issue? | `yes` · `no` | `d1-v1` | #225 |
+| `security` | 1 · Security issue? | `yes` · `no` | `d1-v2` (was `d1-v1`) | #225 |
 
 **`d2-v1`**, the definitions the Playbook's classifier already uses
 (`playbooks/pb_classify_work_item_en/prompt.md`):
@@ -23,11 +23,21 @@ Two columns now, the rest later. Each is labelled against a versioned answer spa
 - `service_request`: an ask for something standard: access, an account, software, hardware, a
   change to a mailbox or group. Nothing is broken.
 
-**`d1-v1`**: `yes` when the item could involve compromise or exposure: a suspicious link or
-attachment, an unexpected sign-in or MFA prompt, a lost or stolen device, malware behaviour,
-credentials shared or requested, data sent to the wrong place. `no` otherwise. When in doubt,
-`yes`: the threshold for decision 1 is set so that every labelled security item reaches a person,
-and false alarms are the price (ADR-0040).
+**`d1-v2`** (2026-10-12, #225), as `judgments/decisions/d1.yaml` states it: `yes` when the item
+shows a sign of compromise or exposure: a suspicious link, attachment or message; an unexpected
+sign-in, MFA prompt or account change; a lost or stolen device; malware behaviour; a password or
+other credential that someone else may have, or that was shared with or asked for by someone who
+should not have it; data sent to, or seen by, the wrong people. `no` when nothing suggests
+compromise or exposure: a routine request or fault about access, accounts, passwords, MFA, keys or
+certificates is `no` unless it shows one of those signs. When in doubt about compromise or
+exposure, `yes`: the threshold for decision 1 is set so that every labelled security item reaches
+a person, and false alarms are the price (ADR-0040).
+
+**`d1-v1`**, superseded: `yes` when the item could involve compromise or exposure, including any
+credentials "shared or requested". On this set 40 rows were labelled `yes` under it: the 12 the
+drafter wrote as security items, and 28 it had not. Both engines scored those 28 like the rows
+labelled `no`, so a cut that stopped every labelled `yes` stopped nearly every Work item
+(`report_d1_v1.md`). Its labels are kept on each row as `security_d1_v1`.
 
 The other decisions' columns (already open, enough to act on, network or system, impact, urgency,
 seen before) exist in the schema and stay empty until their slice.
@@ -44,7 +54,7 @@ seen before) exist in the schema and stay empty until their slice.
 | `draft_intent` | drafter | what the drafter meant: `incident` · `service_request` · `ambiguous`; **hidden from the labeller**, never ground truth |
 | `draft_security` | drafter | `yes` · `no`; hidden, never ground truth |
 | `work_item_type` | **person** | `d2-v1` |
-| `security` | **person** | `d1-v1` |
+| `security` | **person** | `d1-v2`; the `d1-v1` label it replaced is kept as `security_d1_v1` |
 | `label_confidence` | **person** | `high` · `low`. Low = "I picked, but it could go the other way" |
 | `label_note` | person, optional | one line, only when the reason isn't obvious |
 | `answer_space` | script | `{"d2": "d2-v1", "d1": "d1-v1"}` at labelling time |
@@ -119,10 +129,16 @@ security.
 - **Security review** (#225, added after labelling): decision 1's threshold is set so that every
   labelled security item reaches a person, so each `security: yes` is a row the stage stops on.
   Every row whose `security` label and `draft_security` split is reviewed once more against
-  `d1-v1` (`opspilot labelset review-security`). The reviewer sees the row and the label they
+  `d1-v1`, with `opspilot labelset review-security` (since replaced by `relabel-security`; its
+  record is `security_review_v1.jsonl`). The reviewer sees the row and the label they
   gave it; the drafter's intent stays hidden. Each answer, before and after, goes to
   `security_review_v1.jsonl`, and the set changes only once every split row has been reviewed.
   The review is not blind, and the report says so.
+- **Security relabel** (#225, `d1-v2`): when the answer space changed, every row's `security`
+  column was labelled again against `d1-v2` (`opspilot labelset relabel-security`): blind to the
+  label given before and to the drafter's intent, but by the labeller who had seen these rows
+  twice. Each answer goes to `security_d1_v2.jsonl`, and the set changes only once every row has
+  one. The d1-v1 relabel and review are not read against `d1-v2` labels.
 
 ## 7. How the report uses it
 
@@ -140,8 +156,8 @@ so a run cut short resumes and the report can be recomputed without calling anyt
 writes `d2.yaml`: the threshold is set from it by a person.
 
 **Decision 1** (#225): `opspilot labelset report --decision d1` asks Jev and the Playbook's model
-`d1-v1` as written, keeps its calls in `runs_d1_v1.jsonl` (both decisions' Playbook-model engines
-share a name), and reports, per engine, accuracy at 0.5 and the Brier score on P(yes), and the
+`d1.yaml` as written, keeps its calls in a file named by the answer space's version
+(`runs_d1_v1.jsonl`, `runs_d1_v2.jsonl`: both decisions' Playbook-model engines share a name), and reports, per engine, accuracy at 0.5 and the Brier score on P(yes), and the
 decision-1 threshold: the highest P(yes) at which every labelled security item stops (ADR-0040),
 with its recall, the share of all calls it stops, and its false alarms among the rows labelled
 `no`. As for decision 2, a person sets `d1.yaml`'s threshold from it.
