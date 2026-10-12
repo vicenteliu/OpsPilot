@@ -69,6 +69,7 @@ from .kb.kb_loader import load_kb_fixture
 from .kb.lance_store import LanceStore
 from .kb.retrieval import kb_search
 from .kb.sqlite_store import SqliteStore
+from .kb.ssc import ssc_pages
 from .kb.storage_init import init_sqlite
 from .label_report import (
     RUNS,
@@ -397,29 +398,41 @@ def ingest(
         )
         raise typer.Exit(code=1)
 
-    cfg = load_config()
-    embed_fn, embedding_model = _kb_embedding(cfg, embedding_model, embed_model_short)
-    sqlite, lance = _open_kb_stores(
-        home=cfg.home,
-        embedding_dim=embedding_dim,
+    _ingest_and_report(
+        paths,
         embedding_model=embedding_model,
-    )
-    redactor = Redactor.from_yaml()
-    ic = IngestConfig(
+        embedding_dim=embedding_dim,
+        embed_model_short=embed_model_short,
         kb_id=kb_id,
         namespace=namespace,
         classification=classification,
-        embedding_model=embedding_model,
-        embedding_dim=embedding_dim,
         source_authority=cast("SourceAuthority", source_authority),
+    )
+
+
+def _ingest_and_report(
+    paths: list[Path],
+    *,
+    embedding_model: str | None,
+    embedding_dim: int,
+    embed_model_short: str,
+    **config: Any,
+) -> SqliteStore:
+    """Ingest ``paths`` into the KB with these IngestConfig fields, print the run, return the store."""
+    cfg = load_config()
+    embed_fn, resolved_model = _kb_embedding(cfg, embedding_model, embed_model_short)
+    sqlite, lance = _open_kb_stores(
+        home=cfg.home,
+        embedding_dim=embedding_dim,
+        embedding_model=resolved_model,
     )
     stats = run_ingest(
         paths,
         sqlite=sqlite,
         lance=lance,
-        redactor=redactor,
+        redactor=Redactor.from_yaml(),
         embed_fn=embed_fn,
-        config=ic,
+        config=IngestConfig(embedding_model=resolved_model, embedding_dim=embedding_dim, **config),
     )
 
     table = Table(title=f"Ingest run {stats.run_id}")
@@ -449,6 +462,7 @@ def ingest(
 
     if stats.docs_failed > 0:
         raise typer.Exit(code=2)
+    return sqlite
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -890,6 +904,68 @@ def kb_load_dir(
     if failed:
         _err.print(f"[red]{failed} fixture(s) failed[/red]")
         raise typer.Exit(code=1)
+
+
+@kb_app.command("ingest")
+def kb_ingest(
+    profile: str = typer.Option(..., "--profile", help="The source's profile: ssc (ADR-0038)."),
+    source: Path | None = typer.Option(  # noqa: B008
+        None, "--source", help="The SSC checkout. Default: $OPSPILOT_SSC_PATH."
+    ),
+    kb_id: str = typer.Option("opspilot:public-kb", "--kb-id", help="KB namespace identifier."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="List the pages; ingest nothing."),
+    embedding_model: str | None = typer.Option(
+        None, "--embedding-model", help="Pin provider/model@date. Default: what the server uses."
+    ),
+    embedding_dim: int = typer.Option(768, "--embedding-dim", help="Vector dim."),
+    embed_model_short: str = typer.Option(
+        "nomic-embed-text-v2-moe", "--ollama-embed-model", help="Short Ollama tag."
+    ),
+) -> None:
+    """Build the KB from the SSC handbook, its single source (ADR-0038).
+
+    Each page is recorded under its path inside the handbook, so it keeps one
+    key wherever SSC is checked out: what a known fix and its audience are
+    looked up by (#226). SSC is public, and is ingested as such.
+    """
+    if profile != "ssc":
+        _err.print(f"[red]--profile must be ssc; got {profile!r}[/red]")
+        raise typer.Exit(code=1)
+    root = source or (Path(p) if (p := os.environ.get("OPSPILOT_SSC_PATH")) else None)
+    if root is None or not root.is_dir():
+        _err.print("[red]give --source <SSC checkout>, or set OPSPILOT_SSC_PATH[/red]")
+        raise typer.Exit(code=1)
+    pages = ssc_pages(root)
+    if dry_run:
+        typer.echo(f"{len(pages)} pages in {root}")
+        for page in pages:
+            typer.echo(f"  {page.relative_to(root).as_posix()}")
+        return
+    sqlite = _ingest_and_report(
+        pages,
+        embedding_model=embedding_model,
+        embedding_dim=embedding_dim,
+        embed_model_short=embed_model_short,
+        kb_id=kb_id,
+        classification="public",
+        source_root=root,
+    )
+    # A build adds and updates; it does not delete. Say what the handbook no
+    # longer has, so a removed or renamed page is not cited on (ADR-0038).
+    built = {page.relative_to(root).as_posix() for page in pages}
+    stale = [
+        (doc_id, path)
+        for doc_id, path in sqlite._conn.execute(
+            "SELECT id, source_path FROM kb_documents WHERE namespace = ? ORDER BY source_path",
+            (kb_id,),
+        )
+        if path not in built
+    ]
+    if stale:
+        _console.print(f"\n{len(stale)} documents in {kb_id} are not pages of this handbook build:")
+        for doc_id, path in stale:
+            _console.print(f"  {doc_id}  {path}", markup=False)
+        _console.print("Remove any that should not be cited: opspilot kb delete <id> -m <why>")
 
 
 @kb_app.command("conflicts")
