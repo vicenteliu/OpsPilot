@@ -77,6 +77,13 @@ class TestDecisionFile:
             "playbook:anthropic/claude-haiku-5-5": 0.70,
         }
 
+    def test_d1_is_the_security_answer_space_the_label_set_is_labelled_against(self) -> None:
+        q = load_question(REPO_ROOT / DECISIONS_DIR / "d1.yaml")
+        assert (q.id, q.kind, q.version) == ("d1", "noul", ANSWER_SPACE["d1"])
+        assert set(q.answers) == {"yes", "no"}  # quoted in the file, not YAML booleans
+        assert "When in doubt, yes." in q.answers["yes"]
+        assert q.thresholds == {}  # measured from the label set, never guessed
+
     @pytest.mark.parametrize(
         ("body", "message"),
         [

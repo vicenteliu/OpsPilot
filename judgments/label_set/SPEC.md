@@ -116,6 +116,13 @@ security.
   after the first pass's last `labelled_time`; a row with only a date (the day its sitting began)
   counts from two hours after the end of that UTC day. The relabel refuses to start sooner. The agreement rate goes in the report; if it is
   under 9 of 10, that says as much about the answer space as about the engines.
+- **Security review** (#225, added after labelling): decision 1's threshold is set so that every
+  labelled security item reaches a person, so each `security: yes` is a row the stage stops on.
+  Every row whose `security` label and `draft_security` split is reviewed once more against
+  `d1-v1` (`opspilot labelset review-security`). The reviewer sees the row and the label they
+  gave it; the drafter's intent stays hidden. Each answer, before and after, goes to
+  `security_review_v1.jsonl`, and the set changes only once every split row has been reviewed.
+  The review is not blind, and the report says so.
 
 ## 7. How the report uses it
 

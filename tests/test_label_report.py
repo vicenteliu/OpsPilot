@@ -217,6 +217,19 @@ class TestReport:
         assert "type 9/10 (95% CI 59.6%–98.2%)" in md
         assert "security 10/10" in md
 
+    def test_the_relabel_is_read_against_the_first_pass_not_the_reviewed_label(self) -> None:
+        rows = [_row(i, "incident") for i in range(1, 11)]
+        for r in rows:
+            r["security"] = "no"  # LS1-001 reviewed from yes to no after the relabel
+        relabels = [{"id": r["id"], "work_item_type": "incident", "security": "no"} for r in rows]
+        relabels[0]["security"] = "yes"
+        reviews = [{"id": "LS1-001", "before": "yes", "after": "no"}]
+        md = report_markdown(
+            rows, _records("e", {"LS1-001": ("incident", 0.9)}), relabels, D2, reviews
+        )
+        assert "security 10/10" in md  # the first pass said yes, and so did the relabel
+        assert "## Security review" in md and "1 changed. The review was not blind" in md
+
     def test_failed_calls_are_counted_and_kept_out_of_accuracy(self) -> None:
         rows = [_row(1, "incident"), _row(2, "incident")]
         records = _records("e", {"LS1-001": ("incident", 0.9)})
