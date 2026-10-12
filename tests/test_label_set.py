@@ -39,6 +39,7 @@ from opspilot.label_set import (
     near_duplicates,
     plan_slots,
     relabel_rows,
+    review_security,
     run_draft,
     run_trial,
 )
@@ -721,3 +722,103 @@ def test_cli_relabel_refuses_too_soon_and_says_when(tmp_path: Path) -> None:
     message = " ".join(result.output.split())
     assert "too soon" in message and "(in 20h00m)" in message
     assert not out.exists()
+
+
+# ── Reviewing the security column where it and the drafter split (#225) ─────
+
+D1_TEXT = "d1-v1 definition shown to the reviewer"
+
+
+def _split_set(tmp_path: Path) -> Path:
+    """Four labelled rows: 1 agrees with the drafter on yes, 2 and 3 split, 4 agrees on no."""
+    path = _set_file(tmp_path, 4, labelled=True)
+    rows = _read(path)
+    for row, (label, drafted) in zip(
+        rows, [("yes", "yes"), ("yes", "no"), ("yes", "no"), ("no", "no")], strict=True
+    ):
+        row["security"], row["draft_security"] = label, drafted
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    return path
+
+
+def _review(path: Path, keys: Keys, shown: list[str] | None = None) -> Any:
+    return review_security(
+        path,
+        by="vicenteliu",
+        ask=keys,
+        show=(shown.append if shown is not None else lambda s: None),
+        out=path.parent / "security_review_v1.jsonl",
+        definition=D1_TEXT,
+        clock=_at("2026-10-12T01:00:00+00:00"),
+    )
+
+
+class TestReviewSecurity:
+    def test_reviews_only_the_split_rows_and_applies_what_changed(self, tmp_path: Path) -> None:
+        path = _split_set(tmp_path)
+        shown: list[str] = []
+        res = _review(path, Keys("n", "y"), shown)
+
+        assert (res.reviewed, res.total, res.changed, res.finished) == (2, 2, 1, True)
+        text = "\n".join(shown)
+        assert "LS1-002" in text and "LS1-003" in text
+        assert "LS1-001" not in text and "LS1-004" not in text
+        assert D1_TEXT in text and "you labelled: yes" in text
+        assert "draft" not in text and TOPICS[2] not in text  # the drafter stays hidden
+        assert [r["security"] for r in _read(path)] == ["yes", "no", "yes", "no"]
+        log = _read(path.parent / "security_review_v1.jsonl")
+        assert [(e["id"], e["before"], e["after"]) for e in log] == [
+            ("LS1-002", "yes", "no"),
+            ("LS1-003", "yes", "yes"),
+        ]
+        assert {e["reviewed_by"] for e in log} == {"vicenteliu"}
+        assert {e["reviewed_time"] for e in log} == {"2026-10-12T01:00:00+00:00"}
+
+    def test_q_leaves_the_set_untouched_and_a_rerun_finishes_the_same_rows(
+        self, tmp_path: Path
+    ) -> None:
+        path = _split_set(tmp_path)
+        before = path.read_text(encoding="utf-8")
+        res = _review(path, Keys("n", "q"))
+        assert (res.reviewed, res.finished) == (1, False)
+        assert path.read_text(encoding="utf-8") == before  # applied only once all are done
+
+        res = _review(path, Keys("y"))
+        assert (res.reviewed, res.changed, res.finished) == (2, 1, True)
+        assert _read(path)[1]["security"] == "no"
+
+    def test_u_goes_back_and_the_row_is_reviewed_again(self, tmp_path: Path) -> None:
+        path = _split_set(tmp_path)
+        res = _review(path, Keys("n", "u", "y", "y"))
+        assert res.changed == 0
+        assert [r["security"] for r in _read(path)] == ["yes", "yes", "yes", "no"]
+
+    def test_a_saved_review_refuses_a_set_that_changed_under_it(self, tmp_path: Path) -> None:
+        path = _split_set(tmp_path)
+        _review(path, Keys("n", "q"))
+        rows = _read(path)
+        rows[2]["security"] = "no"  # edited between sittings, not by the review
+        path.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+        with pytest.raises(
+            LabelSetError, match=r"the set changed under the saved review \(LS1-003\)"
+        ):
+            _review(path, Keys("y"))
+
+    def test_needs_a_labelled_set(self, tmp_path: Path) -> None:
+        with pytest.raises(LabelSetError, match="label every row first"):
+            _review(_set_file(tmp_path, 3), Keys())
+
+
+def test_cli_review_security_shows_the_definition_and_prints_counts(tmp_path: Path) -> None:
+    from opspilot import cli
+
+    path = _split_set(tmp_path)
+    out = tmp_path / "security_review_v1.jsonl"
+    result = CliRunner().invoke(
+        cli.app,
+        ["labelset", "review-security", "--by", "v", "--set", str(path), "--out", str(out)],
+        input="n\ny\n",
+    )
+    assert result.exit_code == 0, result.output
+    assert "When in doubt, yes." in result.output  # d1.yaml's own words
+    assert "reviewed 2 of 2 · changed 1 · security yes on 2 of 4 rows" in result.output

@@ -167,6 +167,7 @@ def report_markdown(
     records: list[dict[str, Any]],
     relabels: list[dict[str, Any]] | None,
     question: Question,
+    reviews: list[dict[str, Any]] | None = None,
 ) -> str:
     """The report SPEC §7 asks for, from the runs file and the relabel."""
     labels = {r["id"]: r["work_item_type"] for r in rows}
@@ -246,11 +247,25 @@ def report_markdown(
     if not relabels:
         lines.append("no relabel file: the set has not been relabelled yet.")
     else:
-        by_id = {r["id"]: r for r in rows}
+        # Against the first pass: a security label the review changed is read
+        # as it stood before the review, so the agreement keeps its meaning.
+        first = {r["id"]: dict(r) for r in rows}
+        for e in reviews or []:
+            first[e["id"]]["security"] = e["before"]
         n = len(relabels)
         for column in ("work_item_type", "security"):
-            k = sum(p[column] == by_id[p["id"]][column] for p in relabels)
+            k = sum(p[column] == first[p["id"]][column] for p in relabels)
             lo, hi = wilson(k, n)
             name = "type" if column == "work_item_type" else column
             lines.append(f"- {name} {k}/{n} (95% CI {_pct(lo)}–{_pct(hi)})")
+    if reviews:
+        changed = sum(e["after"] != e["before"] for e in reviews)
+        lines += [
+            "",
+            "## Security review (SPEC §6)",
+            "",
+            f"After labelling, the {len(reviews)} rows whose `security` label and the drafter's"
+            f" split were reviewed again against d1; {changed} changed. The review was not blind:"
+            " the reviewer saw the label they had given.",
+        ]
     return "\n".join(lines) + "\n"

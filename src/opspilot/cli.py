@@ -75,10 +75,12 @@ from .label_set import (
     OUT_PATH,
     RELABEL_AFTER,
     RELABEL_PATH,
+    REVIEW_PATH,
     LabelSetError,
     _read_jsonl,
     label_rows,
     relabel_rows,
+    review_security,
     run_draft,
     run_trial,
 )
@@ -1895,6 +1897,40 @@ def labelset_relabel(
     )
 
 
+@labelset_app.command("review-security")
+def labelset_review_security(
+    by: str = typer.Option(..., "--by", help="The reviewer's handle, recorded on each answer."),
+    path: Path = typer.Option(OUT_PATH, "--set", help="The labelled set."),  # noqa: B008
+    out: Path = typer.Option(REVIEW_PATH, "--out", "-o", help="Where the answers go."),  # noqa: B008
+) -> None:
+    """Look again at the security label on every row where it and the drafter split (#225).
+
+    Each row shows its subject, body and channel and the label you gave it,
+    beside d1's definition; y / n answers, u goes back and q stops. Every
+    answer is saved, and the set changes only once all are reviewed.
+    """
+    try:
+        d1_path = DECISIONS_DIR / "d1.yaml"
+        if not d1_path.is_file():
+            raise LabelSetError(f"{d1_path} not found; run from the repo root")
+        d1 = load_question(d1_path)
+        res = review_security(
+            path, by=by, ask=_ask_line, show=typer.echo, out=out, definition=d1.answers["yes"]
+        )
+    except OpsPilotError as e:
+        _console.print(f"Error: {e}", style="red", markup=False)
+        raise typer.Exit(1) from e
+    if not res.finished:
+        typer.echo(f"\nsaved · {res.reviewed}/{res.total} reviewed; rerun to continue")
+        return
+    rows = _read_jsonl(path)
+    yes = sum(r["security"] == "yes" for r in rows)
+    typer.echo(
+        f"\nreviewed {res.reviewed} of {res.total} · changed {res.changed}"
+        f" · security yes on {yes} of {len(rows)} rows"
+    )
+
+
 @labelset_app.command("report")
 def labelset_report(
     path: Path = typer.Option(OUT_PATH, "--set", help="The labelled set."),  # noqa: B008
@@ -1946,6 +1982,7 @@ def labelset_report(
             _read_jsonl(runs_out),
             _read_jsonl(relabel) if relabel.is_file() else None,
             question,
+            _read_jsonl(REVIEW_PATH) if REVIEW_PATH.is_file() else None,
         )
     except OpsPilotError as e:
         _console.print(f"Error: {e}", style="red", markup=False)

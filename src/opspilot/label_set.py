@@ -685,3 +685,99 @@ def relabel_rows(
         type_agree=sum(p["work_item_type"] == by_id[p["id"]]["work_item_type"] for p in done),
         security_agree=sum(p["security"] == by_id[p["id"]]["security"] for p in done),
     )
+
+
+# ── Reviewing the security column (#225) ────────────────────────────────────
+
+REVIEW_PATH: Final = LABEL_SET_DIR / "security_review_v1.jsonl"
+
+
+@dataclass(frozen=True)
+class ReviewResult:
+    reviewed: int
+    total: int
+    changed: int  # labels the review turned the other way
+
+    @property
+    def finished(self) -> bool:
+        return self.reviewed == self.total
+
+
+def review_security(
+    path: Path = OUT_PATH,
+    *,
+    by: str,
+    ask: Ask,
+    show: Show,
+    out: Path = REVIEW_PATH,
+    definition: str,
+    clock: Clock = _utc_now,
+) -> ReviewResult:
+    """Look again at the security label on every row where it and the drafter split.
+
+    Decision 1's threshold is set so that every labelled security item reaches
+    a person (ADR-0040), so each ``yes`` is a row the stage will stop on. The
+    reviewer sees the row, the label they gave it and d1's definition; what
+    the drafter intended stays hidden. Each answer goes to ``out``, which is
+    the record of what changed and keeps a review cut short resumable. The set
+    is rewritten only once every row has been reviewed.
+    """
+    if not path.is_file():
+        raise LabelSetError(f"{path} not found: draft the set first")
+    rows = _read_jsonl(path)
+    if any(r["security"] is None for r in rows):
+        raise LabelSetError("label every row first; the review reads the finished set")
+    if out.is_file():
+        reviews = _read_jsonl(out)
+    else:
+        reviews = [
+            {"id": r["id"], "before": r["security"], "after": None}
+            for r in rows
+            if r["security"] != r["draft_security"]
+        ]
+        _write_jsonl(out, reviews)
+    by_id = {r["id"]: r for r in rows}
+    moved = [
+        e["id"] for e in reviews if by_id[e["id"]]["security"] not in (e["before"], e["after"])
+    ]
+    if moved:
+        raise LabelSetError(
+            f"the set changed under the saved review ({', '.join(moved)}); "
+            f"move {out} aside and start the review again"
+        )
+
+    show(f"d1-v1, security yes: {definition}")
+    i = next((j for j, e in enumerate(reviews) if e["after"] is None), len(reviews))
+    while i < len(reviews):
+        entry = reviews[i]
+        row = by_id[entry["id"]]
+        show(f"\n── {row['id']} ({i + 1}/{len(reviews)}) · {row['channel']} ──")
+        show(f"Subject: {row['subject'] or '(none)'}")
+        show(row["body"] or "(no body)")
+        show(f"you labelled: {entry['before']}")
+        answer = _ask_choice(
+            ask, "security? [y]es / [n]o  (u back, q quit)", _SECURITY_KEYS, nav=True
+        )
+        if answer == "q":
+            break
+        if answer == "u":
+            i = max(i - 1, 0)
+            continue
+        entry.update(
+            after=answer,
+            reviewed_by=by,
+            reviewed_time=clock().astimezone(UTC).isoformat(timespec="seconds"),
+        )
+        _write_jsonl(out, reviews)
+        i += 1
+
+    done = [e for e in reviews if e["after"] is not None]
+    if len(done) == len(reviews):
+        for e in reviews:
+            by_id[e["id"]]["security"] = e["after"]
+        _write_jsonl(path, rows)
+    return ReviewResult(
+        reviewed=len(done),
+        total=len(reviews),
+        changed=sum(e["after"] != e["before"] for e in done),
+    )
