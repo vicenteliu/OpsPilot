@@ -149,6 +149,22 @@ class IngestConfig:
     detect_conflicts: bool = True  # run conflict detection after each doc
     source_authority: SourceAuthority = "internal"
     conflict_similarity_threshold: float = 0.82
+    # When set, a document's source_path is its path relative to this root, so
+    # a page keeps one key wherever the source is checked out (ADR-0038).
+    source_root: Path | None = None
+
+
+def _source_key(path: Path, cfg: IngestConfig) -> str:
+    """The source_path a file is recorded and deduplicated under."""
+    if cfg.source_root is None:
+        return str(path)
+    try:
+        return path.resolve().relative_to(cfg.source_root.resolve()).as_posix()
+    except ValueError as e:
+        raise ValueError(
+            f"{path} resolves outside the source root {cfg.source_root} (a symlink?), "
+            "so it has no key inside the source"
+        ) from e
 
 
 @dataclass
@@ -254,7 +270,7 @@ def ingest(
 
     for path in files:
         try:
-            with _path_lock(path, lock_dir):
+            with _path_lock(Path(_source_key(path, cfg)), lock_dir):
                 r = _ingest_one(
                     path,
                     sqlite=sqlite,
@@ -402,7 +418,7 @@ def _ingest_one(
     doc_id = f"doc_{digest[:8]}"
 
     # Dedup: identical content + identical source_path = no-op.
-    existing = _find_doc_by_source_path(sqlite, str(path))
+    existing = _find_doc_by_source_path(sqlite, _source_key(path, cfg))
     if existing and existing[1] == content_hash:
         return FileResult(
             source_path=path,
@@ -437,7 +453,7 @@ def _ingest_one(
     sqlite.upsert_document(
         {
             "id": doc_id,
-            "source_path": str(path),
+            "source_path": _source_key(path, cfg),
             "title": title,
             "classification": cfg.classification,
             "content_hash": content_hash,
