@@ -34,7 +34,9 @@ async def _process(body: ApiIntakeRequest, request: Request) -> None:
         logger.exception("webhook intake run failed for %s (redelivery will retry)", body.key)
         request.app.state.intake_seen.discard(body.key)
         return
-    if res.needs_confirmation:
+    if (res.security or {}).get("stops"):
+        logger.warning("webhook intake %s stopped: possible security issue", body.key)
+    elif res.needs_confirmation:
         logger.warning("webhook intake %s withheld: classification needs confirmation", body.key)
     elif res.error:
         logger.warning("webhook intake %s failed: %s", body.key, res.error)

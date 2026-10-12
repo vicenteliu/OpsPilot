@@ -16,9 +16,11 @@ from opspilot.errors import ConfigError, ProviderError
 from opspilot.judgment import (
     DECISIONS_DIR,
     ClassificationJudge,
+    Decision,
     Judgment,
     JudgmentError,
     Question,
+    QuestionJudge,
     Stage,
     TypeSafeJudge,
     build_stage,
@@ -32,6 +34,7 @@ from opspilot.providers.types import ChatResponse, Usage
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 D2 = REPO_ROOT / DECISIONS_DIR / "d2.yaml"
+D1 = REPO_ROOT / DECISIONS_DIR / "d1.yaml"
 
 
 class _Classifier:
@@ -208,6 +211,35 @@ class TestTypeSafeJudge:
         with pytest.raises(JudgmentError, match=message):
             _jev(handler).judge(load_question(D2), "s", timeout_s=7.5)
 
+    @pytest.mark.parametrize(
+        ("p_yes", "answer", "probability"), [(0.93, "yes", 0.93), (0.2, "no", 0.8)]
+    )
+    def test_asks_a_noul_with_its_meanings_as_criteria(
+        self, p_yes: float, answer: str, probability: float
+    ) -> None:
+        sent: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            sent.append(request)
+            body = {
+                "model": "jev-1.13.0",
+                "answers": {"d1": {"type": "noul", "noul": p_yes}},
+                "usage": {"input_tokens": 200, "output_tokens": 20},
+            }
+            return httpx.Response(200, json=body)
+
+        q = load_question(D1)
+        j = _jev(handler).judge(q, "Lost my laptop on the train", timeout_s=5)
+        assert json.loads(sent[0].content)["questions"] == {
+            "d1": {
+                "type": "noul",
+                "instructions": q.text,
+                "criteria": {"true": q.answers["yes"], "false": q.answers["no"]},
+            }
+        }
+        # The answer the probability leans to, and that answer's probability.
+        assert (j.answer, j.probability) == pytest.approx((answer, probability))  # type: ignore[comparison-overlap]
+
     def test_refuses_a_question_kind_it_does_not_ask_yet(self) -> None:
         sent: list[httpx.Request] = []
 
@@ -215,10 +247,47 @@ class TestTypeSafeJudge:
             sent.append(request)
             return httpx.Response(200, json=_JEV_ANSWER)
 
-        security = Question("d1", "d1-v1", "noul", "Security?", {"yes": "", "no": ""}, None)
-        with pytest.raises(JudgmentError, match="only choice questions"):
-            _jev(handler).judge(security, "s", timeout_s=5)
+        impact = Question("d7", "d7-v1", "score", "Impact?", {"a": "", "b": ""}, None)
+        with pytest.raises(JudgmentError, match="does not ask score questions yet"):
+            _jev(handler).judge(impact, "s", timeout_s=5)
         assert sent == []
+
+
+# ── The Playbook's model, asked a Question in its file's words ──────────────
+
+
+class TestQuestionJudge:
+    def _judge(self, content: str, **kw: Any) -> tuple[QuestionJudge, _Classifier]:
+        provider = _Classifier(content, **kw)
+        playbook = load_playbook(REPO_ROOT / "playbooks" / "pb_classify_work_item_en")
+        return QuestionJudge(playbook, provider), provider  # type: ignore[arg-type]
+
+    def test_asks_the_question_and_its_answers_and_reads_the_json(self) -> None:
+        judge, provider = self._judge('{"answer": "yes", "probability": 0.9}')
+        q = load_question(D1)
+        j = judge.judge(q, "Lost my laptop on the train", timeout_s=7.5)
+        assert (j.question, j.version, j.answer, j.probability) == ("d1", "d1-v1", "yes", 0.9)
+        assert j.engine == judge.name and j.engine.startswith("playbook:")
+        assert j.cost_usd == 0.00027  # what the call cost, kept
+        [call] = provider.calls
+        system, user = call["messages"]
+        assert q.text in system.content and q.answers["yes"] in system.content
+        assert user.content == "Lost my laptop on the train"
+        assert call["timeout_ms"] == 7500
+
+    @pytest.mark.parametrize(
+        ("content", "message"),
+        [
+            ("not json", "unreadable answer"),
+            ('{"answer": "maybe", "probability": 0.5}', "'maybe', outside the answer space"),
+            ('{"answer": "yes", "probability": 1.4}', "probability must be between 0 and 1"),
+            ('["yes", 0.9]', "unreadable answer"),
+        ],
+    )
+    def test_an_answer_it_cannot_use_is_an_engine_failure(self, content: str, message: str) -> None:
+        judge, _ = self._judge(content)
+        with pytest.raises(JudgmentError, match=message):
+            judge.judge(load_question(D1), "s", timeout_s=5)
 
 
 class _Down:
@@ -274,19 +343,29 @@ class TestFallback:
 # ── The stage: built at startup, and wired into the run (ADR-0040) ───────────
 
 
-def _decisions(tmp_path: Path, threshold: str) -> Path:
-    text = re.sub(
-        r"^threshold: .*$", f"threshold: {threshold}", D2.read_text(encoding="utf-8"), flags=re.M
-    )
-    (tmp_path / "d2.yaml").write_text(text, encoding="utf-8")
+def _decisions(tmp_path: Path, threshold: str, security: str = "0.07") -> Path:
+    for src, value in ((D2, threshold), (D1, security)):
+        text = re.sub(
+            r"^threshold: .*$", f"threshold: {value}", src.read_text(encoding="utf-8"), flags=re.M
+        )
+        (tmp_path / src.name).write_text(text, encoding="utf-8")
     return tmp_path
 
 
 class TestBuildStage:
     def test_refuses_to_start_until_the_threshold_is_measured(self, tmp_path: Path) -> None:
         playbook = load_playbook(REPO_ROOT / "playbooks" / "pb_classify_work_item_en")
-        with pytest.raises(ConfigError, match=r"no threshold\. Measure it on the label set"):
+        with pytest.raises(ConfigError, match=r"d2\.yaml has no threshold\. Measure it"):
             build_stage(_decisions(tmp_path, "null"), playbook, _Classifier(""))  # type: ignore[arg-type]
+
+    def test_refuses_to_start_until_decision_1_is_measured_too(self, tmp_path: Path) -> None:
+        playbook = load_playbook(REPO_ROOT / "playbooks" / "pb_classify_work_item_en")
+        with pytest.raises(ConfigError, match=r"d1\.yaml has no threshold\. Measure it"):
+            build_stage(
+                _decisions(tmp_path, "0.94", security="null"),
+                playbook,
+                _Classifier(""),  # type: ignore[arg-type]
+            )
 
     def test_without_a_typesafe_key_the_playbook_model_decides_alone_and_the_log_says_so(
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
@@ -294,10 +373,13 @@ class TestBuildStage:
         playbook = load_playbook(REPO_ROOT / "playbooks" / "pb_classify_work_item_en")
         with caplog.at_level(logging.WARNING, logger="opspilot.judgment"):
             stage = build_stage(_decisions(tmp_path, "0.82"), playbook, _Classifier(_REQUEST))  # type: ignore[arg-type]
-        assert stage.threshold == 0.82 and stage.fallback is None
-        assert isinstance(stage.primary, ClassificationJudge)
+        d2 = stage.work_item_type
+        assert d2.threshold == 0.82 and d2.fallback is None
+        assert isinstance(d2.primary, ClassificationJudge)
+        assert stage.security.threshold == 0.07 and stage.security.fallback is None
+        assert isinstance(stage.security.primary, QuestionJudge)
         assert "without TYPESAFE_API_KEY" in caplog.text
-        j = stage.decide(stage.work_item_type, "state")
+        j = d2.decide("state")
         assert (j.answer, j.probability, j.fallback) == ("service_request", 0.58, None)
 
     def test_with_a_typesafe_key_jev_decides_and_the_playbook_model_falls_back(
@@ -310,9 +392,13 @@ class TestBuildStage:
             _Classifier(_REQUEST),  # type: ignore[arg-type]
             typesafe_api_key=" ts-test-key\n",  # as a key file pastes it
         )
-        assert isinstance(stage.primary, TypeSafeJudge)
-        assert stage.primary.name == "typesafe:jev-1.13.0"
-        assert isinstance(stage.fallback, ClassificationJudge)
+        for decision, baseline in (
+            (stage.work_item_type, ClassificationJudge),
+            (stage.security, QuestionJudge),
+        ):
+            assert isinstance(decision.primary, TypeSafeJudge)
+            assert decision.primary.name == "typesafe:jev-1.13.0"
+            assert isinstance(decision.fallback, baseline)
 
     @pytest.mark.parametrize("key", ["ts test key", "ts-test-’key", "ts-\x00-key"])
     def test_a_malformed_typesafe_key_stops_the_start(self, tmp_path: Path, key: str) -> None:
@@ -325,12 +411,17 @@ class TestBuildStage:
                 typesafe_api_key=key,
             )
 
-    def test_with_a_fallback_the_stage_hands_over_on_failure(self) -> None:
+    def test_with_a_fallback_a_decision_hands_over_on_failure(self) -> None:
         baseline, _ = _baseline(_REQUEST)
-        stage = Stage(load_question(D2), 0.8, primary=_Down(), fallback=baseline)
-        assert stage.decide(stage.work_item_type, "s").fallback == (
-            "typesafe:jev-test: timed out after 2.0s"
-        )
+        decision = Decision(load_question(D2), 0.8, primary=_Down(), fallback=baseline)
+        assert decision.decide("s").fallback == "typesafe:jev-test: timed out after 2.0s"
+
+
+def _stage(threshold: float = 0.8, security_threshold: float = 0.1) -> Stage:
+    return Stage(
+        security=Decision(load_question(D1), security_threshold, primary=_Up()),
+        work_item_type=Decision(load_question(D2), threshold, primary=_Up()),
+    )
 
 
 class TestNeedsAPerson:
@@ -338,17 +429,31 @@ class TestNeedsAPerson:
         return Judgment("d2", "d2-v1", "incident", probability, "e", 1, 0.0, fallback)
 
     def test_at_or_above_the_threshold_the_primary_s_answer_routes(self) -> None:
-        stage = Stage(load_question(D2), 0.8, primary=_Up())
-        assert not stage.needs_a_person(self._judgment(0.8))
+        assert not _stage().needs_a_person(self._judgment(0.8))
 
     def test_below_the_threshold_a_person_picks(self) -> None:
-        stage = Stage(load_question(D2), 0.8, primary=_Up())
-        assert stage.needs_a_person(self._judgment(0.79))
+        assert _stage().needs_a_person(self._judgment(0.79))
 
     def test_a_fallback_s_answer_goes_to_a_person_however_sure_it_is(self) -> None:
         # The threshold was measured on the primary's probability, not the fallback's.
-        stage = Stage(load_question(D2), 0.8, primary=_Up())
-        assert stage.needs_a_person(self._judgment(0.99, fallback="typesafe:jev: HTTP 529"))
+        assert _stage().needs_a_person(self._judgment(0.99, fallback="typesafe:jev: HTTP 529"))
+
+
+class TestStopsForSecurity:
+    def _says(self, answer: str, probability: float, fallback: str | None = None) -> Judgment:
+        return Judgment("d1", "d1-v1", answer, probability, "e", 1, 0.0, fallback)
+
+    def test_stops_at_or_above_the_threshold_on_the_probability_of_yes(self) -> None:
+        stage = _stage(security_threshold=0.1)
+        assert stage.stops_for_security(self._says("yes", 0.6))
+        assert stage.stops_for_security(self._says("no", 0.9))  # P(yes) 0.1, on the cut
+        assert not stage.stops_for_security(self._says("no", 0.95))  # P(yes) 0.05
+
+    def test_a_fallback_s_answer_stops_however_sure_it_is_of_no(self) -> None:
+        # The one mistake the next step cannot undo is a wrong "not security".
+        assert _stage().stops_for_security(
+            self._says("no", 0.99, fallback="typesafe:jev: HTTP 529")
+        )
 
 
 class _Engine:
@@ -374,7 +479,13 @@ _UNTYPED = {
 }
 
 
-def _app_with_stage(engine: _Engine | _Down, fallback: _Engine | None = None) -> Any:
+def _app_with_stage(
+    engine: _Engine | _Down,
+    fallback: _Engine | None = None,
+    *,
+    security: _Engine | _Down | None = None,
+    security_fallback: _Engine | None = None,
+) -> Any:
     from collections.abc import AsyncIterator
     from contextlib import asynccontextmanager
     from unittest.mock import MagicMock
@@ -393,7 +504,15 @@ def _app_with_stage(engine: _Engine | _Down, fallback: _Engine | None = None) ->
         app.state.redactor = Redactor.from_yaml()
         app.state.classify_pb = MagicMock()
         app.state.classify_threshold = 0.7
-        app.state.judgments = Stage(load_question(D2), 0.8, primary=engine, fallback=fallback)
+        app.state.judgments = Stage(
+            security=Decision(
+                load_question(D1),
+                0.1,
+                primary=security or _Engine("no", 0.97),
+                fallback=security_fallback,
+            ),
+            work_item_type=Decision(load_question(D2), 0.8, primary=engine, fallback=fallback),
+        )
         app.state.sqlite = app.state.lance = app.state.mcp_registry = None
         app.state.embed_fn = lambda text: [0.0]
         yield
@@ -439,11 +558,13 @@ class TestStageInTheRun:
         # Only the redacted text reaches an engine.
         [state] = engine.states
         assert "Need Jira access" in state and "jane.doe@example.com" not in state
-        # The Judgment lands on the Session's trace.
+        assert data["security"]["question"] == "d1" and data["security"]["stops"] is False
+        # Both Judgments land on the Session's trace, security first.
         writes = app.state.session_mgr.trace.return_value.__enter__.return_value.write
-        [event] = [c.args[0] for c in writes.call_args_list]
-        assert event.payload["event"] == "judgment"
-        assert event.payload["details"]["probability"] == 0.93
+        events = [c.args[0].payload for c in writes.call_args_list]
+        assert [e["event"] for e in events] == ["judgment", "judgment"]
+        assert [e["details"]["question"] for e in events] == ["d1", "d2"]
+        assert events[1]["details"]["probability"] == 0.93
         app.state.session_mgr.trace.assert_called_with("sess_J1")
 
     def test_below_the_threshold_a_person_decides_and_nothing_runs(self) -> None:
@@ -485,13 +606,13 @@ class TestStageInTheRun:
             "typesafe:jev-test: timed out after 2.0s"
         )
 
-    def test_a_declared_type_skips_the_stage(self) -> None:
+    def test_a_declared_type_skips_decision_2_and_not_decision_1(self) -> None:
         from unittest.mock import patch
 
         from fastapi.testclient import TestClient
 
-        engine = _Engine("service_request", 0.99)
-        app = _app_with_stage(engine)
+        engine, security = _Engine("service_request", 0.99), _Engine("no", 0.97)
+        app = _app_with_stage(engine, security=security)
         declared = {**_UNTYPED, "work_item_type": "incident"}
         with (
             patch("opspilot.api.routes.run.run_ticket_summary", return_value=_run_result()) as run,
@@ -500,9 +621,97 @@ class TestStageInTheRun:
             data = client.post("/api/run/stream", json={"input": declared})
 
         assert data.status_code == 200
-        assert engine.states == []
+        assert engine.states == [] and len(security.states) == 1
         assert run.call_args.args[0].playbook is app.state.playbook
-        app.state.session_mgr.trace.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "extra",
+        [{}, {"work_item_type": "service_request"}, {"playbook_id": "pb_request_fulfillment_en"}],
+        ids=["untyped", "declared type", "explicit playbook"],
+    )
+    @pytest.mark.parametrize("path", ["/api/run", "/api/run/stream"])
+    def test_a_security_yes_stops_the_run_whatever_was_declared(
+        self, extra: dict[str, str], path: str
+    ) -> None:
+        from unittest.mock import patch
+
+        from fastapi.testclient import TestClient
+
+        engine = _Engine("service_request", 0.99)
+        app = _app_with_stage(engine, security=_Engine("yes", 0.62))
+        body: dict[str, Any] = {"input": {**_UNTYPED, **extra}}
+        if "playbook_id" in extra:
+            body = {"input": _UNTYPED, "playbook_id": extra["playbook_id"]}
+        with (
+            patch("opspilot.api.routes.run.classify_work_item") as classify,
+            patch("opspilot.api.routes.run.run_ticket_summary") as run,
+            TestClient(app) as client,
+        ):
+            res = client.post(path, json=body)
+        data = res.json() if path == "/api/run" else _stream_result(res.text)
+
+        run.assert_not_called()
+        classify.assert_not_called()
+        assert engine.states == []  # nothing after decision 1 is asked
+        assert data["needs_confirmation"] is True and data["session_id"] == ""
+        assert data["classification"] is None
+        assert data["security"]["stops"] is True and data["security"]["answer"] == "yes"
+
+    def test_when_jev_cannot_answer_security_the_run_stops_for_a_person(self) -> None:
+        from unittest.mock import patch
+
+        from fastapi.testclient import TestClient
+
+        app = _app_with_stage(
+            _Engine("service_request", 0.99),
+            security=_Down(),
+            security_fallback=_Engine("no", 0.99),
+        )
+        with (
+            patch("opspilot.api.routes.run.run_ticket_summary") as run,
+            TestClient(app) as client,
+        ):
+            data = client.post("/api/run", json={"input": _UNTYPED}).json()
+
+        run.assert_not_called()
+        assert data["security"]["stops"] is True
+        assert data["security"]["fallback"] == "typesafe:jev-test: timed out after 2.0s"
+
+    def test_when_no_engine_can_answer_security_the_run_stops_rather_than_fails(self) -> None:
+        from unittest.mock import patch
+
+        from fastapi.testclient import TestClient
+
+        class _AlsoDown(_Down):
+            name = "playbook:test"
+
+        app = _app_with_stage(
+            _Engine("service_request", 0.99),
+            security=_Down(),
+            security_fallback=_AlsoDown(),  # type: ignore[arg-type]
+        )
+        with (
+            patch("opspilot.api.routes.run.run_ticket_summary") as run,
+            TestClient(app) as client,
+        ):
+            res = client.post("/api/run", json={"input": _UNTYPED})
+
+        assert res.status_code == 200
+        run.assert_not_called()
+        data = res.json()
+        assert data["needs_confirmation"] is True
+        assert data["security"]["stops"] is True and data["security"]["answer"] is None
+        assert data["security"]["fallback"].startswith("no engine could answer")
+
+
+def _stream_result(text: str) -> dict[str, Any]:
+    """The `result` event's payload from an SSE body."""
+    for block in text.split("\n\n"):
+        if "event: result" in block or '"type": "result"' in block:
+            data = next(line[5:].strip() for line in block.splitlines() if line.startswith("data:"))
+            payload = json.loads(data)
+            return dict(payload.get("data", payload))
+    raise AssertionError(f"no result event in {text!r}")
 
 
 def test_the_trace_schema_accepts_a_judgment_event(tmp_path: Path) -> None:
@@ -521,7 +730,7 @@ def test_the_trace_schema_accepts_a_judgment_event(tmp_path: Path) -> None:
         model=Model(provider_id="anthropic", kind="anthropic", name="m", version="1", params={}),
     )
     j = Judgment("d2", "d2-v1", "service_request", 0.93, "typesafe:jev-test", 140, 0.00002)
-    _trace_judgment(SimpleNamespace(session_mgr=mgr), sess.id, {"judgment": j.as_trace()})
+    _trace_judgment(SimpleNamespace(session_mgr=mgr), sess.id, j.as_trace())
 
     lines = (mgr.session_dir(sess.id) / "trace.jsonl").read_text(encoding="utf-8").splitlines()
     [event] = [json.loads(line) for line in lines]

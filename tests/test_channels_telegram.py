@@ -236,6 +236,24 @@ class TestTelegramIntake:
         assert "/incident" in sent[-1]["text"]
         assert "suggestion" not in sent[-1]["text"]
 
+    def test_a_security_stop_says_so_and_offers_no_other_type(self) -> None:
+        run = self.FakeRun(
+            {
+                "session_id": "",
+                "schema_valid": False,
+                "error": None,
+                "needs_confirmation": True,
+                "classification": None,
+                "security": {"answer": "yes", "probability": 0.7, "stops": True, "fallback": None},
+            }
+        )
+        sent: list[dict[str, Any]] = []
+        ch = self._channel(run, sent)
+        ch.handle_update(self._intake_update("/request please check this email, link inside"))
+        text = sent[-1]["text"].lower()
+        assert "security" in text and "a person" in text
+        assert "/incident" not in text and "suggestion" not in text.replace("no suggestion", "")
+
     def test_empty_text_gives_usage_hint_without_run(self) -> None:
         run = self.FakeRun()
         sent: list[dict[str, Any]] = []

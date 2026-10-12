@@ -146,6 +146,33 @@ def render_needs_person_comment(classification: dict[str, Any]) -> str:
     )
 
 
+def render_security_comment(security: dict[str, Any]) -> str:
+    """Render a run stopped at decision 1, a possible security issue (ADR-0040, #225).
+
+    Says why the item stopped, not what to pick: nothing after decision 1 was
+    asked, and a security issue is a person's to handle, whatever its type.
+    """
+    if security.get("fallback"):
+        why = (
+            "the security check could not complete, so OpsPilot could not rule a security "
+            f"event out ({security['fallback']})."
+        )
+    else:
+        p = float(security.get("probability") or 0.0)
+        p_yes = p if security.get("answer") == "yes" else 1 - p
+        why = f"this Work item may report a security event (p(yes)={p_yes:.2f})."
+    return "\n".join(
+        [
+            "## OpsPilot: a person is needed, possible security issue",
+            "",
+            f"OpsPilot stopped before suggesting anything: {why} It was not classified, no "
+            "knowledge-base fix was offered, and no Playbook ran.",
+            "",
+            "_A person should handle it; the system of record owns the final values._",
+        ]
+    )
+
+
 class IntakeState:
     """Processed-key state that survives adapter restarts (#58).
 
@@ -264,6 +291,10 @@ class IntakeLoop:
                 report.skipped.append((item.key, f"run failed: {exc}"))
                 continue
             self._state.mark(item.key)
+            security = res.get("security") or {}
+            if security.get("stops"):
+                self._deliver(item.key, render_security_comment(security), "", report)
+                continue
             if res.get("needs_confirmation"):
                 # No run happened, so there is no session id to mark the comment
                 # with: a retry after a lost response can post it twice.

@@ -15,6 +15,7 @@ from typing import Any
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
+from ...errors import OpsPilotError
 from ...orchestrator.classify import classify_work_item, declared_type, render_state
 from ...orchestrator.ticket_summary import run_ticket_summary
 from ...orchestrator.types import RunRequest as OrchestratorRunRequest
@@ -100,17 +101,56 @@ def _resolve_provider_and_playbook(body: ApiRunRequest, state: Any) -> tuple[Any
     return _apply_model_override(body, state, pb)
 
 
-def _trace_judgment(state: Any, session_id: str, classification: dict[str, Any] | None) -> None:
-    """Put the Judgment that chose this Session's playbook on its trace (ADR-0040).
+def _trace_judgment(state: Any, session_id: str, judgment: dict[str, Any] | None) -> None:
+    """Put a Judgment made before this Session ran on its trace (ADR-0040).
 
     Best-effort, the way escalation's back-reference is: a lost trace line must
     not lose the Session that was just run.
     """
-    judgment = (classification or {}).get("judgment")
     if judgment is None or not session_id:
         return
     with contextlib.suppress(Exception), state.session_mgr.trace(session_id) as tw:
         tw.write(TraceEvent.system(event="judgment", details=judgment))
+
+
+def _judge_security(state: Any, ticket_path: Path) -> dict[str, Any] | None:
+    """Decision 1, asked first of every Work item while the stage is on (ADR-0040).
+
+    Nothing skips it, not a declared type and not an explicit Playbook: a
+    phishing mail forwarded with "please check this" arrives as a request.
+    Returns the Judgment with whether it stops the run, or None when the
+    stage is off. A stop starts no Session, so it is logged here.
+    """
+    stage = getattr(state, "judgments", None)
+    if stage is None:
+        return None
+    question = stage.security.question
+    try:
+        judgment = stage.security.decide(render_state(ticket_path, state.redactor))
+    except OpsPilotError as e:
+        # No engine could answer, so a security event cannot be ruled out: the
+        # item stops for a person rather than failing, or running unchecked.
+        logger.warning("security stop: no engine could answer %s: %s", question.id, e)
+        return {
+            "question": question.id,
+            "version": question.version,
+            "answer": None,
+            "probability": None,
+            "engine": None,
+            "fallback": f"no engine could answer: {e}",
+            "stops": True,
+        }
+    stops = stage.stops_for_security(judgment)
+    logger.log(
+        logging.WARNING if stops else logging.INFO,
+        "security %s: %s answered %s (p=%.2f)%s",
+        "stop" if stops else "pass",
+        judgment.engine,
+        judgment.answer,
+        judgment.probability,
+        f" after {judgment.fallback}" if judgment.fallback else "",
+    )
+    return {**judgment.as_trace(), "stops": stops}
 
 
 def _resolve_run_plan(
@@ -139,7 +179,7 @@ def _resolve_run_plan(
 
     stage = getattr(state, "judgments", None)
     if stage is not None:
-        judgment = stage.decide(stage.work_item_type, render_state(ticket_path, state.redactor))
+        judgment = stage.work_item_type.decide(render_state(ticket_path, state.redactor))
         # The shape every reader of `classification` already takes: the web's
         # confirm banner, the JSM "needs a person" comment, Telegram.
         decided: dict[str, Any] = {
@@ -182,10 +222,13 @@ async def run_ticket(body: ApiRunRequest, request: Request) -> ApiRunResponse:
     try:
         loop = asyncio.get_event_loop()
 
-        def _plan_and_run() -> tuple[Any, dict[str, Any] | None, bool]:
+        def _plan_and_run() -> tuple[Any, dict[str, Any] | None, bool, dict[str, Any] | None]:
+            security = _judge_security(state, ticket_path)
+            if security is not None and security["stops"]:
+                return None, None, True, security
             provider, pb, classification, needs_conf = _resolve_run_plan(body, state, ticket_path)
             if needs_conf:
-                return None, classification, True
+                return None, classification, True, security
             orch_request = OrchestratorRunRequest(
                 playbook=pb, input_path=ticket_path, owner="api:default"
             )
@@ -199,10 +242,13 @@ async def run_ticket(body: ApiRunRequest, request: Request) -> ApiRunResponse:
                 lance_store=state.lance,
                 mcp_registry=getattr(state, "mcp_registry", None),
             )
-            _trace_judgment(state, res.session_id, classification)
-            return res, classification, False
+            _trace_judgment(state, res.session_id, security)
+            _trace_judgment(state, res.session_id, (classification or {}).get("judgment"))
+            return res, classification, False, security
 
-        result, classification, needs_conf = await loop.run_in_executor(None, _plan_and_run)
+        result, classification, needs_conf, security = await loop.run_in_executor(
+            None, _plan_and_run
+        )
     finally:
         ticket_path.unlink(missing_ok=True)
 
@@ -216,6 +262,7 @@ async def run_ticket(body: ApiRunRequest, request: Request) -> ApiRunResponse:
             usage=None,
             classification=classification,
             needs_confirmation=True,
+            security=security,
         )
 
     return ApiRunResponse(
@@ -231,6 +278,7 @@ async def run_ticket(body: ApiRunRequest, request: Request) -> ApiRunResponse:
         ),
         classification=classification,
         needs_confirmation=False,
+        security=security,
         assets_drafted=_draft_assets(state, result),
     )
 
@@ -256,10 +304,13 @@ async def run_ticket_stream(body: ApiRunRequest, request: Request) -> StreamingR
     def on_progress(msg: str) -> None:
         loop.call_soon_threadsafe(queue.put_nowait, {"type": "status", "message": msg})
 
-    def _plan_and_run() -> tuple[Any, dict[str, Any] | None, bool]:
+    def _plan_and_run() -> tuple[Any, dict[str, Any] | None, bool, dict[str, Any] | None]:
+        security = _judge_security(state, ticket_path)
+        if security is not None and security["stops"]:
+            return None, None, True, security
         provider, pb, classification, needs_conf = _resolve_run_plan(body, state, ticket_path)
         if needs_conf:
-            return None, classification, True
+            return None, classification, True, security
         orch_request = OrchestratorRunRequest(
             playbook=pb, input_path=ticket_path, owner="api:default"
         )
@@ -274,12 +325,15 @@ async def run_ticket_stream(body: ApiRunRequest, request: Request) -> StreamingR
             mcp_registry=getattr(state, "mcp_registry", None),
             on_progress=on_progress,
         )
-        _trace_judgment(state, res.session_id, classification)
-        return res, classification, False
+        _trace_judgment(state, res.session_id, security)
+        _trace_judgment(state, res.session_id, (classification or {}).get("judgment"))
+        return res, classification, False, security
 
     async def _run_in_thread() -> None:
         try:
-            result, classification, needs_conf = await loop.run_in_executor(None, _plan_and_run)
+            result, classification, needs_conf, security = await loop.run_in_executor(
+                None, _plan_and_run
+            )
             if needs_conf:
                 payload: dict[str, Any] = {
                     "session_id": "",
@@ -290,6 +344,7 @@ async def run_ticket_stream(body: ApiRunRequest, request: Request) -> StreamingR
                     "usage": None,
                     "classification": classification,
                     "needs_confirmation": True,
+                    "security": security,
                 }
             else:
                 payload = {
@@ -307,6 +362,7 @@ async def run_ticket_stream(body: ApiRunRequest, request: Request) -> StreamingR
                     else None,
                     "classification": classification,
                     "needs_confirmation": False,
+                    "security": security,
                     "assets_drafted": _draft_assets(state, result),
                 }
             await queue.put({"type": "result", "data": payload})

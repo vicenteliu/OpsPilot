@@ -210,6 +210,10 @@ class ApiRunResponse(BaseModel):
     # human pick (low confidence); re-submit with an explicit playbook_id.
     classification: dict[str, Any] | None = None
     needs_confirmation: bool = False
+    # Decision 1, the security Judgment, when the Judgments stage is on
+    # (ADR-0040), with "stops". A stop also sets needs_confirmation, so a reader
+    # that knows nothing of it still sees that no run happened.
+    security: dict[str, Any] | None = None
     # Asset ids drafted from this run's asset_draft block (ADR-0018).
     assets_drafted: list[str] = []
 
