@@ -49,8 +49,10 @@ from .iteration.types import IterationPolicy
 from .judgment import (
     DECISIONS_DIR,
     JUDGMENT_TIMEOUT_S,
+    SECURITY_FILE,
     WORK_ITEM_TYPE_FILE,
     ClassificationJudge,
+    QuestionJudge,
     TypeSafeJudge,
     load_question,
 )
@@ -68,7 +70,14 @@ from .kb.lance_store import LanceStore
 from .kb.retrieval import kb_search
 from .kb.sqlite_store import SqliteStore
 from .kb.storage_init import init_sqlite
-from .label_report import RUNS, RUNS_PATH, report_markdown, run_engines
+from .label_report import (
+    RUNS,
+    RUNS_D1_PATH,
+    RUNS_PATH,
+    report_markdown,
+    run_engines,
+    security_report_markdown,
+)
 from .label_set import (
     BUDGET_USD,
     DRAFT_PROMPT_PATH,
@@ -1933,26 +1942,36 @@ def labelset_review_security(
 
 @labelset_app.command("report")
 def labelset_report(
+    decision: str = typer.Option(
+        "d2", "--decision", help="d2 (incident or request) or d1 (security issue)."
+    ),
     path: Path = typer.Option(OUT_PATH, "--set", help="The labelled set."),  # noqa: B008
-    runs_out: Path = typer.Option(RUNS_PATH, "--runs", help="Every call, appended as it returns."),  # noqa: B008
+    runs_path: Path | None = typer.Option(  # noqa: B008
+        None, "--runs", help="Every call, appended as it returns. Default: the decision's own."
+    ),
     relabel: Path = typer.Option(RELABEL_PATH, "--relabel", help="The relabel, if done."),  # noqa: B008
+    review: Path = typer.Option(REVIEW_PATH, "--review", help="The security review, if done."),  # noqa: B008
     out: Path | None = typer.Option(None, "--out", "-o", help="Also write the report here."),  # noqa: B008
     runs: int = typer.Option(RUNS, "--runs-per-engine", min=1, help="Passes over the set."),
     no_call: bool = typer.Option(False, "--no-call", help="Report from the runs file only."),
 ) -> None:
-    """Run Jev and the Playbook's model over the labelled set and report decision 2 (SPEC §7).
+    """Run Jev and the Playbook's model over the labelled set and report a decision (SPEC §7).
 
     Each engine answers every row three times. Every call is saved as it
     returns, so a rerun resumes and only retries what failed; ``--no-call``
     recomputes the report from the runs file. Needs TYPESAFE_API_KEY and the
-    classification Playbook's provider key. Writes nothing to d2.yaml: the
-    threshold is set from the report by a person.
+    classification Playbook's provider key. Writes nothing to a decision file:
+    its threshold is set from the report by a person.
     """
     try:
+        if decision not in ("d1", "d2"):
+            raise LabelSetError(f"--decision is d1 or d2, not {decision!r}")
         if not path.is_file():
             raise LabelSetError(f"{path} not found; run from the repo root")
         rows = _read_jsonl(path)
-        question = load_question(DECISIONS_DIR / WORK_ITEM_TYPE_FILE)
+        name = SECURITY_FILE if decision == "d1" else WORK_ITEM_TYPE_FILE
+        question = load_question(DECISIONS_DIR / name)
+        runs_out = runs_path or (RUNS_D1_PATH if decision == "d1" else RUNS_PATH)
         if not no_call:
             key = os.environ.get("TYPESAFE_API_KEY", "").strip()
             if not key:
@@ -1964,10 +1983,17 @@ def labelset_report(
             provider = make_provider(
                 pb.model.provider_id, kind=pb.model.kind, api_key=cfg.anthropic_api_key
             )
+            # Decision 2's baseline is Classification as it stands; decision 1 has
+            # none of its own, so the Playbook's model is asked d1 as written.
+            baseline = (
+                QuestionJudge(pb, provider)
+                if decision == "d1"
+                else ClassificationJudge(pb, provider)
+            )
             made = run_engines(
                 rows,
                 question,
-                [TypeSafeJudge(key), ClassificationJudge(pb, provider)],
+                [TypeSafeJudge(key), baseline],
                 runs=runs,
                 out=runs_out,
                 redactor=Redactor.from_yaml(),
@@ -1977,13 +2003,23 @@ def labelset_report(
             typer.echo(f"{made} calls made; every call is in {runs_out}\n")
         if not runs_out.is_file():
             raise LabelSetError(f"{runs_out} not found; run without --no-call first")
-        md = report_markdown(
-            rows,
-            _read_jsonl(runs_out),
-            _read_jsonl(relabel) if relabel.is_file() else None,
-            question,
-            _read_jsonl(REVIEW_PATH) if REVIEW_PATH.is_file() else None,
-        )
+        reviews = _read_jsonl(review) if review.is_file() else None
+        if decision == "d1":
+            md = security_report_markdown(
+                rows,
+                _read_jsonl(runs_out),
+                question,
+                reviews,
+                _read_jsonl(relabel) if relabel.is_file() else None,
+            )
+        else:
+            md = report_markdown(
+                rows,
+                _read_jsonl(runs_out),
+                _read_jsonl(relabel) if relabel.is_file() else None,
+                question,
+                reviews,
+            )
     except OpsPilotError as e:
         _console.print(f"Error: {e}", style="red", markup=False)
         raise typer.Exit(1) from e

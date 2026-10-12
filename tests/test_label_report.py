@@ -13,9 +13,11 @@ from opspilot.judgment import DECISIONS_DIR, Judgment, Question, load_question
 from opspilot.label_report import (
     brier,
     percentile,
+    recall_cut,
     report_markdown,
     row_state,
     run_engines,
+    security_report_markdown,
     threshold,
     wilson,
 )
@@ -24,6 +26,7 @@ from opspilot.redaction import Redactor
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 D2 = load_question(REPO_ROOT / DECISIONS_DIR / "d2.yaml")
+D1 = load_question(REPO_ROOT / DECISIONS_DIR / "d1.yaml")
 
 
 def _row(i: int, label: str, confidence: str = "high", **kw: Any) -> dict[str, Any]:
@@ -306,3 +309,89 @@ class TestCli:
         assert result.exit_code == 1
         assert "TYPESAFE_API_KEY is not set" in result.output
         assert not runs.exists()
+
+
+# ── Decision 1: every labelled security item reaches a person (#225) ────────
+
+
+class TestSecurity:
+    def test_the_cut_is_the_lowest_p_yes_any_labelled_security_item_got(self) -> None:
+        judged = [(0.9, True), (0.3, True), (0.6, True), (0.2, False), (0.35, False)]
+        assert recall_cut(judged) == 0.3
+
+    def test_no_cut_without_a_labelled_security_item(self) -> None:
+        assert recall_cut([(0.4, False)]) is None
+
+    def _rows(self) -> list[dict[str, Any]]:
+        return [_row(i, "incident", security="yes" if i <= 4 else "no") for i in range(1, 11)]
+
+    def test_reports_each_engine_s_cut_its_recall_and_its_false_alarms(self) -> None:
+        rows = self._rows()
+        jev = {r["id"]: ("yes", 0.9) for r in rows[:4]} | {r["id"]: ("no", 0.95) for r in rows[4:]}
+        jev["LS1-002"] = ("no", 0.7)  # P(yes) 0.3 on a labelled yes: the cut
+        jev["LS1-005"] = ("no", 0.6)  # P(yes) 0.4 on a labelled no: a false alarm
+        model = {r["id"]: ("yes", 0.8) for r in rows[:4]} | {r["id"]: ("no", 0.9) for r in rows[4:]}
+        records = _records("typesafe:jev-1.13.0", jev, runs=2) + _records(
+            "playbook:m", model, runs=2
+        )
+        reviews = [
+            {"id": "LS1-003", "before": "yes", "after": "yes"},
+            {"id": "LS1-009", "before": "yes", "after": "no"},
+        ]
+        relabels = [{"id": "LS1-009", "work_item_type": "incident", "security": "yes"}]
+        md = security_report_markdown(rows, records, D1, reviews, relabels)
+
+        assert md.startswith("# d1-v1 on the label set")
+        assert "10 rows is not a benchmark" in md
+        assert "4 of 10 rows are labelled `security: yes`" in md
+        assert "1 of 2 reviewed labels changed, and the review was not blind" in md
+        assert "| typesafe:jev-1.13.0 | 20/0 | 90.0% |" in md  # LS1-002 answered no, twice
+        # Cut | recall | stopped | false alarms among the labelled no
+        assert "| typesafe:jev-1.13.0 | 0.300 | 8/8 (100.0%) | 10/20 (50.0%) | 2/12 (16.7%) |" in md
+        assert "| playbook:m | 0.800 | 8/8 (100.0%) | 8/20 (40.0%) | 0/12 (0.0%) |" in md
+        # LS1-009 was yes in the first pass, as in the relabel, before the review made it no.
+        assert "- security 1/1 (95% CI" in md
+
+    def test_a_d1_run_refuses_a_set_whose_security_column_is_unfinished(
+        self, tmp_path: Path
+    ) -> None:
+        rows = self._rows()
+        rows[3]["security"] = None
+        with pytest.raises(LabelSetError, match="label every row first"):
+            run_engines(
+                rows, D1, [], out=tmp_path / "r.jsonl", redactor=Redactor.from_yaml(), timeout_s=1
+            )
+
+    def test_failed_calls_are_kept_out_and_counted(self) -> None:
+        rows = self._rows()
+        answers = {r["id"]: ("yes" if r["security"] == "yes" else "no", 0.9) for r in rows}
+        records = _records("e", answers)
+        records[0] |= {"answer": None, "probability": None, "error": "boom"}
+        md = security_report_markdown(rows, records, D1, None)
+        assert "| e | 9/1 | 100.0% |" in md
+        assert "| e | 0.900 | 3/3 (100.0%) | 3/9 (33.3%) | 0/6 (0.0%) |" in md
+
+
+def test_cli_reports_decision_1_from_its_own_runs_file(tmp_path: Path) -> None:
+    from typer.testing import CliRunner
+
+    from opspilot import cli
+
+    rows = [_row(i, "incident", security="yes" if i <= 2 else "no") for i in range(1, 5)]
+    answers = {r["id"]: ("yes" if r["security"] == "yes" else "no", 0.9) for r in rows}
+    set_path, runs_path = tmp_path / "set.jsonl", tmp_path / "runs_d1.jsonl"
+    set_path.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    runs_path.write_text(
+        "".join(json.dumps(r) + "\n" for r in _records("e", answers)), encoding="utf-8"
+    )
+    result = CliRunner().invoke(
+        cli.app,
+        [
+            "labelset", "report", "--decision", "d1", "--no-call",
+            "--set", str(set_path), "--runs", str(runs_path),
+            "--relabel", str(tmp_path / "none.jsonl"), "--review", str(tmp_path / "none.jsonl"),
+        ],
+    )  # fmt: skip
+    assert result.exit_code == 0, result.output
+    assert "# d1-v1 on the label set" in result.output
+    assert "| e | 0.900 | 2/2 (100.0%) | 2/4 (50.0%) | 0/2 (0.0%) |" in result.output
