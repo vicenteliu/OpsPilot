@@ -139,9 +139,11 @@ either claim.
   without a person are at least 95% right on the label set. It is set on the
   same 80 rows it is measured on, so it is a measured start, not a guarantee.
   `d2.yaml` keys each threshold by the engine it was measured on, and the
-  stage refuses to start when the engine that would decide has none: without
-  `TYPESAFE_API_KEY` that is the Playbook's model, unmeasured on
-  `claude-haiku-5-5` (#274).
+  stage refuses to start when the engine that would decide has none (#274).
+  Without `TYPESAFE_API_KEY` the Playbook's model decides alone at its own
+  0.70, measured on `claude-haiku-5-5` on 2026-10-12: 88.8% right (Brier
+  0.077, 0.233 on the low-confidence rows) at $0.000159 a call and 2074 ms
+  p95, routing 200 of 240 answers at 95.5% right.
 
 *Not yet:*
 

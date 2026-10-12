@@ -17,10 +17,7 @@ answers:
 # which the items routed without a person are at least 95% right. Keyed by the
 # engine it was measured on: a probability is on its engine's own scale, so
 # the stage refuses to start when the engine that would decide has no entry
-# here (#274). The Playbook's model has none: its 0.75 in the report was
-# measured on claude-haiku-4-5, and classification now runs on
-# claude-haiku-5-5, so without TYPESAFE_API_KEY the stage refuses until that
-# is measured.
+# here (#274).
 #
 # 0.94 on Jev's probability (typesafe:jev-1.13.0), from
 # judgments/label_set/report_v1.md, run on 2026-10-11: at 0.94, 208 of its 240
@@ -29,5 +26,12 @@ answers:
 # from the fallback always goes to a person. Measured on the same 80 rows it
 # is reported on, with no held-out split, so measure it again when the label
 # set grows or JEV_MODEL changes.
+#
+# 0.70 on the Playbook's model (playbook:anthropic/claude-haiku-5-5), from the
+# same report, run on 2026-10-12: at 0.70, 200 of its 240 answers route
+# without a person and 95.5% of those are right. It decides only without
+# TYPESAFE_API_KEY. Its 0.75 on claude-haiku-4-5 is history, not a cut for
+# this model; measure again when the classification Playbook's model changes.
 thresholds:
   "typesafe:jev-1.13.0": 0.94
+  "playbook:anthropic/claude-haiku-5-5": 0.70
