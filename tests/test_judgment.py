@@ -6,6 +6,7 @@ import json
 import logging
 import re
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -382,11 +383,16 @@ class TestBuildStage:
         ):
             build_stage(_decisions(tmp_path, {}), playbook, _Classifier(""))  # type: ignore[arg-type]
 
-    def test_the_committed_files_wait_for_decision_1_to_be_measured(self) -> None:
-        """d2.yaml as committed has the Playbook's model's cut; d1.yaml has none yet."""
+    def test_the_committed_files_run_decision_2_without_decision_1_and_say_so(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """#225: d1 has no cut yet, being not ready to be automated; d2 runs at its own."""
         playbook = load_playbook(REPO_ROOT / "playbooks" / "pb_classify_work_item_en")
-        with pytest.raises(ConfigError, match=rf"d1\.yaml has no threshold for {PLAYBOOK}"):
-            build_stage(REPO_ROOT / DECISIONS_DIR, playbook, _Classifier(_REQUEST))  # type: ignore[arg-type]
+        with caplog.at_level(logging.WARNING, logger="opspilot.judgment"):
+            stage = build_stage(REPO_ROOT / DECISIONS_DIR, playbook, _Classifier(_REQUEST))  # type: ignore[arg-type]
+        assert stage.security is None
+        assert stage.work_item_type.threshold == 0.70
+        assert "runs WITHOUT decision 1" in caplog.text and PLAYBOOK in caplog.text
 
     def test_with_decision_1_measured_the_committed_d2_runs_the_playbook_model_at_its_cut(
         self, tmp_path: Path
@@ -422,12 +428,12 @@ class TestBuildStage:
         self, tmp_path: Path
     ) -> None:
         playbook = load_playbook(REPO_ROOT / "playbooks" / "pb_classify_work_item_en")
-        with pytest.raises(ConfigError, match=rf"d1\.yaml has no threshold for {PLAYBOOK}"):
-            build_stage(
-                _decisions(tmp_path, {JEV: 0.94, PLAYBOOK: 0.7}, security={JEV: 0.07}),
-                playbook,
-                _Classifier(""),  # type: ignore[arg-type]
-            )
+        stage = build_stage(
+            _decisions(tmp_path, {JEV: 0.94, PLAYBOOK: 0.7}, security={JEV: 0.07}),
+            playbook,
+            _Classifier(""),  # type: ignore[arg-type]
+        )
+        assert stage.security is None  # Jev's cut says nothing about the Playbook's model
 
     def test_without_a_typesafe_key_the_playbook_model_decides_alone_and_the_log_says_so(
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
@@ -787,6 +793,23 @@ class TestStageInTheRun:
         ):
             client.post("/api/run", json={"input": _UNTYPED})
         assert rendered.call_count == 1
+
+    def test_without_decision_1_the_run_goes_straight_to_decision_2(self) -> None:
+        from unittest.mock import patch
+
+        from fastapi.testclient import TestClient
+
+        app = _app_with_stage(_Engine("service_request", 0.93))
+        with (
+            patch("opspilot.api.routes.run.run_ticket_summary", return_value=_run_result()) as run,
+            TestClient(app) as client,
+        ):
+            # Set after the lifespan has built the stage: decision 1 is unmeasured.
+            app.state.judgments = replace(app.state.judgments, security=None)
+            data = client.post("/api/run", json={"input": _UNTYPED}).json()
+        run.assert_called_once()
+        assert data["security"] is None and data["needs_confirmation"] is False
+        assert data["classification"]["work_item_type"] == "service_request"
 
 
 def _stream_result(text: str) -> dict[str, Any]:

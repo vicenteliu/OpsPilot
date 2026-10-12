@@ -144,10 +144,19 @@ either claim.
   0.70, measured on `claude-haiku-5-5` on 2026-10-12: 88.8% right (Brier
   0.077, 0.233 on the low-confidence rows) at $0.000159 a call and 2074 ms
   p95, routing 200 of 240 answers at 95.5% right.
+- Decision 1, security (#225): asked first of every Work item, declared or not,
+  a possible security issue stops the run for a person on every surface (#278).
+  Measured against d1-v1 and a narrower d1-v2, relabelled blind (#279, #280),
+  no cut stopped every labelled security item without stopping nearly every
+  Work item: both engines find the 12 rows written as security items and score
+  the other 29 labelled yes like the rows labelled no. So it is not ready to be
+  automated, and the stage runs decision 2 without it, saying so at startup
+  (#282).
 
 *Not yet:*
 
-- The rest of ADR-0040's order of work, #225–#231; filed and not scheduled,
+- Decision 1's automation (#281).
+- The rest of ADR-0040's order of work, #226–#231; filed and not scheduled,
   #232 and #233.
 
 **The first end-to-end run.** On 2026-08-19 the Memory / Consultation /

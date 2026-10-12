@@ -130,8 +130,8 @@ def _judge_security(state: Any, rendered: str | None) -> dict[str, Any] | None:
     stage is off. A stop starts no Session, so it is logged here.
     """
     stage = getattr(state, "judgments", None)
-    if stage is None or rendered is None:
-        return None
+    if stage is None or stage.security is None or rendered is None:
+        return None  # off, or decision 1 not yet measured (the startup log says so)
     question = stage.security.question
     try:
         judgment = stage.security.decide(rendered)
