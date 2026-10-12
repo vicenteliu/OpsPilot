@@ -79,7 +79,7 @@ class TestDecisionFile:
         assert (q.id, q.kind, q.version) == ("d1", "noul", ANSWER_SPACE["d1"])
         assert set(q.answers) == {"yes", "no"}  # quoted in the file, not YAML booleans
         assert "When in doubt, yes." in q.answers["yes"]
-        assert q.threshold is None  # measured from the label set, never guessed
+        assert q.thresholds == {}  # measured from the label set, never guessed
 
     @pytest.mark.parametrize(
         ("body", "message"),

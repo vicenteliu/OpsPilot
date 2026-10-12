@@ -19,5 +19,6 @@ answers:
   "no": >-
     None of the above: nothing in it could involve compromise or exposure.
 # Set from the label set, never guessed (ADR-0040): the value at which every
-# labelled security item reaches a person. Empty until that report has been run.
-threshold: null
+# labelled security item reaches a person. Keyed by the engine it was measured
+# on (#274), and empty until that report has been run.
+thresholds: {}
