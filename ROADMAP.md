@@ -138,7 +138,10 @@ either claim.
   (`judgments/decisions/d2.yaml`): the lowest at which the items Jev routes
   without a person are at least 95% right on the label set. It is set on the
   same 80 rows it is measured on, so it is a measured start, not a guarantee.
-  `d2.yaml` holds one threshold, the primary engine's.
+  `d2.yaml` keys each threshold by the engine it was measured on, and the
+  stage refuses to start when the engine that would decide has none: without
+  `TYPESAFE_API_KEY` that is the Playbook's model, unmeasured on
+  `claude-haiku-5-5` (#274).
 
 *Not yet:*
 

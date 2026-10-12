@@ -14,7 +14,13 @@ answers:
     An ask for something standard: access, an account, software, hardware, a
     change to a mailbox or group. Nothing is broken.
 # Set from the label set, never guessed (SPEC §7): the lowest probability at
-# which the items routed without a person are at least 95% right.
+# which the items routed without a person are at least 95% right. Keyed by the
+# engine it was measured on: a probability is on its engine's own scale, so
+# the stage refuses to start when the engine that would decide has no entry
+# here (#274). The Playbook's model has none: its 0.75 in the report was
+# measured on claude-haiku-4-5, and classification now runs on
+# claude-haiku-5-5, so without TYPESAFE_API_KEY the stage refuses until that
+# is measured.
 #
 # 0.94 on Jev's probability (typesafe:jev-1.13.0), from
 # judgments/label_set/report_v1.md, run on 2026-10-11: at 0.94, 208 of its 240
@@ -23,4 +29,5 @@ answers:
 # from the fallback always goes to a person. Measured on the same 80 rows it
 # is reported on, with no held-out split, so measure it again when the label
 # set grows or JEV_MODEL changes.
-threshold: 0.94
+thresholds:
+  "typesafe:jev-1.13.0": 0.94
