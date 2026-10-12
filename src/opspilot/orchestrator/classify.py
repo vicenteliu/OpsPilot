@@ -82,6 +82,8 @@ def classify_state(
             temperature=playbook.model.params.get("temperature"),
             top_p=playbook.model.params.get("top_p"),
             max_tokens=playbook.model.params.get("max_tokens", 512),
+            thinking=playbook.model.params.get("thinking"),
+            effort=playbook.model.params.get("effort"),
         ),
         timeout_ms=timeout_ms,
     )

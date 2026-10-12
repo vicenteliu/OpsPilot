@@ -101,7 +101,7 @@ class TestClassificationJudge:
             "service_request",
             0.58,
         )
-        assert j.engine == "playbook:anthropic/claude-haiku-4-5-20251001"
+        assert j.engine == "playbook:anthropic/claude-haiku-5-5"
         assert j.cost_usd == 0.00027  # kept from the call, not assumed
         assert j.latency_ms >= 0 and j.fallback is None
         [call] = provider.calls
