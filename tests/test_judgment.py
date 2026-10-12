@@ -70,8 +70,9 @@ class TestDecisionFile:
         q = load_question(D2)
         assert (q.id, q.kind, q.version) == ("d2", "choice", ANSWER_SPACE["d2"])
         assert tuple(q.answers) == VALID_TYPES
-        # Measured on the label set (judgments/label_set/report_v1.md), never guessed.
-        assert q.threshold == 0.94
+        # Measured on the label set (judgments/label_set/report_v1.md), never guessed,
+        # and only for the engine it was measured on.
+        assert q.thresholds == {"typesafe:jev-1.13.0": 0.94}
 
     def test_d1_is_the_security_answer_space_the_label_set_is_labelled_against(self) -> None:
         q = load_question(REPO_ROOT / DECISIONS_DIR / "d1.yaml")
@@ -86,7 +87,9 @@ class TestDecisionFile:
             ("kind: verdict", "kind must be one of"),
             ("kind: noul\nanswers: {yes: a, maybe: b}", "answers yes or no"),
             ("kind: choice\nanswers: {only: a}", "at least two answers"),
-            ("kind: choice\nanswers: {a: x, b: y}\nthreshold: 1.5", "between 0 and 1"),
+            ("kind: choice\nanswers: {a: x, b: y}\nthresholds: {e: 1.5}", "between 0 and 1"),
+            ("kind: choice\nanswers: {a: x, b: y}\nthresholds: [0.9]", "keyed by engine"),
+            ("kind: choice\nanswers: {a: x, b: y}\nthreshold: 0.9", "now `thresholds`"),
         ],
     )
     def test_a_file_an_engine_could_not_be_asked_is_refused(
@@ -274,26 +277,57 @@ class TestFallback:
 # ── The stage: built at startup, and wired into the run (ADR-0040) ───────────
 
 
-def _decisions(tmp_path: Path, threshold: str) -> Path:
-    text = re.sub(
-        r"^threshold: .*$", f"threshold: {threshold}", D2.read_text(encoding="utf-8"), flags=re.M
+JEV = "typesafe:jev-1.13.0"
+PLAYBOOK = "playbook:anthropic/claude-haiku-5-5"
+
+
+def _decisions(tmp_path: Path, thresholds: dict[str, float]) -> Path:
+    """d2.yaml as committed, with its thresholds replaced."""
+    text = D2.read_text(encoding="utf-8")
+    head = text[: re.search(r"^thresholds?:", text, flags=re.M).start()]  # type: ignore[union-attr]
+    body = "".join(f'  "{engine}": {cut}\n' for engine, cut in thresholds.items())
+    (tmp_path / "d2.yaml").write_text(
+        head + ("thresholds:\n" + body if thresholds else "thresholds: {}\n"), encoding="utf-8"
     )
-    (tmp_path / "d2.yaml").write_text(text, encoding="utf-8")
     return tmp_path
 
 
 class TestBuildStage:
-    def test_refuses_to_start_until_the_threshold_is_measured(self, tmp_path: Path) -> None:
+    def test_refuses_to_start_until_a_threshold_is_measured(self, tmp_path: Path) -> None:
         playbook = load_playbook(REPO_ROOT / "playbooks" / "pb_classify_work_item_en")
-        with pytest.raises(ConfigError, match=r"no threshold\. Measure it on the label set"):
-            build_stage(_decisions(tmp_path, "null"), playbook, _Classifier(""))  # type: ignore[arg-type]
+        with pytest.raises(ConfigError, match=rf"no threshold for {PLAYBOOK}\. Measure it"):
+            build_stage(_decisions(tmp_path, {}), playbook, _Classifier(""))  # type: ignore[arg-type]
+
+    def test_without_a_key_jev_s_threshold_is_not_lent_to_the_playbook_model(
+        self, tmp_path: Path
+    ) -> None:
+        """#274: a cut measured on Jev's probability says nothing about another engine's."""
+        playbook = load_playbook(REPO_ROOT / "playbooks" / "pb_classify_work_item_en")
+        with pytest.raises(ConfigError, match=rf"no threshold for {PLAYBOOK}"):
+            build_stage(_decisions(tmp_path, {JEV: 0.94}), playbook, _Classifier(_REQUEST))  # type: ignore[arg-type]
+
+    def test_with_a_key_the_playbook_model_s_threshold_is_not_lent_to_jev(
+        self, tmp_path: Path
+    ) -> None:
+        playbook = load_playbook(REPO_ROOT / "playbooks" / "pb_classify_work_item_en")
+        with pytest.raises(ConfigError, match=rf"no threshold for {JEV}"):
+            build_stage(
+                _decisions(tmp_path, {PLAYBOOK: 0.75}),
+                playbook,
+                _Classifier(_REQUEST),  # type: ignore[arg-type]
+                typesafe_api_key="ts-test-key",
+            )
 
     def test_without_a_typesafe_key_the_playbook_model_decides_alone_and_the_log_says_so(
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
     ) -> None:
         playbook = load_playbook(REPO_ROOT / "playbooks" / "pb_classify_work_item_en")
         with caplog.at_level(logging.WARNING, logger="opspilot.judgment"):
-            stage = build_stage(_decisions(tmp_path, "0.82"), playbook, _Classifier(_REQUEST))  # type: ignore[arg-type]
+            stage = build_stage(
+                _decisions(tmp_path, {JEV: 0.94, PLAYBOOK: 0.82}),
+                playbook,
+                _Classifier(_REQUEST),  # type: ignore[arg-type]
+            )
         assert stage.threshold == 0.82 and stage.fallback is None
         assert isinstance(stage.primary, ClassificationJudge)
         assert "without TYPESAFE_API_KEY" in caplog.text
@@ -305,11 +339,12 @@ class TestBuildStage:
     ) -> None:
         playbook = load_playbook(REPO_ROOT / "playbooks" / "pb_classify_work_item_en")
         stage = build_stage(
-            _decisions(tmp_path, "0.82"),
+            _decisions(tmp_path, {JEV: 0.94, PLAYBOOK: 0.82}),
             playbook,
             _Classifier(_REQUEST),  # type: ignore[arg-type]
             typesafe_api_key=" ts-test-key\n",  # as a key file pastes it
         )
+        assert stage.threshold == 0.94  # Jev's own, not the fallback's
         assert isinstance(stage.primary, TypeSafeJudge)
         assert stage.primary.name == "typesafe:jev-1.13.0"
         assert isinstance(stage.fallback, ClassificationJudge)
@@ -319,7 +354,7 @@ class TestBuildStage:
         playbook = load_playbook(REPO_ROOT / "playbooks" / "pb_classify_work_item_en")
         with pytest.raises(ConfigError, match="TYPESAFE_API_KEY is malformed"):
             build_stage(
-                _decisions(tmp_path, "0.82"),
+                _decisions(tmp_path, {JEV: 0.94}),
                 playbook,
                 _Classifier(_REQUEST),  # type: ignore[arg-type]
                 typesafe_api_key=key,
