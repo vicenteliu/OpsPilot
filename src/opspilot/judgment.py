@@ -364,14 +364,19 @@ class Decision:
         )
 
 
-def p_yes(judgment: Judgment) -> float:
-    """The probability of yes behind a Noul's Judgment, whichever way it leaned.
+def p_yes_of(answer: str, probability: float) -> float:
+    """The probability of yes behind a Noul's answer, whichever way it leaned.
 
     Rounded, because 1 - 0.9 is 0.0999…98 in floating point, and an item on
-    decision 1's cut must stop, not slip under it by a rounding error.
+    decision 1's cut must stop, not slip under it by a rounding error. The
+    report measures the cut with this same function.
     """
-    p = judgment.probability if judgment.answer == "yes" else 1 - judgment.probability
-    return round(p, 9)
+    return round(probability if answer == "yes" else 1 - probability, 9)
+
+
+def p_yes(judgment: Judgment) -> float:
+    """The probability of yes behind a Noul's Judgment, as the stage cuts on it."""
+    return p_yes_of(judgment.answer, judgment.probability)
 
 
 @dataclass(frozen=True)

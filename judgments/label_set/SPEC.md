@@ -139,6 +139,13 @@ so a run cut short resumes and the report can be recomputed without calling anyt
 (`--no-call`). A failed call is counted as a failure and kept out of accuracy. The report never
 writes `d2.yaml`: the threshold is set from it by a person.
 
+**Decision 1** (#225): `opspilot labelset report --decision d1` asks Jev and the Playbook's model
+`d1-v1` as written, keeps its calls in `runs_d1_v1.jsonl` (both decisions' Playbook-model engines
+share a name), and reports, per engine, accuracy at 0.5 and the Brier score on P(yes), and the
+decision-1 threshold: the highest P(yes) at which every labelled security item stops (ADR-0040),
+with its recall, the share of all calls it stops, and its false alarms among the rows labelled
+`no`. As for decision 2, a person sets `d1.yaml`'s threshold from it.
+
 ## 8. Decided before drafting (2026-09-24)
 
 1. **Drafter**: one batch of 10 is drafted by a GPT model and one by a Gemini model through

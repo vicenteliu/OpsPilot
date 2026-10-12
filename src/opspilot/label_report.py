@@ -24,12 +24,14 @@ from pathlib import Path
 from typing import Any, Final
 
 from .errors import OpsPilotError
-from .judgment import JudgmentEngine, Question
+from .judgment import JudgmentEngine, Question, p_yes_of
 from .label_set import LABEL_SET_DIR, LabelSetError, _read_jsonl
 from .orchestrator.ticket_summary import _format_ticket
 from .redaction import Redactor
 
 RUNS_PATH: Final = LABEL_SET_DIR / "runs_v1.jsonl"
+# Decision 1's calls, kept apart: both decisions' Playbook-model engines share a name.
+RUNS_D1_PATH: Final = LABEL_SET_DIR / "runs_d1_v1.jsonl"
 RUNS: Final = 3
 TARGET: Final = 0.95  # routed without a person, at least this right (ADR-0040)
 
@@ -51,8 +53,13 @@ def row_state(row: dict[str, Any], redactor: Redactor) -> str:
     return redactor.redact(_format_ticket(ticket)).text
 
 
+# The label column each decision is measured against (SPEC §1).
+_COLUMN: Final = {"d1": "security", "d2": "work_item_type"}
+
+
 def _check_set(rows: list[dict[str, Any]], question: Question) -> None:
-    if any(r["work_item_type"] is None for r in rows):
+    column = _COLUMN.get(question.id, "work_item_type")
+    if any(r["work_item_type"] is None or r.get(column) is None for r in rows):
         raise LabelSetError("label every row first; the report measures the finished set")
     for r in rows:
         version = (r.get("answer_space") or {}).get(question.id)
@@ -140,6 +147,17 @@ def threshold(judged: list[tuple[float, bool]]) -> tuple[float, int, int] | None
     return None
 
 
+def recall_cut(judged: list[tuple[float, bool]]) -> float | None:
+    """Decision 1's cut: the highest P(yes) at which every labelled security item stops.
+
+    That is the lowest P(yes) any of them got (ADR-0040): a wrong "not
+    security" is the one mistake the next step cannot undo, and the false
+    alarms are the price. None when nothing is labelled a security item.
+    """
+    yes = [p for p, labelled_yes in judged if labelled_yes]
+    return min(yes) if yes else None
+
+
 def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
     """The Wilson score interval for k successes in n trials."""
     p = k / n
@@ -160,6 +178,16 @@ def percentile(values: list[float], q: float) -> float:
 
 def _pct(x: float) -> str:
     return f"{100 * x:.1f}%"
+
+
+def _first_pass(
+    rows: list[dict[str, Any]], reviews: list[dict[str, Any]] | None
+) -> dict[str, dict[str, Any]]:
+    """The rows as first labelled: a security label the review changed, as it stood before."""
+    first = {r["id"]: dict(r) for r in rows}
+    for e in reviews or []:
+        first[e["id"]]["security"] = e["before"]
+    return first
 
 
 def report_markdown(
@@ -249,9 +277,7 @@ def report_markdown(
     else:
         # Against the first pass: a security label the review changed is read
         # as it stood before the review, so the agreement keeps its meaning.
-        first = {r["id"]: dict(r) for r in rows}
-        for e in reviews or []:
-            first[e["id"]]["security"] = e["before"]
+        first = _first_pass(rows, reviews)
         n = len(relabels)
         for column in ("work_item_type", "security"):
             k = sum(p[column] == first[p["id"]][column] for p in relabels)
@@ -267,5 +293,95 @@ def report_markdown(
             f"After labelling, the {len(reviews)} rows whose `security` label and the drafter's"
             f" split were reviewed again against d1; {changed} changed. The review was not blind:"
             " the reviewer saw the label they had given.",
+        ]
+    return "\n".join(lines) + "\n"
+
+
+def security_report_markdown(
+    rows: list[dict[str, Any]],
+    records: list[dict[str, Any]],
+    question: Question,
+    reviews: list[dict[str, Any]] | None,
+    relabels: list[dict[str, Any]] | None = None,
+) -> str:
+    """Decision 1 on the label set: each engine's cut, its recall and its false alarms."""
+    labels = {r["id"]: r["security"] for r in rows}
+    if stray := sorted({r["id"] for r in records} - labels.keys()):
+        raise LabelSetError(f"the runs file answers rows the set does not have: {', '.join(stray)}")
+    engines = list(dict.fromkeys(r["engine"] for r in records))
+    runs = max((r["run"] for r in records), default=0)
+    labelled_yes = sum(v == "yes" for v in labels.values())
+    lines = [
+        f"# {question.version} on the label set: the engines compared",
+        "",
+        f"{len(rows)} rows is not a benchmark: synthetic, English, labelled by one person, and the"
+        " threshold is set on the same rows it is reported on; there is no held-out split at this"
+        f" size. Each engine answered every row {runs} times; the figures pool the runs."
+        f" {labelled_yes} of {len(rows)} rows are labelled `security: yes`.",
+    ]
+    if reviews:
+        changed = sum(e["after"] != e["before"] for e in reviews)
+        lines[-1] += (
+            f" Those labels were reviewed after labelling where they and the drafter split:"
+            f" {changed} of {len(reviews)} reviewed labels changed, and the review was not blind."
+        )
+    lines += [
+        "",
+        "| Engine | Calls ok/failed | Accuracy at 0.5 | Brier on P(yes) | Cost/call | p50 | p95 |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    cuts: list[str] = []
+    for engine in engines:
+        mine = [r for r in records if r["engine"] == engine]
+        ok = [r for r in mine if r["error"] is None]
+        if not ok:
+            lines.append(f"| {engine} | 0/{len(mine)} | – | – | – | – | – |")
+            cuts.append(f"| {engine} | – | – | – | – |")
+            continue
+        triples = [(r["answer"], r["probability"], labels[r["id"]]) for r in ok]
+        latencies = [r["latency_ms"] for r in ok]
+        lines.append(
+            f"| {engine} | {len(ok)}/{len(mine) - len(ok)}"
+            f" | {_pct(sum(a == lab for a, _, lab in triples) / len(ok))}"
+            f" | {brier(triples, positive='yes'):.3f}"
+            f" | ${sum(r['cost_usd'] for r in ok) / len(ok):.6f}"
+            f" | {percentile(latencies, 0.5):.0f} ms | {percentile(latencies, 0.95):.0f} ms |"
+        )
+        judged = [(p_yes_of(r["answer"], r["probability"]), labels[r["id"]] == "yes") for r in ok]
+        cut = recall_cut(judged)
+        if cut is None:
+            cuts.append(f"| {engine} | no labelled security item | – | – | – |")
+            continue
+        yes = [p for p, y in judged if y]
+        no = [p for p, y in judged if not y]
+        stopped = sum(p >= cut for p, _ in judged)
+        alarms = sum(p >= cut for p in no)
+        cuts.append(
+            f"| {engine} | {cut:.3f}"
+            f" | {sum(p >= cut for p in yes)}/{len(yes)} ({_pct(sum(p >= cut for p in yes) / len(yes))})"
+            f" | {stopped}/{len(judged)} ({_pct(stopped / len(judged))})"
+            f" | {alarms}/{len(no)} ({_pct(alarms / len(no)) if no else '–'}) |"
+        )
+    lines += [
+        "",
+        "## Threshold: the highest P(yes) at which every labelled security item reaches a person",
+        "",
+        "| Engine | Threshold | Recall | Stopped | False alarms among the labelled no |",
+        "|---|---|---|---|---|",
+        *cuts,
+        "",
+        "The stage stops a Work item at or above its primary engine's threshold on P(yes); an"
+        " answer from the fallback always stops.",
+    ]
+    if relabels:
+        # The column this decision is measured on, read against the first pass.
+        first = _first_pass(rows, reviews)
+        k = sum(p["security"] == first[p["id"]]["security"] for p in relabels)
+        lo, hi = wilson(k, len(relabels))
+        lines += [
+            "",
+            "## Self-consistency (SPEC §6)",
+            "",
+            f"- security {k}/{len(relabels)} (95% CI {_pct(lo)}–{_pct(hi)})",
         ]
     return "\n".join(lines) + "\n"
