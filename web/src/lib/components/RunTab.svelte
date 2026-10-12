@@ -292,7 +292,17 @@
   </section>
 {/snippet}
 
-{#if result?.needs_confirmation && result.classification}
+{#if result?.security?.stops}
+  <div class="confirm-banner">
+    <p>
+      <strong>Stopped: this may be a security issue.</strong>
+      {#if result.security.fallback}
+        The security check could not complete ({result.security.fallback}), so it could not be ruled out.
+      {/if}
+      A person needs to handle it. OpsPilot made no suggestion, offered no knowledge-base fix and ran no Playbook.
+    </p>
+  </div>
+{:else if result?.needs_confirmation && result.classification}
   <div class="confirm-banner">
     <p>
       <strong>Low confidence — please confirm the work item type.</strong>

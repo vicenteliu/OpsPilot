@@ -151,6 +151,13 @@ class TelegramChannel:
             logger.error("intake run failed for chat %s: %s", chat_id, exc)
             self._send(chat_id, f"OpsPilot error: {exc}")
             return
+        if (res.get("security") or {}).get("stops"):
+            self._send(
+                chat_id,
+                "This may be a security issue, so OpsPilot stopped here and made no "
+                "suggestion. A person needs to handle it.",
+            )
+            return
         if res.get("needs_confirmation"):
             self._send(
                 chat_id,

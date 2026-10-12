@@ -190,6 +190,49 @@ class TestIntakeLoop:
         assert state.has("IT-102")
         assert fake.calls.count("IT-102") == 1
 
+    @pytest.mark.parametrize(
+        ("security", "says"),
+        [
+            (
+                {"answer": "yes", "probability": 0.62, "p_yes": 0.62, "fallback": None},
+                "may report a security event (p(yes)=0.62)",
+            ),
+            (
+                {"answer": "no", "probability": 0.99, "fallback": "typesafe:jev-1.13.0: HTTP 529"},
+                "could not rule a security event out (typesafe:jev-1.13.0: HTTP 529)",
+            ),
+            (
+                {"answer": None, "probability": None, "fallback": "no engine could answer: x"},
+                "could not rule a security event out (no engine could answer: x)",
+            ),
+        ],
+        ids=["judged yes", "fallback answered", "no engine answered"],
+    )
+    def test_a_security_stop_comments_that_a_person_is_needed_and_why(
+        self, tmp_path: Path, security: dict[str, Any], says: str
+    ) -> None:
+        """#225: decision 1 stops the run; the Source learns why, not a type to pick."""
+        out = tmp_path / "out"
+        state = IntakeState()
+        fake = FakeRunClient(
+            {
+                "IT-102": {
+                    "session_id": "",
+                    "schema_valid": False,
+                    "error": None,
+                    "needs_confirmation": True,
+                    "classification": None,
+                    "security": {"question": "d1", "engine": "e", "stops": True, **security},
+                },
+            }
+        )
+        report = IntakeLoop(ReplayTransport(FIXTURES, out), fake, state=state).run_once()  # type: ignore[arg-type]
+        assert "IT-102" in report.commented
+        body = (out / "IT-102.md").read_text(encoding="utf-8")
+        assert "possible security issue" in body and says in body
+        assert "incident or request" not in body and "OpsPilot suggestion" not in body
+        assert state.has("IT-102")
+
     def test_run_exception_skips_item_and_continues(self, tmp_path: Path) -> None:
         class Boom(FakeRunClient):
             def run(self, work_item: dict[str, Any]) -> dict[str, Any]:

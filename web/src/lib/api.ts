@@ -39,6 +39,17 @@ export interface WorkItemClassification {
   rationale: string;
 }
 
+// Decision 1 (ADR-0040): the security Judgment, when the Judgments stage is on.
+// `stops` means the run stopped here for a person; nothing after it was asked.
+export interface SecurityJudgment {
+  question: string;
+  answer: 'yes' | 'no';
+  probability: number;
+  engine: string;
+  fallback: string | null;
+  stops: boolean;
+}
+
 export interface RunResponse {
   session_id: string;
   artifact_id: string | null;
@@ -50,6 +61,7 @@ export interface RunResponse {
   // was withheld for a human pick; re-submit with an explicit playbookId.
   classification?: WorkItemClassification | null;
   needs_confirmation?: boolean;
+  security?: SecurityJudgment | null;
 }
 
 // A work-item artifact: incident_summary_v1 or request_fulfillment_v1.

@@ -6,9 +6,11 @@ storage is touched; TestClient executes background tasks before returning.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -105,3 +107,22 @@ class TestWebhookIntake:
             res = client.post("/api/intake", json={"input": {}})  # missing key
         assert res.status_code == 422
         assert run.await_count == 0
+
+    def test_a_security_stop_is_logged_as_one(self, caplog: pytest.LogCaptureFixture) -> None:
+        stopped = ApiRunResponse(
+            session_id="",
+            artifact_id=None,
+            schema_valid=False,
+            result={},
+            error=None,
+            needs_confirmation=True,
+            security={"answer": "yes", "probability": 0.7, "stops": True},
+        )
+        with (
+            patch("opspilot.api.routes.intake.run_ticket", new=AsyncMock(return_value=stopped)),
+            caplog.at_level(logging.WARNING, logger="opspilot.api.intake"),
+            TestClient(_app()) as client,
+        ):
+            client.post("/api/intake", json=_payload())
+        assert "MON-1042 stopped: possible security issue" in caplog.text
+        assert "classification needs confirmation" not in caplog.text
