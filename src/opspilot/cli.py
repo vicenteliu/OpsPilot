@@ -72,10 +72,9 @@ from .kb.sqlite_store import SqliteStore
 from .kb.storage_init import init_sqlite
 from .label_report import (
     RUNS,
-    RUNS_D1_PATH,
-    RUNS_PATH,
     report_markdown,
     run_engines,
+    runs_path,
     security_report_markdown,
 )
 from .label_set import (
@@ -85,11 +84,12 @@ from .label_set import (
     RELABEL_AFTER,
     RELABEL_PATH,
     REVIEW_PATH,
+    SECURITY_RELABEL_PATH,
     LabelSetError,
     _read_jsonl,
     label_rows,
     relabel_rows,
-    review_security,
+    relabel_security,
     run_draft,
     run_trial,
 )
@@ -1906,36 +1906,43 @@ def labelset_relabel(
     )
 
 
-@labelset_app.command("review-security")
-def labelset_review_security(
-    by: str = typer.Option(..., "--by", help="The reviewer's handle, recorded on each answer."),
+@labelset_app.command("relabel-security")
+def labelset_relabel_security(
+    by: str = typer.Option(..., "--by", help="The labeller's handle, recorded on each answer."),
     path: Path = typer.Option(OUT_PATH, "--set", help="The labelled set."),  # noqa: B008
-    out: Path = typer.Option(REVIEW_PATH, "--out", "-o", help="Where the answers go."),  # noqa: B008
+    out: Path = typer.Option(SECURITY_RELABEL_PATH, "--out", "-o", help="Where the answers go."),  # noqa: B008
 ) -> None:
-    """Look again at the security label on every row where it and the drafter split (#225).
+    """Label every row's security column again, blind, against d1.yaml's answer space (#225).
 
-    Each row shows its subject, body and channel and the label you gave it,
-    beside d1's definition; y / n answers, u goes back and q stops. Every
-    answer is saved, and the set changes only once all are reviewed.
+    Each row shows its subject, body and channel beside d1's definitions, and
+    nothing else; y / n answers, u goes back and q stops. Every answer is
+    saved, and the set changes only once all rows have one.
     """
     try:
-        d1_path = DECISIONS_DIR / "d1.yaml"
+        d1_path = DECISIONS_DIR / SECURITY_FILE
         if not d1_path.is_file():
             raise LabelSetError(f"{d1_path} not found; run from the repo root")
         d1 = load_question(d1_path)
-        res = review_security(
-            path, by=by, ask=_ask_line, show=typer.echo, out=out, definition=d1.answers["yes"]
+        definition = f"yes when {d1.answers['yes']}\n  no when {d1.answers['no']}"
+        res = relabel_security(
+            path,
+            by=by,
+            ask=_ask_line,
+            show=typer.echo,
+            version=d1.version,
+            definition=definition,
+            out=out,
         )
     except OpsPilotError as e:
         _console.print(f"Error: {e}", style="red", markup=False)
         raise typer.Exit(1) from e
     if not res.finished:
-        typer.echo(f"\nsaved · {res.reviewed}/{res.total} reviewed; rerun to continue")
+        typer.echo(f"\nsaved · {res.labelled}/{res.total} labelled; rerun to continue")
         return
     rows = _read_jsonl(path)
     yes = sum(r["security"] == "yes" for r in rows)
     typer.echo(
-        f"\nreviewed {res.reviewed} of {res.total} · changed {res.changed}"
+        f"\nlabelled {res.labelled} of {res.total} against {d1.version} · changed {res.changed}"
         f" · security yes on {yes} of {len(rows)} rows"
     )
 
@@ -1946,7 +1953,7 @@ def labelset_report(
         "d2", "--decision", help="d2 (incident or request) or d1 (security issue)."
     ),
     path: Path = typer.Option(OUT_PATH, "--set", help="The labelled set."),  # noqa: B008
-    runs_path: Path | None = typer.Option(  # noqa: B008
+    runs_file: Path | None = typer.Option(  # noqa: B008
         None, "--runs", help="Every call, appended as it returns. Default: the decision's own."
     ),
     relabel: Path = typer.Option(RELABEL_PATH, "--relabel", help="The relabel, if done."),  # noqa: B008
@@ -1971,7 +1978,7 @@ def labelset_report(
         rows = _read_jsonl(path)
         name = SECURITY_FILE if decision == "d1" else WORK_ITEM_TYPE_FILE
         question = load_question(DECISIONS_DIR / name)
-        runs_out = runs_path or (RUNS_D1_PATH if decision == "d1" else RUNS_PATH)
+        runs_out = runs_file or runs_path(question)
         if not no_call:
             key = os.environ.get("TYPESAFE_API_KEY", "").strip()
             if not key:
@@ -2005,12 +2012,15 @@ def labelset_report(
             raise LabelSetError(f"{runs_out} not found; run without --no-call first")
         reviews = _read_jsonl(review) if review.is_file() else None
         if decision == "d1":
+            # The relabel and the review were made against d1-v1: they speak to
+            # that answer space's labels, not to a later one's.
+            v1 = question.version == "d1-v1"
             md = security_report_markdown(
                 rows,
                 _read_jsonl(runs_out),
                 question,
-                reviews,
-                _read_jsonl(relabel) if relabel.is_file() else None,
+                reviews if v1 else None,
+                _read_jsonl(relabel) if v1 and relabel.is_file() else None,
             )
         else:
             md = report_markdown(

@@ -457,7 +457,7 @@ def run_draft(
 
 # ── Labelling (SPEC §6) ─────────────────────────────────────────────────────
 
-ANSWER_SPACE: Final[dict[str, str]] = {"d2": "d2-v1", "d1": "d1-v1"}
+ANSWER_SPACE: Final[dict[str, str]] = {"d2": "d2-v1", "d1": "d1-v2"}
 RELABEL_PATH: Final = LABEL_SET_DIR / "relabel_v1.jsonl"
 RELABEL_ROWS: Final = 10
 # "A day later" (SPEC §6), measured from the first pass's last label, with
@@ -689,72 +689,68 @@ def relabel_rows(
 
 # ── Reviewing the security column (#225) ────────────────────────────────────
 
+# The d1-v1 review of the security labels the drafter disagreed with (#225),
+# kept as the record of what it changed; d1-v2's relabel superseded it.
 REVIEW_PATH: Final = LABEL_SET_DIR / "security_review_v1.jsonl"
+SECURITY_RELABEL_PATH: Final = LABEL_SET_DIR / "security_d1_v2.jsonl"
 
 
 @dataclass(frozen=True)
-class ReviewResult:
-    reviewed: int
+class SecurityRelabelResult:
+    labelled: int
     total: int
-    changed: int  # labels the review turned the other way
+    changed: int  # rows the new answer space labels the other way
 
     @property
     def finished(self) -> bool:
-        return self.reviewed == self.total
+        return self.labelled == self.total
 
 
-def review_security(
+def relabel_security(
     path: Path = OUT_PATH,
     *,
     by: str,
     ask: Ask,
     show: Show,
-    out: Path = REVIEW_PATH,
+    version: str,
     definition: str,
+    out: Path = SECURITY_RELABEL_PATH,
     clock: Clock = _utc_now,
-) -> ReviewResult:
-    """Look again at the security label on every row where it and the drafter split.
+) -> SecurityRelabelResult:
+    """Label every row's security column again, blind, against a new answer space (#225).
 
-    Decision 1's threshold is set so that every labelled security item reaches
-    a person (ADR-0040), so each ``yes`` is a row the stage will stop on. The
-    reviewer sees the row, the label they gave it and d1's definition; what
-    the drafter intended stays hidden. Each answer goes to ``out``, which is
-    the record of what changed and keeps a review cut short resumable. The set
-    is rewritten only once every row has been reviewed.
+    The labeller sees a row's subject, body and channel and the new
+    definition; the label given before and what the drafter intended stay
+    hidden. Each answer goes to ``out``, which keeps a pass cut short
+    resumable. Once every row has an answer the set is rewritten: ``security``
+    takes the new label, the old one is kept beside it as ``security_d1_v1``,
+    and the row records the version it was labelled against.
     """
     if not path.is_file():
         raise LabelSetError(f"{path} not found: draft the set first")
     rows = _read_jsonl(path)
     if any(r["security"] is None for r in rows):
-        raise LabelSetError("label every row first; the review reads the finished set")
+        raise LabelSetError("label every row first; the relabel reads the finished set")
     if out.is_file():
-        reviews = _read_jsonl(out)
+        answers = _read_jsonl(out)
     else:
-        reviews = [
-            {"id": r["id"], "before": r["security"], "after": None}
-            for r in rows
-            if r["security"] != r["draft_security"]
-        ]
-        _write_jsonl(out, reviews)
+        answers = [{"id": r["id"], "before": r["security"], "after": None} for r in rows]
+        _write_jsonl(out, answers)
     by_id = {r["id"]: r for r in rows}
-    moved = [
-        e["id"] for e in reviews if by_id[e["id"]]["security"] not in (e["before"], e["after"])
-    ]
+    moved = [e["id"] for e in answers if by_id[e["id"]]["security"] != e["before"]]
     if moved:
         raise LabelSetError(
-            f"the set changed under the saved review ({', '.join(moved)}); "
-            f"move {out} aside and start the review again"
+            f"the set changed under the saved pass ({', '.join(moved)}); "
+            f"move {out} aside and start again"
         )
 
-    show(f"d1-v1, security yes: {definition}")
-    i = next((j for j, e in enumerate(reviews) if e["after"] is None), len(reviews))
-    while i < len(reviews):
-        entry = reviews[i]
-        row = by_id[entry["id"]]
-        show(f"\n── {row['id']} ({i + 1}/{len(reviews)}) · {row['channel']} ──")
+    show(f"{version}, security: {definition}")
+    i = next((j for j, e in enumerate(answers) if e["after"] is None), len(answers))
+    while i < len(answers):
+        row = by_id[answers[i]["id"]]
+        show(f"\n── {row['id']} ({i + 1}/{len(answers)}) · {row['channel']} ──")
         show(f"Subject: {row['subject'] or '(none)'}")
         show(row["body"] or "(no body)")
-        show(f"you labelled: {entry['before']}")
         answer = _ask_choice(
             ask, "security? [y]es / [n]o  (u back, q quit)", _SECURITY_KEYS, nav=True
         )
@@ -763,21 +759,20 @@ def review_security(
         if answer == "u":
             i = max(i - 1, 0)
             continue
-        entry.update(
-            after=answer,
-            reviewed_by=by,
-            reviewed_time=clock().astimezone(UTC).isoformat(timespec="seconds"),
-        )
-        _write_jsonl(out, reviews)
+        answers[i].update(after=answer, **_labelled(by, clock()))
+        _write_jsonl(out, answers)
         i += 1
 
-    done = [e for e in reviews if e["after"] is not None]
-    if len(done) == len(reviews):
-        for e in reviews:
-            by_id[e["id"]]["security"] = e["after"]
+    done = [e for e in answers if e["after"] is not None]
+    if len(done) == len(answers):
+        for e in answers:
+            row = by_id[e["id"]]
+            row["security_d1_v1"] = e["before"]
+            row["security"] = e["after"]
+            row["answer_space"] = {**(row.get("answer_space") or {}), "d1": version}
         _write_jsonl(path, rows)
-    return ReviewResult(
-        reviewed=len(done),
-        total=len(reviews),
+    return SecurityRelabelResult(
+        labelled=len(done),
+        total=len(answers),
         changed=sum(e["after"] != e["before"] for e in done),
     )

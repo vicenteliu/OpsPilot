@@ -30,12 +30,21 @@ from .orchestrator.ticket_summary import _format_ticket
 from .redaction import Redactor
 
 RUNS_PATH: Final = LABEL_SET_DIR / "runs_v1.jsonl"
-# Decision 1's calls, kept apart: both decisions' Playbook-model engines share a name.
-RUNS_D1_PATH: Final = LABEL_SET_DIR / "runs_d1_v1.jsonl"
 RUNS: Final = 3
 TARGET: Final = 0.95  # routed without a person, at least this right (ADR-0040)
 
 Show = Callable[[str], None]
+
+
+def runs_path(question: Question) -> Path:
+    """Where a decision's calls are kept: d2's in its first file, each other by its version.
+
+    Kept apart because both decisions' Playbook-model engines share a name, and
+    a call answered against one answer space says nothing about another.
+    """
+    if question.id == "d2":
+        return RUNS_PATH
+    return LABEL_SET_DIR / f"runs_{question.version.replace('-', '_')}.jsonl"
 
 
 def row_state(row: dict[str, Any], redactor: Redactor) -> str:
@@ -183,8 +192,8 @@ def _pct(x: float) -> str:
 def _first_pass(
     rows: list[dict[str, Any]], reviews: list[dict[str, Any]] | None
 ) -> dict[str, dict[str, Any]]:
-    """The rows as first labelled: a security label the review changed, as it stood before."""
-    first = {r["id"]: dict(r) for r in rows}
+    """The rows as first labelled, against d1-v1: before d1-v2's relabel and the review."""
+    first = {r["id"]: {**r, "security": r.get("security_d1_v1", r["security"])} for r in rows}
     for e in reviews or []:
         first[e["id"]]["security"] = e["before"]
     return first

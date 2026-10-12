@@ -38,7 +38,7 @@ def _row(i: int, label: str, confidence: str = "high", **kw: Any) -> dict[str, A
         "work_item_type": label,
         "security": "no",
         "label_confidence": confidence,
-        "answer_space": {"d2": "d2-v1", "d1": "d1-v1"},
+        "answer_space": {"d2": D2.version, "d1": D1.version},
         **kw,
     }
 
@@ -341,7 +341,7 @@ class TestSecurity:
         relabels = [{"id": "LS1-009", "work_item_type": "incident", "security": "yes"}]
         md = security_report_markdown(rows, records, D1, reviews, relabels)
 
-        assert md.startswith("# d1-v1 on the label set")
+        assert md.startswith(f"# {D1.version} on the label set")
         assert "10 rows is not a benchmark" in md
         assert "4 of 10 rows are labelled `security: yes`" in md
         assert "1 of 2 reviewed labels changed, and the review was not blind" in md
@@ -393,5 +393,21 @@ def test_cli_reports_decision_1_from_its_own_runs_file(tmp_path: Path) -> None:
         ],
     )  # fmt: skip
     assert result.exit_code == 0, result.output
-    assert "# d1-v1 on the label set" in result.output
+    assert f"# {D1.version} on the label set" in result.output
     assert "| e | 0.900 | 2/2 (100.0%) | 2/4 (50.0%) | 0/2 (0.0%) |" in result.output
+
+
+def test_the_relabel_reads_security_against_the_d1_v1_label_kept_beside_the_new_one() -> None:
+    rows = [_row(i, "incident") for i in range(1, 11)]
+    rows[0] |= {"security": "no", "security_d1_v1": "yes"}  # d1-v2 turned it to no
+    relabels = [{"id": r["id"], "work_item_type": "incident", "security": "no"} for r in rows]
+    relabels[0]["security"] = "yes"  # the relabel was made against d1-v1
+    md = report_markdown(rows, _records("e", {"LS1-001": ("incident", 0.9)}), relabels, D2)
+    assert "security 10/10" in md
+
+
+def test_the_d1_runs_file_is_named_by_its_answer_space_version() -> None:
+    from opspilot.label_report import RUNS_PATH, runs_path
+
+    assert runs_path(D2) == RUNS_PATH
+    assert runs_path(D1).name == f"runs_{D1.version.replace('-', '_')}.jsonl"
