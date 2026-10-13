@@ -1,6 +1,6 @@
 # d9-v1 on the label set: the engines compared
 
-80 rows is not a benchmark: synthetic, English, labelled by one person, and the threshold is set on the same rows it is reported on; there is no held-out split at this size. Each engine answered every candidate page of every row 3 times; the figures pool the runs. 44 of 80 rows have a known fix among their candidates.
+80 rows is not a benchmark: synthetic, English, labelled by one person, and the threshold is set on the same rows it is reported on; there is no held-out split at this size. Each engine answered every candidate page of every row 3 times, shown the passage the labeller saw; the figures pool the runs. 44 of 80 rows have a known fix among their candidates.
 
 | Engine | Calls ok/failed | Accuracy at 0.5, per page | Brier on P(yes) | Cost/call | p50 | p95 |
 |---|---|---|---|---|---|---|

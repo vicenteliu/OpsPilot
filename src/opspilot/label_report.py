@@ -157,6 +157,28 @@ def run_engines(
     return made
 
 
+def with_whole_pages(
+    candidates: dict[str, list[dict[str, Any]]], source: Path, redactor: Redactor
+) -> dict[str, list[dict[str, Any]]]:
+    """The candidates with each one's whole page, redacted, in place of its passage (#226).
+
+    The pages are read from ``source``, the handbook checkout the KB was built
+    from, and keyed by their path in it as the KB keys them.
+    """
+    pages: dict[str, str] = {}
+    out: dict[str, list[dict[str, Any]]] = {}
+    for row_id, offered in candidates.items():
+        for c in offered:
+            page = c["source_path"]
+            if page not in pages:
+                path = source / page
+                if not path.is_file():
+                    raise LabelSetError(f"{page} is not in {source}; is it the KB's handbook?")
+                pages[page] = redactor.redact(path.read_text(encoding="utf-8")).text
+        out[row_id] = [c | {"excerpt": pages[c["source_path"]]} for c in offered]
+    return out
+
+
 # ── Measures ─────────────────────────────────────────────────────────────
 
 
@@ -423,7 +445,11 @@ def security_report_markdown(
 
 
 def known_fix_report_markdown(
-    rows: list[dict[str, Any]], records: list[dict[str, Any]], question: Question
+    rows: list[dict[str, Any]],
+    records: list[dict[str, Any]],
+    question: Question,
+    *,
+    whole_page: bool = False,
 ) -> str:
     """Decision 9 on the label set: each row's likeliest page, and the cut that sends it.
 
@@ -443,7 +469,8 @@ def known_fix_report_markdown(
         "",
         f"{len(rows)} rows is not a benchmark: synthetic, English, labelled by one person, and the"
         " threshold is set on the same rows it is reported on; there is no held-out split at this"
-        f" size. Each engine answered every candidate page of every row {runs} times; the figures"
+        f" size. Each engine answered every candidate page of every row {runs} times, shown"
+        f" {'the whole page' if whole_page else 'the passage the labeller saw'}; the figures"
         f" pool the runs. {fixable} of {len(rows)} rows have a known fix among their candidates.",
         "",
         "| Engine | Calls ok/failed | Accuracy at 0.5, per page | Brier on P(yes) | Cost/call"

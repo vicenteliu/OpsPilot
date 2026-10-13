@@ -555,3 +555,36 @@ def test_a_row_and_run_with_an_unanswered_page_is_left_out_of_the_d9_cut() -> No
     md = known_fix_report_markdown(rows, records, D9)
     # LS1-001 never had its fixing page answered: not counted as sent b.md, nor as missed.
     assert "| e | 0.900 | 19/19 (100.0%) | 19/19 (100.0%) | 19/19 (100.0%) | 0/0 (–) |" in md
+
+
+def test_with_whole_pages_shows_each_candidate_its_redacted_page(tmp_path: Path) -> None:
+    from opspilot.label_report import with_whole_pages
+
+    (tmp_path / "net").mkdir()
+    (tmp_path / "net" / "p1.md").write_text("# Page 1\n\nMail ops@example.com first.\n")
+    offered = {"LS1-001": [_page(1) | {"source_path": "net/p1.md"}]}
+    whole = with_whole_pages(offered, tmp_path, Redactor.from_yaml())
+    shown = whole["LS1-001"][0]["excerpt"]
+    assert shown.startswith("# Page 1") and "ops@example.com" not in shown
+    assert offered["LS1-001"][0]["excerpt"] == "how to fix 1"  # the passage is left as it was
+    with pytest.raises(LabelSetError, match="p2.md is not in"):
+        with_whole_pages({"LS1-002": [_page(2)]}, tmp_path, Redactor.from_yaml())
+
+
+def test_the_d9_report_says_what_the_engines_were_shown() -> None:
+    rows = [_row(1, "incident", known_fix=["a.md"])]
+    records = _fix_records("e", {("LS1-001", "a.md"): 0.9})
+    assert "shown the passage the labeller saw" in known_fix_report_markdown(rows, records, D9)
+    md = known_fix_report_markdown(rows, records, D9, whole_page=True)
+    assert "shown the whole page" in md
+
+
+def test_cli_keeps_whole_page_to_decision_9() -> None:
+    from typer.testing import CliRunner
+
+    from opspilot import cli
+
+    result = CliRunner().invoke(
+        cli.app, ["labelset", "report", "--decision", "d2", "--whole-page", "--no-call"]
+    )
+    assert result.exit_code == 1 and "--whole-page is for d9 only" in result.output

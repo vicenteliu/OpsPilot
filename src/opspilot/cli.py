@@ -78,6 +78,7 @@ from .label_report import (
     run_engines,
     runs_path,
     security_report_markdown,
+    with_whole_pages,
 )
 from .label_set import (
     BUDGET_USD,
@@ -2127,13 +2128,18 @@ def labelset_report(
     out: Path | None = typer.Option(None, "--out", "-o", help="Also write the report here."),  # noqa: B008
     runs: int = typer.Option(RUNS, "--runs-per-engine", min=1, help="Passes over the set."),
     no_call: bool = typer.Option(False, "--no-call", help="Report from the runs file only."),
+    whole_page: bool = typer.Option(
+        False, "--whole-page", help="d9: show each candidate's whole page, not the passage."
+    ),
+    source: Path | None = typer.Option(  # noqa: B008
+        None, "--source", help="d9 --whole-page: the handbook checkout the KB was built from."
+    ),
 ) -> None:
     """Run Jev and the Playbook's model over the labelled set and report a decision (SPEC §7).
 
     Each engine answers every row three times; for d9, every candidate page of
-    every row. Every call is saved as it
-    returns, so a rerun resumes and only retries what failed; ``--no-call``
-    recomputes the report from the runs file. Needs TYPESAFE_API_KEY and the
+    every row. Every call is saved as it returns, so a rerun resumes and only
+    retries what failed; ``--no-call`` recomputes the report from the runs file. Needs TYPESAFE_API_KEY and the
     classification Playbook's provider key. Writes nothing to a decision file:
     its threshold is set from the report by a person.
     """
@@ -2145,13 +2151,23 @@ def labelset_report(
         rows = _read_jsonl(path)
         name = {"d1": SECURITY_FILE, "d2": WORK_ITEM_TYPE_FILE, "d9": "d9.yaml"}[decision]
         question = load_question(DECISIONS_DIR / name)
-        runs_out = runs_file or runs_path(question)
+        if whole_page and decision != "d9":
+            raise LabelSetError("--whole-page is for d9 only")
+        default_runs = runs_path(question)
+        if whole_page:
+            default_runs = default_runs.with_name(f"{default_runs.stem}_whole_page.jsonl")
+        runs_out = runs_file or default_runs
+        redactor = Redactor.from_yaml()
         if not no_call:
             offered = None
             if decision == "d9":
                 if not CANDIDATES_PATH.is_file():
                     raise LabelSetError(f"{CANDIDATES_PATH} not found; run labelset candidates")
                 offered = {c["id"]: c["candidates"] for c in _read_jsonl(CANDIDATES_PATH)}
+                if whole_page:
+                    if source is None:
+                        raise LabelSetError("--whole-page needs --source, the handbook checkout")
+                    offered = with_whole_pages(offered, source, redactor)
             key = os.environ.get("TYPESAFE_API_KEY", "").strip()
             if not key:
                 raise LabelSetError("TYPESAFE_API_KEY is not set; Jev is one of the two engines")
@@ -2175,7 +2191,7 @@ def labelset_report(
                 [TypeSafeJudge(key), baseline],
                 runs=runs,
                 out=runs_out,
-                redactor=Redactor.from_yaml(),
+                redactor=redactor,
                 timeout_s=JUDGMENT_TIMEOUT_S,
                 show=typer.echo,
                 candidates=offered,
@@ -2185,7 +2201,9 @@ def labelset_report(
             raise LabelSetError(f"{runs_out} not found; run without --no-call first")
         reviews = _read_jsonl(review) if review.is_file() else None
         if decision == "d9":
-            md = known_fix_report_markdown(rows, _read_jsonl(runs_out), question)
+            md = known_fix_report_markdown(
+                rows, _read_jsonl(runs_out), question, whole_page=whole_page
+            )
         elif decision == "d1":
             # The relabel and the review were made against d1-v1: they speak to
             # that answer space's labels, not to a later one's.
