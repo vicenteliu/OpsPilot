@@ -152,11 +152,22 @@ either claim.
   the other 29 labelled yes like the rows labelled no. So it is not ready to be
   automated, and the stage runs decision 2 without it, saying so at startup
   (#282).
+- Decision 9, seen before (#226): the KB is built from the SSC handbook, each
+  page keyed by its path in it (`opspilot kb ingest --profile ssc`, #283), and
+  each label set row has its candidate pages and the ones that fix it, labelled
+  by one person (`known_fix`: 44 of the 80 rows have one, #284). Measured on
+  them (#285), neither engine says a page fixes the Work item, whether shown
+  the passage or the whole page, so no cut that keeps the fixes sent 95% right
+  sends more than 25 of 240: it is not ready to send a known fix, and
+  `d9.yaml` has no threshold. Jev ranks the pages, though: its likeliest page
+  fixes about nine in ten rows that have a fix, retrieval's first hit seven in
+  ten.
 
 *Not yet:*
 
 - Decision 1's automation (#281).
-- The rest of ADR-0040's order of work, #226–#231; filed and not scheduled,
+- The handbook's pages shown to the person in Jev's order (#286).
+- The rest of ADR-0040's order of work, #227–#231; filed and not scheduled,
   #232 and #233.
 
 **The first end-to-end run.** On 2026-08-19 the Memory / Consultation /

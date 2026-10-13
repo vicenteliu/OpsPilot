@@ -12,6 +12,7 @@ from opspilot.errors import ProviderError
 from opspilot.judgment import DECISIONS_DIR, Judgment, Question, load_question
 from opspilot.label_report import (
     brier,
+    known_fix_report_markdown,
     percentile,
     recall_cut,
     report_markdown,
@@ -411,3 +412,179 @@ def test_the_d1_runs_file_is_named_by_its_answer_space_version() -> None:
 
     assert runs_path(D2) == RUNS_PATH
     assert runs_path(D1).name == f"runs_{D1.version.replace('-', '_')}.jsonl"
+
+
+# ── Decision 9: is a candidate page a known fix (#226) ───────────────────────
+
+D9 = load_question(REPO_ROOT / DECISIONS_DIR / "d9.yaml")
+
+
+def _page(n: int) -> dict[str, str]:
+    return {"source_path": f"p{n}.md", "title": f"Page {n}", "excerpt": f"how to fix {n}"}
+
+
+class _Says:
+    """Answers each (row, page) from a table keyed by the page's path in the state."""
+
+    name = "e"
+
+    def __init__(self, p_yes: dict[str, float]) -> None:
+        self.p_yes, self.states = p_yes, []
+
+    def judge(self, question: Question, state: str, *, timeout_s: float) -> Judgment:
+        self.states.append(state)
+        p = next(v for k, v in self.p_yes.items() if f"({k})" in state)
+        answer = "yes" if p >= 0.5 else "no"
+        return Judgment(
+            "d9", "d9-v1", answer, p if answer == "yes" else 1 - p, self.name, 5, 0.00001
+        )
+
+
+def test_d9_asks_each_engine_about_each_candidate_page(tmp_path: Path) -> None:
+    rows = [
+        _row(1, "incident", known_fix=["p1.md"], answer_space={"d2": "d2-v1", "d9": D9.version}),
+        _row(2, "incident", known_fix=[], answer_space={"d2": "d2-v1", "d9": D9.version}),
+    ]
+    candidates = {"LS1-001": [_page(1), _page(2)], "LS1-002": [_page(3)]}
+    engine = _Says({"p1.md": 0.9, "p2.md": 0.2, "p3.md": 0.1})
+    out = tmp_path / "runs_d9.jsonl"
+    made = run_engines(
+        rows, D9, [engine], runs=1, out=out, redactor=Redactor.from_yaml(), timeout_s=1,
+        candidates=candidates,
+    )  # fmt: skip
+    assert made == 3
+    assert "subject 1" in engine.states[0] and "Handbook page: Page 1 (p1.md)" in engine.states[0]
+    assert "how to fix 1" in engine.states[0]
+    assert [r["page"] for r in map(json.loads, out.read_text().splitlines())] == [
+        "p1.md",
+        "p2.md",
+        "p3.md",
+    ]
+    # A rerun pays for nothing twice.
+    assert run_engines(
+        rows, D9, [engine], runs=1, out=out, redactor=Redactor.from_yaml(), timeout_s=1,
+        candidates=candidates,
+    ) == 0  # fmt: skip
+
+
+def _fix_records(engine: str, p_yes: dict[tuple[str, str], float], runs: int = 1) -> list[dict]:
+    return [
+        {
+            "engine": engine, "run": n, "id": i, "page": page,
+            "answer": "yes" if p >= 0.5 else "no", "probability": p if p >= 0.5 else 1 - p,
+            "latency_ms": 10, "cost_usd": 0.00001, "error": None,
+        }
+        for n in range(1, runs + 1)
+        for (i, page), p in p_yes.items()
+    ]  # fmt: skip
+
+
+def test_the_d9_report_sends_each_row_s_likeliest_page_when_it_clears_the_cut() -> None:
+    rows = [_row(i, "incident", known_fix=["a.md"] if i <= 18 else []) for i in range(1, 21)]
+    p_yes: dict[tuple[str, str], float] = {}
+    for r in rows:
+        right = r["id"] <= "LS1-018"
+        p_yes[(r["id"], "a.md")] = 0.9 if right else 0.3
+        p_yes[(r["id"], "b.md")] = 0.2
+    p_yes[("LS1-019", "b.md")] = 0.95  # a confident page for a row with no fix
+    md = known_fix_report_markdown(rows, _fix_records("e", p_yes), D9)
+
+    assert md.startswith(f"# {D9.version} on the label set")
+    assert "18 of 20 rows have a known fix among their candidates" in md
+    # 18 right at 0.9, one wrong at 0.95: at 0.9, 18/19 = 94.7% < 95%; at 0.95, 0/1.
+    assert "| e | none reaches 95.0% |" in md
+
+
+def test_the_d9_cut_is_the_lowest_at_which_the_fixes_sent_are_95_percent_right() -> None:
+    rows = [_row(i, "incident", known_fix=["a.md"] if i <= 17 else []) for i in range(1, 21)]
+    p_yes = {}
+    for r in rows:
+        p_yes[(r["id"], "a.md")] = 0.9 if r["known_fix"] else 0.4
+        p_yes[(r["id"], "b.md")] = 0.2
+    md = known_fix_report_markdown(rows, _fix_records("e", p_yes), D9)
+    # At 0.4 all 20 go out and 17 are right (85%); at 0.9 the 17 that go out are all right.
+    # Threshold | fixes sent | right among sent | fixable rows given a right page | no-fix rows sent a page
+    assert "| e | 0.900 | 17/20 (85.0%) | 17/17 (100.0%) | 17/17 (100.0%) | 0/3 (0.0%) |" in md
+
+
+def test_cli_reports_decision_9_from_its_own_runs_file(tmp_path: Path) -> None:
+    from typer.testing import CliRunner
+
+    from opspilot import cli
+
+    rows = [_row(i, "incident", known_fix=["a.md"] if i <= 2 else []) for i in range(1, 5)]
+    p_yes = {(r["id"], "a.md"): (0.9 if r["known_fix"] else 0.2) for r in rows}
+    set_path, runs_path = tmp_path / "set.jsonl", tmp_path / "runs_d9.jsonl"
+    set_path.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    runs_path.write_text(
+        "".join(json.dumps(r) + "\n" for r in _fix_records("e", p_yes)), encoding="utf-8"
+    )
+    result = CliRunner().invoke(
+        cli.app,
+        [
+            "labelset",
+            "report",
+            "--decision",
+            "d9",
+            "--no-call",
+            "--set",
+            str(set_path),
+            "--runs",
+            str(runs_path),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert f"# {D9.version} on the label set" in result.output
+    assert "| e | 0.900 | 2/4 (50.0%) | 2/2 (100.0%) | 2/2 (100.0%) | 0/2 (0.0%) |" in result.output
+
+
+def test_d9_refuses_a_row_with_no_candidate_pages(tmp_path: Path) -> None:
+    rows = [_row(1, "incident", known_fix=[], answer_space={"d2": "d2-v1", "d9": D9.version})]
+    with pytest.raises(LabelSetError, match="LS1-001 has no candidate pages"):
+        run_engines(
+            rows, D9, [_Says({})], runs=1, out=tmp_path / "r.jsonl",
+            redactor=Redactor.from_yaml(), timeout_s=1, candidates={},
+        )  # fmt: skip
+
+
+def test_a_row_and_run_with_an_unanswered_page_is_left_out_of_the_d9_cut() -> None:
+    rows = [_row(i, "incident", known_fix=["a.md"]) for i in range(1, 21)]
+    p_yes = {(r["id"], "a.md"): 0.9 for r in rows} | {(r["id"], "b.md"): 0.2 for r in rows}
+    records = [r for r in _fix_records("e", p_yes) if (r["id"], r["page"]) != ("LS1-001", "a.md")]
+    records.append(_fix_records("e", {("LS1-001", "a.md"): 0.9})[0] | {"error": "timeout"})
+    md = known_fix_report_markdown(rows, records, D9)
+    # LS1-001 never had its fixing page answered: not counted as sent b.md, nor as missed.
+    assert "| e | 0.900 | 19/19 (100.0%) | 19/19 (100.0%) | 19/19 (100.0%) | 0/0 (–) |" in md
+
+
+def test_with_whole_pages_shows_each_candidate_its_redacted_page(tmp_path: Path) -> None:
+    from opspilot.label_report import with_whole_pages
+
+    (tmp_path / "net").mkdir()
+    (tmp_path / "net" / "p1.md").write_text("# Page 1\n\nMail ops@example.com first.\n")
+    offered = {"LS1-001": [_page(1) | {"source_path": "net/p1.md"}]}
+    whole = with_whole_pages(offered, tmp_path, Redactor.from_yaml())
+    shown = whole["LS1-001"][0]["excerpt"]
+    assert shown.startswith("# Page 1") and "ops@example.com" not in shown
+    assert offered["LS1-001"][0]["excerpt"] == "how to fix 1"  # the passage is left as it was
+    with pytest.raises(LabelSetError, match="p2.md is not in"):
+        with_whole_pages({"LS1-002": [_page(2)]}, tmp_path, Redactor.from_yaml())
+
+
+def test_the_d9_report_says_what_the_engines_were_shown() -> None:
+    rows = [_row(1, "incident", known_fix=["a.md"])]
+    records = _fix_records("e", {("LS1-001", "a.md"): 0.9})
+    assert "shown the passage the labeller saw" in known_fix_report_markdown(rows, records, D9)
+    md = known_fix_report_markdown(rows, records, D9, whole_page=True)
+    assert "shown the whole page" in md
+
+
+def test_cli_keeps_whole_page_to_decision_9() -> None:
+    from typer.testing import CliRunner
+
+    from opspilot import cli
+
+    result = CliRunner().invoke(
+        cli.app, ["labelset", "report", "--decision", "d2", "--whole-page", "--no-call"]
+    )
+    assert result.exit_code == 1 and "--whole-page is for d9 only" in result.output
