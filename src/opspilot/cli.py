@@ -2139,9 +2139,10 @@ def labelset_report(
 
     Each engine answers every row three times; for d9, every candidate page of
     every row. Every call is saved as it returns, so a rerun resumes and only
-    retries what failed; ``--no-call`` recomputes the report from the runs file. Needs TYPESAFE_API_KEY and the
-    classification Playbook's provider key. Writes nothing to a decision file:
-    its threshold is set from the report by a person.
+    retries what failed; ``--no-call`` recomputes the report from the runs
+    file. Needs TYPESAFE_API_KEY and the classification Playbook's provider
+    key. Writes nothing to a decision file: its threshold is set from the
+    report by a person.
     """
     try:
         if decision not in ("d1", "d2", "d9"):
@@ -2157,8 +2158,8 @@ def labelset_report(
         if whole_page:
             default_runs = default_runs.with_name(f"{default_runs.stem}_whole_page.jsonl")
         runs_out = runs_file or default_runs
-        redactor = Redactor.from_yaml()
         if not no_call:
+            redactor = Redactor.from_yaml()
             offered = None
             if decision == "d9":
                 if not CANDIDATES_PATH.is_file():
