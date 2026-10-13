@@ -20,5 +20,6 @@ answers:
     It is about the same subject but a different problem, or about something
     else.
 # Set from the label set, never guessed (ADR-0040), keyed by the engine it was
-# measured on; empty until that report has been run.
+# measured on. Empty: as measured (report_d9_v1*.md), no engine says a page
+# fixes a Work item often enough to send one without a person (#226, #286).
 thresholds: {}

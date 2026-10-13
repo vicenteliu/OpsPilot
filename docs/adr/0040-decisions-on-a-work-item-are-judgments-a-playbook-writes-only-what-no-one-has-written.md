@@ -7,6 +7,14 @@ Status: accepted (2026-09-23)
 > without stopping nearly every Work item, so by this ADR's own rule it is not ready to be
 > automated. Until it is, the stage runs decision 2 without it and says so at startup;
 > "Security runs first" below holds once decision 1 is measured for its engine.
+>
+> **Revised 2026-10-12** (#226, #286): decision 9 was measured on the label set, each engine
+> shown every candidate page's passage and then its whole page. Neither engine says a page fixes
+> the Work item: a cut that keeps the fixes sent 95% right sends 25 of 240 at most. So decision 9
+> is not ready to send a known fix, and every run reaches the summary Playbook as before. Jev
+> does rank the pages: for about nine in ten rows with a fix, the page it finds likeliest fixes
+> it, against seven in ten for retrieval's first hit. #286 weighs showing the person the pages in
+> that order.
 
 A Work item reaches a suggestion through a string of decisions, and today a
 language model makes every one of them in prose. Classification is one call
