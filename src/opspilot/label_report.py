@@ -104,6 +104,8 @@ def run_engines(
         if candidates is None:
             items.append((row, None, state))
             continue
+        if row["id"] not in candidates:
+            raise LabelSetError(f"{row['id']} has no candidate pages; the set and them differ")
         for candidate in candidates[row["id"]]:
             shown = (
                 f"Handbook page: {candidate['title']} ({candidate['source_path']})\n"
@@ -466,10 +468,19 @@ def known_fix_report_markdown(
             f" | ${sum(r['cost_usd'] for r in ok) / len(ok):.6f}"
             f" | {percentile(latencies, 0.5):.0f} ms | {percentile(latencies, 0.95):.0f} ms |"
         )
+        # A row and run the engine did not see every page of has no likeliest page.
+        answered = {(r["run"], r["id"], r["page"]) for r in ok}
+        unseen = {
+            (r["run"], r["id"])
+            for r in mine
+            if r["error"] is not None and (r["run"], r["id"], r["page"]) not in answered
+        }
         best: dict[tuple[int, str], tuple[float, str]] = {}
         for r in ok:
             p = p_yes_of(r["answer"], r["probability"])
             key = (r["run"], r["id"])
+            if key in unseen:
+                continue
             if key not in best or p > best[key][0]:
                 best[key] = (p, r["page"])
         decisions = [(p, page in known[i], bool(known[i])) for (_, i), (p, page) in best.items()]
@@ -493,7 +504,9 @@ def known_fix_report_markdown(
         "",
         f"## Threshold: the lowest P(yes) at which the fixes sent are at least {_pct(TARGET)} right",
         "",
-        "Per row and run, the candidate with the highest P(yes) is the fix the stage would send.",
+        "Per row and run, the candidate with the highest P(yes) is the fix the stage would send,"
+        " and each count below is of rows and runs: a row counts once per run. A row and run with"
+        " a page no call answered is left out.",
         "",
         "| Engine | Threshold | Fixes sent | Right among sent | Rows with a fix, given a right page"
         " | Rows with none, sent a page |",

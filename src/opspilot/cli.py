@@ -2130,7 +2130,8 @@ def labelset_report(
 ) -> None:
     """Run Jev and the Playbook's model over the labelled set and report a decision (SPEC §7).
 
-    Each engine answers every row three times. Every call is saved as it
+    Each engine answers every row three times; for d9, every candidate page of
+    every row. Every call is saved as it
     returns, so a rerun resumes and only retries what failed; ``--no-call``
     recomputes the report from the runs file. Needs TYPESAFE_API_KEY and the
     classification Playbook's provider key. Writes nothing to a decision file:
@@ -2145,12 +2146,12 @@ def labelset_report(
         name = {"d1": SECURITY_FILE, "d2": WORK_ITEM_TYPE_FILE, "d9": "d9.yaml"}[decision]
         question = load_question(DECISIONS_DIR / name)
         runs_out = runs_file or runs_path(question)
-        offered = (
-            {c["id"]: c["candidates"] for c in _read_jsonl(CANDIDATES_PATH)}
-            if decision == "d9"
-            else None
-        )
         if not no_call:
+            offered = None
+            if decision == "d9":
+                if not CANDIDATES_PATH.is_file():
+                    raise LabelSetError(f"{CANDIDATES_PATH} not found; run labelset candidates")
+                offered = {c["id"]: c["candidates"] for c in _read_jsonl(CANDIDATES_PATH)}
             key = os.environ.get("TYPESAFE_API_KEY", "").strip()
             if not key:
                 raise LabelSetError("TYPESAFE_API_KEY is not set; Jev is one of the two engines")
@@ -2161,8 +2162,8 @@ def labelset_report(
             provider = make_provider(
                 pb.model.provider_id, kind=pb.model.kind, api_key=cfg.anthropic_api_key
             )
-            # Decision 2's baseline is Classification as it stands; decision 1 has
-            # none of its own, so the Playbook's model is asked d1 as written.
+            # Decision 2's baseline is Classification as it stands; decisions 1 and
+            # 9 have none of their own, so the Playbook's model is asked as written.
             baseline = (
                 ClassificationJudge(pb, provider)
                 if decision == "d2"

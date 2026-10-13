@@ -536,3 +536,22 @@ def test_cli_reports_decision_9_from_its_own_runs_file(tmp_path: Path) -> None:
     assert result.exit_code == 0, result.output
     assert f"# {D9.version} on the label set" in result.output
     assert "| e | 0.900 | 2/4 (50.0%) | 2/2 (100.0%) | 2/2 (100.0%) | 0/2 (0.0%) |" in result.output
+
+
+def test_d9_refuses_a_row_with_no_candidate_pages(tmp_path: Path) -> None:
+    rows = [_row(1, "incident", known_fix=[], answer_space={"d2": "d2-v1", "d9": D9.version})]
+    with pytest.raises(LabelSetError, match="LS1-001 has no candidate pages"):
+        run_engines(
+            rows, D9, [_Says({})], runs=1, out=tmp_path / "r.jsonl",
+            redactor=Redactor.from_yaml(), timeout_s=1, candidates={},
+        )  # fmt: skip
+
+
+def test_a_row_and_run_with_an_unanswered_page_is_left_out_of_the_d9_cut() -> None:
+    rows = [_row(i, "incident", known_fix=["a.md"]) for i in range(1, 21)]
+    p_yes = {(r["id"], "a.md"): 0.9 for r in rows} | {(r["id"], "b.md"): 0.2 for r in rows}
+    records = [r for r in _fix_records("e", p_yes) if (r["id"], r["page"]) != ("LS1-001", "a.md")]
+    records.append(_fix_records("e", {("LS1-001", "a.md"): 0.9})[0] | {"error": "timeout"})
+    md = known_fix_report_markdown(rows, records, D9)
+    # LS1-001 never had its fixing page answered: not counted as sent b.md, nor as missed.
+    assert "| e | 0.900 | 19/19 (100.0%) | 19/19 (100.0%) | 19/19 (100.0%) | 0/0 (–) |" in md
