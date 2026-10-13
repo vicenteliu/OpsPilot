@@ -10,13 +10,15 @@ Every report that uses it says so.
 
 ## 1. What gets labelled
 
-Two columns now, the rest later. Each is labelled against a versioned answer space.
+These columns now, the rest in their slices. Each is labelled against a versioned answer space.
 
 | Column | Decision | Answer space | Version | Used by |
 |---|---|---|---|---|
 | `work_item_type` | 2 · Incident or request? | `incident` · `service_request` | `d2-v1` | #224 (this slice) |
 | `security` | 1 · Security issue? | `yes` · `no` | `d1-v2` (was `d1-v1`) | #225 |
 | `known_fix` | 9 · Seen before? | the candidate pages that fix the row, or none | `d9-v1` | #226 |
+| `impact` | 7 · Impact | `single_user` · `multiple_users` · `site_wide` | `d7-v1` | #227 |
+| `urgency` | 8 · Urgency | `worked_around` · `slowed` · `stopped` | `d8-v1` | #227 |
 
 **`d2-v1`**, the definitions the Playbook's classifier already uses
 (`playbooks/pb_classify_work_item_en/prompt.md`):
@@ -40,8 +42,20 @@ drafter wrote as security items, and 28 it had not. Both engines scored those 28
 labelled `no`, so a cut that stopped every labelled `yes` stopped nearly every Work item
 (`report_d1_v1.md`). Its labels are kept on each row as `security_d1_v1`.
 
-The other decisions' columns (already open, enough to act on, network or system, impact, urgency,
-seen before) exist in the schema and stay empty until their slice.
+**`d7-v1`** and **`d8-v1`** (2026-10-13, #227), as `judgments/decisions/d7.yaml` and `d8.yaml`
+state them. Both are Scores, their levels in the order given here, and both are labelled on the
+rows labelled `incident` only: ADR-0040 asks them of an Incident. A request's `impact` and
+`urgency` stay empty.
+- `impact`: `single_user` is one person, the reporter or one other they name, and also when the
+  item does not say anyone else is affected; `multiple_users` is more than one person but not a
+  whole site (a team, a floor, a group, several named people, "others have it too"); `site_wide`
+  is everyone at a site or in the organisation, or a service everyone uses down for all.
+- `urgency`: `worked_around` is working, with a workaround in use or nothing blocked now; `slowed`
+  is still working, slower or with errors, with no workaround; `stopped` is unable to do the work
+  it blocks at all until it is fixed.
+
+The other decisions' columns (already open, enough to act on, network or system) exist in the
+schema and stay empty until their slice.
 
 ## 2. Row schema (`label_set_v1.jsonl`, one JSON object per line)
 
@@ -57,6 +71,7 @@ seen before) exist in the schema and stay empty until their slice.
 | `work_item_type` | **person** | `d2-v1` |
 | `security` | **person** | `d1-v2`; the `d1-v1` label it replaced is kept as `security_d1_v1` |
 | `known_fix` | **person** | `d9-v1`: the `source_path` of each candidate page that fixes the row, `[]` for none; with `known_fix_labelled_by` and `known_fix_labelled_time` |
+| `impact` · `urgency` | **person** | `d7-v1` · `d8-v1`, Incidents only; with `impact_urgency_labelled_by` and `impact_urgency_labelled_time` |
 | `label_confidence` | **person** | `high` · `low`. Low = "I picked, but it could go the other way" |
 | `label_note` | person, optional | one line, only when the reason isn't obvious |
 | `answer_space` | script | `{"d2": "d2-v1", "d1": "d1-v1"}` at labelling time |
@@ -151,6 +166,9 @@ security.
   becomes. The labeller marks the pages that fix the row, or none (`opspilot labelset
   label-known-fix`), seeing the row and the candidates and no engine's answer. A fix the
   candidates do not include is recorded as none: decision 9 can only pick from what it is offered.
+- **Impact and urgency** (#227, `d7-v1`, `d8-v1`): each row labelled `incident` is shown again,
+  its subject, body and channel and no other label, and the labeller gives its impact and then
+  its urgency in one pass (`opspilot labelset label-impact-urgency`), each a level's number.
 
 ## 7. How the report uses it
 

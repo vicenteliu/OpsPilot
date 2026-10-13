@@ -38,6 +38,7 @@ from pathlib import Path
 from typing import Any, Final
 
 from .errors import OpsPilotError
+from .judgment import Question
 from .orchestrator.ticket_summary import _parse_summary_json
 from .providers.base import ProviderProtocol
 from .providers.types import Message, SamplingParams
@@ -900,4 +901,99 @@ def label_known_fix(
     done = [r for r in rows if "known_fix" in r]
     return KnownFixResult(
         labelled=len(done), total=len(rows), with_a_fix=sum(bool(r["known_fix"]) for r in done)
+    )
+
+
+# ── Decisions 7 and 8: Impact and Urgency, asked of an Incident (#227) ───────
+
+
+@dataclass(frozen=True)
+class ImpactUrgencyResult:
+    labelled: int
+    total: int
+    impact: dict[str, int]  # level → rows labelled it
+    urgency: dict[str, int]
+
+    @property
+    def finished(self) -> bool:
+        return self.labelled == self.total
+
+
+def _levels(question: Question) -> dict[str, str]:
+    """A Score's levels keyed 1, 2, 3 … in the file's order, as the labeller types them."""
+    return {str(n): level for n, level in enumerate(question.answers, start=1)}
+
+
+def label_impact_urgency(
+    path: Path = OUT_PATH,
+    *,
+    by: str,
+    ask: Ask,
+    show: Show,
+    impact: Question,
+    urgency: Question,
+    clock: Clock = _utc_now,
+) -> ImpactUrgencyResult:
+    """Label each Incident's impact and urgency, blind (decisions 7 and 8).
+
+    Only the rows labelled ``incident`` are asked: ADR-0040 asks decisions 7
+    and 8 of an Incident. Each row shows its subject, body and channel, and
+    no other label. Both answers are saved on the row as they are given, so a
+    rerun picks up at the first open row.
+    """
+    if not path.is_file():
+        raise LabelSetError(f"{path} not found: draft the set first")
+    rows = _read_jsonl(path)
+    if any(r["work_item_type"] is None for r in rows):
+        raise LabelSetError("label every row's type first; only Incidents are asked")
+    incidents = [r for r in rows if r["work_item_type"] == "incident"]
+    impact_keys, urgency_keys = _levels(impact), _levels(urgency)
+
+    for q, keys in ((impact, impact_keys), (urgency, urgency_keys)):
+        show(f"{q.version}: {q.text}")
+        for key, level in keys.items():
+            show(f"  {key} {level}: {q.answers[level]}")
+
+    def prompt(name: str, keys: dict[str, str]) -> str:
+        return f"{name}? " + " · ".join(f"{k} {v}" for k, v in keys.items())
+
+    def next_open(start: int) -> int:
+        open_ = (j for j in range(start, len(incidents)) if "impact" not in incidents[j])
+        return next(open_, len(incidents))
+
+    i = next_open(0)
+    while i < len(incidents):
+        row = incidents[i]
+        show(f"\n── {row['id']} ({i + 1}/{len(incidents)}) · {row['channel']} ──")
+        show(f"Subject: {row['subject'] or '(none)'}")
+        show(row["body"] or "(no body)")
+        first = _ask_choice(
+            ask, prompt("impact", impact_keys) + "  (u back, q quit)", impact_keys, nav=True
+        )
+        if first == "q":
+            break
+        if first == "u":
+            i = max(i - 1, 0)
+            continue
+        second = _ask_choice(ask, prompt("urgency", urgency_keys), urgency_keys, nav=False)
+        row.update(
+            impact=first,
+            urgency=second,
+            impact_urgency_labelled_by=by,
+            impact_urgency_labelled_time=clock().astimezone(UTC).isoformat(timespec="seconds"),
+            answer_space={
+                **(row.get("answer_space") or {}),
+                "d7": impact.version,
+                "d8": urgency.version,
+            },
+        )
+        _write_jsonl(path, rows)
+        i = next_open(i + 1)
+
+    done = [r for r in incidents if "impact" in r]
+    return ImpactUrgencyResult(
+        labelled=len(done),
+        total=len(incidents),
+        impact={level: sum(r["impact"] == level for r in done) for level in impact.answers},
+        urgency={level: sum(r["urgency"] == level for r in done) for level in urgency.answers},
     )

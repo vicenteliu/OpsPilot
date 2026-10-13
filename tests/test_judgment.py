@@ -36,6 +36,8 @@ from opspilot.providers.types import ChatResponse, Usage
 REPO_ROOT = Path(__file__).resolve().parents[1]
 D2 = REPO_ROOT / DECISIONS_DIR / "d2.yaml"
 D1 = REPO_ROOT / DECISIONS_DIR / "d1.yaml"
+D7 = REPO_ROOT / DECISIONS_DIR / "d7.yaml"
+D8 = REPO_ROOT / DECISIONS_DIR / "d8.yaml"
 
 
 class _Classifier:
@@ -248,17 +250,50 @@ class TestTypeSafeJudge:
         # The answer the probability leans to, and that answer's probability.
         assert (j.answer, j.probability) == pytest.approx((answer, probability))  # type: ignore[comparison-overlap]
 
-    def test_refuses_a_question_kind_it_does_not_ask_yet(self) -> None:
+    def test_impact_and_urgency_are_scores_whose_levels_rise_in_file_order(self) -> None:
+        assert (load_question(D7).kind, list(load_question(D7).answers)) == (
+            "score",
+            ["single_user", "multiple_users", "site_wide"],
+        )
+        assert (load_question(D8).kind, list(load_question(D8).answers)) == (
+            "score",
+            ["worked_around", "slowed", "stopped"],
+        )
+
+    def test_asks_a_score_with_its_levels_in_order_and_takes_the_likeliest(self) -> None:
         sent: list[httpx.Request] = []
 
         def handler(request: httpx.Request) -> httpx.Response:
             sent.append(request)
-            return httpx.Response(200, json=_JEV_ANSWER)
+            body = {
+                "model": "jev-1.13.0",
+                "answers": {
+                    "d7": {
+                        "type": "score",
+                        "score": 0.9,  # probability-weighted: between two levels
+                        "legend": {"0": "one", "1": "some", "2": "all"},
+                        "probabilities": {"0": 0.3, "1": 0.5, "2": 0.2},
+                        "confidence": 0.4,
+                    }
+                },
+                "usage": {"input_tokens": 250, "output_tokens": 20},
+            }
+            return httpx.Response(200, json=body)
 
-        impact = Question("d7", "d7-v1", "score", "Impact?", {"a": "", "b": ""}, None)
-        with pytest.raises(JudgmentError, match="does not ask score questions yet"):
-            _jev(handler).judge(impact, "s", timeout_s=5)
-        assert sent == []
+        q = load_question(D7)
+        j = _jev(handler).judge(q, "The printer on floor 3 is jammed for everyone", timeout_s=5)
+        assert json.loads(sent[0].content)["questions"] == {
+            "d7": {"type": "score", "instructions": q.text, "criteria": list(q.answers.values())}
+        }
+        assert (j.answer, j.probability) == ("multiple_users", 0.5)
+
+    def test_a_score_level_outside_the_answer_space_is_a_failure(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            answer = {"type": "score", "score": 3.0, "probabilities": {"3": 1.0}}
+            return httpx.Response(200, json={**_JEV_ANSWER, "answers": {"d7": answer}})
+
+        with pytest.raises(JudgmentError, match="level 3, outside the answer space of d7-v1"):
+            _jev(handler).judge(load_question(D7), "s", timeout_s=5)
 
 
 # ── The Playbook's model, asked a Question in its file's words ──────────────

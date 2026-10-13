@@ -1,0 +1,26 @@
+# Decision 7 (ADR-0040): Impact. How many people does the problem affect?
+#
+# Asked of an Incident. A Score: its answers are levels, narrowest first, and
+# Jev numbers them in this order. Impact takes the summary's `scope` values
+# without `unknown`, since a low probability already says unknown (ADR-0040).
+# With Urgency (d8.yaml) it is read off the Severity table. The answer space
+# the label set's `impact` column is labelled against
+# (judgments/label_set/SPEC.md, d7-v1).
+id: d7
+version: d7-v1
+kind: score
+question: >-
+  How many people does the problem in this Work item affect?
+answers:
+  single_user: >-
+    One person: the reporter, or one other person they name. Also when the
+    Work item does not say anyone else is affected.
+  multiple_users: >-
+    More than one person, but not a whole site: a team, a floor, a group,
+    several named people, or "others have it too".
+  site_wide: >-
+    Everyone at a site or in the organisation, or a service everyone uses is
+    down for all.
+# Set from the label set, never guessed (ADR-0040), keyed by the engine it was
+# measured on; empty until that report has been run.
+thresholds: {}

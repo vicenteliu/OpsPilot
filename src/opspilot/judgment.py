@@ -167,7 +167,9 @@ class TypeSafeJudge:
 
     The probability is the chosen answer's, not the response's ``confidence``:
     for two answers that is 2p − 1, a measure of how peaked the distribution
-    is, and the threshold and the Brier score are both stated on p.
+    is, and the threshold and the Brier score are both stated on p. A Score's
+    answer is its likeliest level, not the response's ``score``: that is the
+    probability-weighted level, which can fall between two of them.
 
     One attempt and no retries: a failure is what the fallback is for, and a
     retry spends time a person is waiting through.
@@ -179,12 +181,15 @@ class TypeSafeJudge:
         self.name = f"typesafe:{JEV_MODEL}"
 
     def judge(self, question: Question, state: str, *, timeout_s: float) -> Judgment:
+        criteria: dict[str, str] | list[str]
         if question.kind == "choice":
-            criteria: dict[str, str] = question.answers
+            criteria = question.answers
         elif question.kind == "noul":
             criteria = {"true": question.answers["yes"], "false": question.answers["no"]}
         else:
-            raise JudgmentError(f"{self.name} does not ask {question.kind} questions yet")
+            # A Score's levels are its answers' meanings in the file's order,
+            # which Jev numbers from 0.
+            criteria = list(question.answers.values())
         body = {
             "state": state,
             "model": JEV_MODEL,
@@ -220,6 +225,15 @@ class TypeSafeJudge:
                 p_yes = float(answer["noul"])
                 choice = "yes" if p_yes >= 0.5 else "no"
                 probability = p_yes if choice == "yes" else 1 - p_yes
+            elif question.kind == "score":
+                levels = list(question.answers)
+                by_level = {int(n): float(p) for n, p in answer["probabilities"].items()}
+                level = max(by_level, key=by_level.__getitem__)
+                if not 0 <= level < len(levels):
+                    raise JudgmentError(
+                        f"answered level {level}, outside the answer space of {question.version}"
+                    )
+                choice, probability = levels[level], by_level[level]
             else:
                 choice = str(answer["choice"])
                 if choice not in question.answers:

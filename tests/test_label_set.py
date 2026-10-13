@@ -22,6 +22,7 @@ import pytest
 from typer.testing import CliRunner
 
 from opspilot.errors import ProviderError
+from opspilot.judgment import DECISIONS_DIR, load_question
 from opspilot.label_set import (
     ANSWER_SPACE,
     BATCH_SIZE,
@@ -37,6 +38,7 @@ from opspilot.label_set import (
     Slot,
     build_candidates,
     check_row,
+    label_impact_urgency,
     label_known_fix,
     label_rows,
     near_duplicates,
@@ -997,3 +999,101 @@ def test_cli_candidates_says_when_the_set_is_not_there(tmp_path: Path) -> None:
         ],
     )
     assert result.exit_code == 1 and "not found" in result.output
+
+
+# ── Decisions 7 and 8: impact and urgency, asked of an Incident (#227) ───────
+
+D7 = load_question(REPO_ROOT / DECISIONS_DIR / "d7.yaml")
+D8 = load_question(REPO_ROOT / DECISIONS_DIR / "d8.yaml")
+
+
+def _incidents_file(tmp_path: Path) -> Path:
+    """Four labelled rows; the second is a request, the rest Incidents."""
+    path = _set_file(tmp_path, 4, labelled=True)
+    rows = _read(path)
+    rows[1]["work_item_type"] = "service_request"
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    return path
+
+
+def _label_levels(path: Path, keys: Keys, shown: list[str] | None = None) -> Any:
+    return label_impact_urgency(
+        path,
+        by="vicenteliu",
+        ask=keys,
+        show=(shown.append if shown is not None else lambda s: None),
+        impact=D7,
+        urgency=D8,
+        clock=_at("2026-10-13T05:00:00+00:00"),
+    )
+
+
+class TestLabelImpactUrgency:
+    def test_asks_each_incident_its_impact_then_its_urgency(self, tmp_path: Path) -> None:
+        path = _incidents_file(tmp_path)
+        shown: list[str] = []
+        keys = Keys("1", "3", "2", "2", "3", "1")
+        res = _label_levels(path, keys, shown)
+
+        assert (res.labelled, res.total, res.finished) == (3, 3, True)
+        assert res.impact == {"single_user": 1, "multiple_users": 1, "site_wide": 1}
+        assert res.urgency == {"worked_around": 1, "slowed": 1, "stopped": 1}
+        rows = _read(path)
+        assert [(r.get("impact"), r.get("urgency")) for r in rows] == [
+            ("single_user", "stopped"),
+            (None, None),  # a request is not asked
+            ("multiple_users", "slowed"),
+            ("site_wide", "worked_around"),
+        ]
+        assert rows[0]["answer_space"] == {"d7": "d7-v1", "d8": "d8-v1"}
+        assert rows[0]["impact_urgency_labelled_time"] == "2026-10-13T05:00:00+00:00"
+        assert keys.prompts[0].startswith("impact? 1 single_user · 2 multiple_users · 3 site_wide")
+        assert keys.prompts[1] == "urgency? 1 worked_around · 2 slowed · 3 stopped"
+        text = "\n".join(shown)
+        assert D7.answers["site_wide"] in text and D8.answers["slowed"] in text
+        assert "subject 1" in text and "subject 2" not in text
+        assert "draft" not in text and "security" not in text
+
+    def test_a_key_that_names_no_level_is_asked_again(self, tmp_path: Path) -> None:
+        path = _incidents_file(tmp_path)
+        keys = Keys("4", "1", "0", "2", "q")
+        _label_levels(path, keys)
+        assert len(keys.prompts) == 5
+        assert (_read(path)[0]["impact"], _read(path)[0]["urgency"]) == ("single_user", "slowed")
+
+    def test_q_saves_and_a_rerun_resumes_at_the_first_open_incident(self, tmp_path: Path) -> None:
+        path = _incidents_file(tmp_path)
+        res = _label_levels(path, Keys("1", "1", "q"))
+        assert (res.labelled, res.finished) == (1, False)
+        res = _label_levels(path, Keys("2", "2", "3", "3"))
+        assert (res.labelled, res.finished) == (3, True)
+        assert [r.get("impact") for r in _read(path)] == [
+            "single_user",
+            None,
+            "multiple_users",
+            "site_wide",
+        ]
+
+    def test_u_goes_back_and_the_incident_is_labelled_again(self, tmp_path: Path) -> None:
+        path = _incidents_file(tmp_path)
+        _label_levels(path, Keys("1", "1", "u", "3", "3", "q"))
+        assert (_read(path)[0]["impact"], _read(path)[0]["urgency"]) == ("site_wide", "stopped")
+
+    def test_needs_every_row_s_type_first(self, tmp_path: Path) -> None:
+        with pytest.raises(LabelSetError, match="label every row's type first"):
+            _label_levels(_set_file(tmp_path, 2), Keys())
+
+
+def test_cli_label_impact_urgency_prints_counts(tmp_path: Path) -> None:
+    from opspilot import cli
+
+    path = _incidents_file(tmp_path)
+    result = CliRunner().invoke(
+        cli.app,
+        ["labelset", "label-impact-urgency", "--by", "v", "--set", str(path)],
+        input="1\n3\n1\n2\n2\n3\n",
+    )
+    assert result.exit_code == 0, result.output
+    assert "labelled 3 Incidents against d7-v1 and d8-v1" in result.output
+    assert "impact: single_user 2, multiple_users 1, site_wide 0" in result.output
+    assert "urgency: worked_around 0, slowed 1, stopped 2" in result.output
