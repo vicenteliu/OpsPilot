@@ -30,7 +30,7 @@ import math
 import random
 import re
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from difflib import SequenceMatcher
@@ -779,4 +779,125 @@ def relabel_security(
         labelled=len(done),
         total=len(answers),
         changed=sum(e["after"] != e["before"] for e in done),
+    )
+
+
+# ── Decision 9: a known fix among the handbook pages kb_search offers (#226) ─
+
+CANDIDATES_PATH: Final = LABEL_SET_DIR / "candidates_d9_v1.jsonl"
+EXCERPT_CHARS: Final = 600
+
+
+def build_candidates(
+    rows: list[dict[str, Any]],
+    *,
+    search: Callable[[str], Sequence[Any]],
+    describe: Callable[[str], dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Each row's candidate pages: its kb_search hits, grouped by page in rank order.
+
+    The query is what the run's prefetch searches on, the subject then the
+    body. A page appears once, with its best hit as the excerpt: what the
+    labeller is shown, and what the engines will be. Written once and kept, so
+    a later KB build does not move the candidates under the labels.
+    """
+    out = []
+    for row in rows:
+        query = "\n".join(text for text in (row["subject"], row["body"]) if text)
+        pages: dict[str, dict[str, Any]] = {}
+        for hit in search(query):
+            if hit.document_id not in pages:
+                pages[hit.document_id] = {
+                    **describe(hit.document_id),
+                    "document_id": hit.document_id,
+                    "excerpt": hit.content[:EXCERPT_CHARS],
+                }
+        out.append({"id": row["id"], "candidates": list(pages.values())})
+    return out
+
+
+@dataclass(frozen=True)
+class KnownFixResult:
+    labelled: int
+    total: int
+    with_a_fix: int
+
+    @property
+    def finished(self) -> bool:
+        return self.labelled == self.total
+
+
+def _ask_pages(ask: Ask, count: int) -> list[int] | str:
+    """The candidate numbers that fix the row (0 for none), asked again until valid; or u / q."""
+    prompt = "known fix? page numbers, e.g. 1,3; 0 for none  (u back, q quit)"
+    while True:
+        answer = ask(prompt).strip().lower()
+        if answer in ("u", "q"):
+            return answer
+        if answer == "0":
+            return []
+        parts = [part.strip() for part in answer.split(",")]
+        if parts and all(p.isdigit() and 1 <= int(p) <= count for p in parts):
+            return list(dict.fromkeys(int(p) for p in parts))
+
+
+def label_known_fix(
+    path: Path = OUT_PATH,
+    *,
+    candidates: Path = CANDIDATES_PATH,
+    by: str,
+    ask: Ask,
+    show: Show,
+    version: str,
+    definition: str,
+    clock: Clock = _utc_now,
+) -> KnownFixResult:
+    """Label which candidate pages are a known fix for each row, or none (decision 9).
+
+    Each row shows its subject, body and channel and its candidate pages, each
+    with its title, path and excerpt; no engine has been asked. Each answer is
+    saved on the row as it is given, so a rerun picks up at the first open row.
+    """
+    if not path.is_file():
+        raise LabelSetError(f"{path} not found: draft the set first")
+    if not candidates.is_file():
+        raise LabelSetError(f"no candidates at {candidates}: run `opspilot labelset candidates`")
+    rows = _read_jsonl(path)
+    offered = {c["id"]: c["candidates"] for c in _read_jsonl(candidates)}
+    if missing := [r["id"] for r in rows if r["id"] not in offered]:
+        raise LabelSetError(f"no candidates for {', '.join(missing)}; rebuild the candidates")
+
+    def next_open(start: int) -> int:
+        return next((j for j in range(start, len(rows)) if "known_fix" not in rows[j]), len(rows))
+
+    show(f"{version}: a page is a known fix when {definition}")
+    i = next_open(0)
+    while i < len(rows):
+        row, pages = rows[i], offered[rows[i]["id"]]
+        show(f"\n── {row['id']} ({i + 1}/{len(rows)}) · {row['channel']} ──")
+        show(f"Subject: {row['subject'] or '(none)'}")
+        show(row["body"] or "(no body)")
+        for n, page in enumerate(pages, start=1):
+            show(f"\n  [{n}] {page['title']} · {page['source_path']}")
+            show("      " + page["excerpt"].replace("\n", "\n      "))
+        answer = _ask_pages(ask, len(pages))
+        if answer == "q":
+            break
+        if answer == "u":
+            i = max(i - 1, 0)
+            continue
+        assert isinstance(answer, list)
+        at = clock().astimezone(UTC).isoformat(timespec="seconds")
+        row.update(
+            known_fix=[pages[n - 1]["source_path"] for n in answer],
+            known_fix_labelled_by=by,
+            known_fix_labelled_time=at,
+            answer_space={**(row.get("answer_space") or {}), "d9": version},
+        )
+        _write_jsonl(path, rows)
+        i = next_open(i + 1)
+
+    done = [r for r in rows if "known_fix" in r]
+    return KnownFixResult(
+        labelled=len(done), total=len(rows), with_a_fix=sum(bool(r["known_fix"]) for r in done)
     )

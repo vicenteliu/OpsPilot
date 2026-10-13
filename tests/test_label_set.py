@@ -35,7 +35,9 @@ from opspilot.label_set import (
     LabelSetError,
     RelabelResult,
     Slot,
+    build_candidates,
     check_row,
+    label_known_fix,
     label_rows,
     near_duplicates,
     plan_slots,
@@ -831,3 +833,167 @@ def test_cli_relabel_security_shows_d1_s_definitions_and_prints_counts(tmp_path:
     assert (
         "labelled 4 of 4 against d1-v2 · changed 1 · security yes on 1 of 4 rows" in result.output
     )
+
+
+# ── Decision 9: which handbook page, if any, is a known fix (#226) ──────────
+
+
+def _candidate(n: int) -> dict[str, Any]:
+    return {
+        "source_path": f"pages/p{n}.md",
+        "title": f"Page {n}",
+        "document_id": f"doc_{n}",
+        "excerpt": f"excerpt of page {n}",
+    }
+
+
+class FakeHit:
+    def __init__(self, document_id: str, content: str) -> None:
+        self.document_id, self.content = document_id, content
+
+
+def test_candidates_are_each_row_s_hits_grouped_by_page_in_rank_order(tmp_path: Path) -> None:
+    rows = _read(_set_file(tmp_path, 2, labelled=True))
+    queries: list[str] = []
+
+    def search(query: str) -> list[FakeHit]:
+        queries.append(query)
+        return [
+            FakeHit("doc_2", "second page, best chunk"),
+            FakeHit("doc_1", "first page " + "x" * 700),
+            FakeHit("doc_2", "second page, weaker chunk"),
+        ]
+
+    out = build_candidates(
+        rows, search=search, describe=lambda d: {"source_path": f"{d}.md", "title": d.upper()}
+    )
+    assert queries[0] == "subject 1\nbody 1"  # what the run's prefetch searches on
+    [first, _] = out
+    assert first["id"] == "LS1-001"
+    assert [c["source_path"] for c in first["candidates"]] == ["doc_2.md", "doc_1.md"]
+    assert first["candidates"][0]["excerpt"] == "second page, best chunk"  # the page's best hit
+    assert len(first["candidates"][1]["excerpt"]) <= 600
+
+
+def _known_fix_files(tmp_path: Path) -> tuple[Path, Path]:
+    path = _set_file(tmp_path, 3, labelled=True)
+    candidates = tmp_path / "candidates_d9_v1.jsonl"
+    candidates.write_text(
+        "".join(
+            json.dumps({"id": f"LS1-00{i}", "candidates": [_candidate(1), _candidate(2)]}) + "\n"
+            for i in range(1, 4)
+        ),
+        encoding="utf-8",
+    )
+    return path, candidates
+
+
+def _label_fixes(path: Path, candidates: Path, keys: Keys, shown: list[str] | None = None) -> Any:
+    return label_known_fix(
+        path,
+        candidates=candidates,
+        by="vicenteliu",
+        ask=keys,
+        show=(shown.append if shown is not None else lambda s: None),
+        version="d9-v1",
+        definition="d9 definition",
+        clock=_at("2026-10-12T05:00:00+00:00"),
+    )
+
+
+class TestLabelKnownFix:
+    def test_records_the_pages_that_fix_each_row_or_none(self, tmp_path: Path) -> None:
+        path, candidates = _known_fix_files(tmp_path)
+        shown: list[str] = []
+        res = _label_fixes(path, candidates, Keys("2", "0", "1, 2"), shown)
+
+        assert (res.labelled, res.total, res.with_a_fix, res.finished) == (3, 3, 2, True)
+        rows = _read(path)
+        assert [r["known_fix"] for r in rows] == [
+            ["pages/p2.md"],
+            [],
+            ["pages/p1.md", "pages/p2.md"],
+        ]
+        assert {r["answer_space"]["d9"] for r in rows} == {"d9-v1"}
+        text = "\n".join(shown)
+        assert "d9 definition" in text and "[1] Page 1 · pages/p1.md" in text
+        assert "excerpt of page 2" in text and "draft" not in text
+
+    def test_an_answer_that_names_no_candidate_is_asked_again(self, tmp_path: Path) -> None:
+        path, candidates = _known_fix_files(tmp_path)
+        keys = Keys("3", "1,x", "1", "0", "0")
+        _label_fixes(path, candidates, keys)
+        assert keys.prompts.count(keys.prompts[0]) >= 3  # asked again twice
+        assert _read(path)[0]["known_fix"] == ["pages/p1.md"]
+
+    def test_q_saves_and_a_rerun_resumes_at_the_first_open_row(self, tmp_path: Path) -> None:
+        path, candidates = _known_fix_files(tmp_path)
+        res = _label_fixes(path, candidates, Keys("1", "q"))
+        assert (res.labelled, res.finished) == (1, False)
+        res = _label_fixes(path, candidates, Keys("0", "2"))
+        assert (res.labelled, res.finished) == (3, True)
+        assert [r["known_fix"] for r in _read(path)] == [["pages/p1.md"], [], ["pages/p2.md"]]
+
+    def test_u_goes_back_and_the_row_is_labelled_again(self, tmp_path: Path) -> None:
+        path, candidates = _known_fix_files(tmp_path)
+        _label_fixes(path, candidates, Keys("1", "u", "2", "0", "0"))
+        assert _read(path)[0]["known_fix"] == ["pages/p2.md"]
+
+    def test_needs_the_candidates_first(self, tmp_path: Path) -> None:
+        path = _set_file(tmp_path, 1, labelled=True)
+        with pytest.raises(LabelSetError, match="no candidates"):
+            _label_fixes(path, tmp_path / "missing.jsonl", Keys())
+
+
+def test_cli_candidates_refuse_to_replace_the_list_labels_are_made_against(
+    tmp_path: Path,
+) -> None:
+    from opspilot import cli
+
+    out = tmp_path / "candidates_d9_v1.jsonl"
+    out.write_text("{}\n", encoding="utf-8")
+    result = CliRunner().invoke(
+        cli.app, ["labelset", "candidates", "--set", str(_set_file(tmp_path, 1)), "--out", str(out)]
+    )
+    assert result.exit_code == 1
+    assert "labels are made against it" in " ".join(result.output.split())
+
+
+def test_cli_label_known_fix_prints_counts(tmp_path: Path) -> None:
+    from opspilot import cli
+
+    path, candidates = _known_fix_files(tmp_path)
+    result = CliRunner().invoke(
+        cli.app,
+        [
+            "labelset",
+            "label-known-fix",
+            "--by",
+            "v",
+            "--set",
+            str(path),
+            "--candidates",
+            str(candidates),
+        ],
+        input="2\n0\n1\n",
+    )
+    assert result.exit_code == 0, result.output
+    assert "Following the page would resolve the Work item" in result.output  # d9.yaml's words
+    assert "labelled 3 of 3 against d9-v1 · a known fix for 2 of them" in result.output
+
+
+def test_cli_candidates_says_when_the_set_is_not_there(tmp_path: Path) -> None:
+    from opspilot import cli
+
+    result = CliRunner().invoke(
+        cli.app,
+        [
+            "labelset",
+            "candidates",
+            "--set",
+            str(tmp_path / "nope.jsonl"),
+            "--out",
+            str(tmp_path / "c.jsonl"),
+        ],
+    )
+    assert result.exit_code == 1 and "not found" in result.output
