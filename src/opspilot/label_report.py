@@ -63,7 +63,7 @@ def row_state(row: dict[str, Any], redactor: Redactor) -> str:
 
 
 # The label column each decision is measured against (SPEC §1).
-_COLUMN: Final = {"d1": "security", "d2": "work_item_type"}
+_COLUMN: Final = {"d1": "security", "d2": "work_item_type", "d9": "known_fix"}
 
 
 def _check_set(rows: list[dict[str, Any]], question: Question) -> None:
@@ -89,11 +89,33 @@ def run_engines(
     redactor: Redactor,
     timeout_s: float,
     show: Show = lambda _: None,
+    candidates: dict[str, list[dict[str, Any]]] | None = None,
 ) -> int:
-    """Ask every engine every row, ``runs`` times; return how many calls this made."""
+    """Ask every engine every row, ``runs`` times; return how many calls this made.
+
+    With ``candidates`` (decision 9), each row is asked once per candidate
+    page, shown the Work item and the page as the labeller saw it, and each
+    record names its ``page``.
+    """
     _check_set(rows, question)
+    items: list[tuple[dict[str, Any], str | None, str]] = []
+    for row in rows:
+        state = row_state(row, redactor)
+        if candidates is None:
+            items.append((row, None, state))
+            continue
+        for candidate in candidates[row["id"]]:
+            shown = (
+                f"Handbook page: {candidate['title']} ({candidate['source_path']})\n"
+                f"{candidate['excerpt']}"
+            )
+            items.append((row, candidate["source_path"], f"{state}\n\n{shown}"))
     done = (
-        {(r["engine"], r["run"], r["id"]) for r in _read_jsonl(out) if r["error"] is None}
+        {
+            (r["engine"], r["run"], r["id"], r.get("page"))
+            for r in _read_jsonl(out)
+            if r["error"] is None
+        }
         if out.is_file()
         else set()
     )
@@ -101,13 +123,15 @@ def run_engines(
     for engine in engines:
         for n in range(1, runs + 1):
             failed = 0
-            for row in rows:
-                if (engine.name, n, row["id"]) in done:
+            for row, page, state in items:
+                if (engine.name, n, row["id"], page) in done:
                     continue
                 record: dict[str, Any] = {"engine": engine.name, "run": n, "id": row["id"]}
+                if page is not None:
+                    record["page"] = page
                 started = time.monotonic()
                 try:
-                    j = engine.judge(question, row_state(row, redactor), timeout_s=timeout_s)
+                    j = engine.judge(question, state, timeout_s=timeout_s)
                     record |= {
                         "answer": j.answer,
                         "probability": j.probability,
@@ -393,4 +417,87 @@ def security_report_markdown(
             "",
             f"- security {k}/{len(relabels)} (95% CI {_pct(lo)}–{_pct(hi)})",
         ]
+    return "\n".join(lines) + "\n"
+
+
+def known_fix_report_markdown(
+    rows: list[dict[str, Any]], records: list[dict[str, Any]], question: Question
+) -> str:
+    """Decision 9 on the label set: each row's likeliest page, and the cut that sends it.
+
+    Per row and run, the candidate with the highest P(yes) is the one the stage
+    would send; it is right when the labeller marked that page a known fix.
+    The cut is the lowest P(yes) at which the fixes sent are at least 95% right,
+    the rule decision 2's cut follows (ADR-0040).
+    """
+    known = {r["id"]: set(r["known_fix"]) for r in rows}
+    if stray := sorted({r["id"] for r in records} - known.keys()):
+        raise LabelSetError(f"the runs file answers rows the set does not have: {', '.join(stray)}")
+    engines = list(dict.fromkeys(r["engine"] for r in records))
+    runs = max((r["run"] for r in records), default=0)
+    fixable = sum(bool(v) for v in known.values())
+    lines = [
+        f"# {question.version} on the label set: the engines compared",
+        "",
+        f"{len(rows)} rows is not a benchmark: synthetic, English, labelled by one person, and the"
+        " threshold is set on the same rows it is reported on; there is no held-out split at this"
+        f" size. Each engine answered every candidate page of every row {runs} times; the figures"
+        f" pool the runs. {fixable} of {len(rows)} rows have a known fix among their candidates.",
+        "",
+        "| Engine | Calls ok/failed | Accuracy at 0.5, per page | Brier on P(yes) | Cost/call"
+        " | p50 | p95 |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    cuts: list[str] = []
+    for engine in engines:
+        mine = [r for r in records if r["engine"] == engine]
+        ok = [r for r in mine if r["error"] is None]
+        if not ok:
+            lines.append(f"| {engine} | 0/{len(mine)} | – | – | – | – | – |")
+            cuts.append(f"| {engine} | – | – | – | – | – |")
+            continue
+        label = {True: "yes", False: "no"}
+        triples = [(r["answer"], r["probability"], label[r["page"] in known[r["id"]]]) for r in ok]
+        latencies = [r["latency_ms"] for r in ok]
+        lines.append(
+            f"| {engine} | {len(ok)}/{len(mine) - len(ok)}"
+            f" | {_pct(sum(a == lab for a, _, lab in triples) / len(ok))}"
+            f" | {brier(triples, positive='yes'):.3f}"
+            f" | ${sum(r['cost_usd'] for r in ok) / len(ok):.6f}"
+            f" | {percentile(latencies, 0.5):.0f} ms | {percentile(latencies, 0.95):.0f} ms |"
+        )
+        best: dict[tuple[int, str], tuple[float, str]] = {}
+        for r in ok:
+            p = p_yes_of(r["answer"], r["probability"])
+            key = (r["run"], r["id"])
+            if key not in best or p > best[key][0]:
+                best[key] = (p, r["page"])
+        decisions = [(p, page in known[i], bool(known[i])) for (_, i), (p, page) in best.items()]
+        cut = threshold([(p, right) for p, right, _ in decisions])
+        if cut is None:
+            cuts.append(f"| {engine} | none reaches {_pct(TARGET)} | – | – | – | – |")
+            continue
+        sent = [(right, has_fix) for p, right, has_fix in decisions if p >= cut[0]]
+        has = sum(has_fix for _, _, has_fix in decisions)
+        none = len(decisions) - has
+        given_right = sum(right for right, _ in sent)
+        wrongly_sent = sum(not has_fix for _, has_fix in sent)
+        cuts.append(
+            f"| {engine} | {cut[0]:.3f}"
+            f" | {len(sent)}/{len(decisions)} ({_pct(len(sent) / len(decisions))})"
+            f" | {given_right}/{len(sent)} ({_pct(given_right / len(sent))})"
+            f" | {given_right}/{has} ({_pct(given_right / has) if has else '–'})"
+            f" | {wrongly_sent}/{none} ({_pct(wrongly_sent / none) if none else '–'}) |"
+        )
+    lines += [
+        "",
+        f"## Threshold: the lowest P(yes) at which the fixes sent are at least {_pct(TARGET)} right",
+        "",
+        "Per row and run, the candidate with the highest P(yes) is the fix the stage would send.",
+        "",
+        "| Engine | Threshold | Fixes sent | Right among sent | Rows with a fix, given a right page"
+        " | Rows with none, sent a page |",
+        "|---|---|---|---|---|---|",
+        *cuts,
+    ]
     return "\n".join(lines) + "\n"

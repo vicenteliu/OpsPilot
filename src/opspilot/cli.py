@@ -73,6 +73,7 @@ from .kb.ssc import ssc_pages
 from .kb.storage_init import init_sqlite
 from .label_report import (
     RUNS,
+    known_fix_report_markdown,
     report_markdown,
     run_engines,
     runs_path,
@@ -2115,7 +2116,7 @@ def labelset_label_known_fix(
 @labelset_app.command("report")
 def labelset_report(
     decision: str = typer.Option(
-        "d2", "--decision", help="d2 (incident or request) or d1 (security issue)."
+        "d2", "--decision", help="d2 (incident or request), d1 (security), d9 (known fix)."
     ),
     path: Path = typer.Option(OUT_PATH, "--set", help="The labelled set."),  # noqa: B008
     runs_file: Path | None = typer.Option(  # noqa: B008
@@ -2136,14 +2137,19 @@ def labelset_report(
     its threshold is set from the report by a person.
     """
     try:
-        if decision not in ("d1", "d2"):
-            raise LabelSetError(f"--decision is d1 or d2, not {decision!r}")
+        if decision not in ("d1", "d2", "d9"):
+            raise LabelSetError(f"--decision is d1, d2 or d9, not {decision!r}")
         if not path.is_file():
             raise LabelSetError(f"{path} not found; run from the repo root")
         rows = _read_jsonl(path)
-        name = SECURITY_FILE if decision == "d1" else WORK_ITEM_TYPE_FILE
+        name = {"d1": SECURITY_FILE, "d2": WORK_ITEM_TYPE_FILE, "d9": "d9.yaml"}[decision]
         question = load_question(DECISIONS_DIR / name)
         runs_out = runs_file or runs_path(question)
+        offered = (
+            {c["id"]: c["candidates"] for c in _read_jsonl(CANDIDATES_PATH)}
+            if decision == "d9"
+            else None
+        )
         if not no_call:
             key = os.environ.get("TYPESAFE_API_KEY", "").strip()
             if not key:
@@ -2158,9 +2164,9 @@ def labelset_report(
             # Decision 2's baseline is Classification as it stands; decision 1 has
             # none of its own, so the Playbook's model is asked d1 as written.
             baseline = (
-                QuestionJudge(pb, provider)
-                if decision == "d1"
-                else ClassificationJudge(pb, provider)
+                ClassificationJudge(pb, provider)
+                if decision == "d2"
+                else QuestionJudge(pb, provider)
             )
             made = run_engines(
                 rows,
@@ -2171,12 +2177,15 @@ def labelset_report(
                 redactor=Redactor.from_yaml(),
                 timeout_s=JUDGMENT_TIMEOUT_S,
                 show=typer.echo,
+                candidates=offered,
             )
             typer.echo(f"{made} calls made; every call is in {runs_out}\n")
         if not runs_out.is_file():
             raise LabelSetError(f"{runs_out} not found; run without --no-call first")
         reviews = _read_jsonl(review) if review.is_file() else None
-        if decision == "d1":
+        if decision == "d9":
+            md = known_fix_report_markdown(rows, _read_jsonl(runs_out), question)
+        elif decision == "d1":
             # The relabel and the review were made against d1-v1: they speak to
             # that answer space's labels, not to a later one's.
             v1 = question.version == "d1-v1"

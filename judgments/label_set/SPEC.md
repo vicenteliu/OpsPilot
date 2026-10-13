@@ -174,6 +174,14 @@ decision-1 threshold: the highest P(yes) at which every labelled security item s
 with its recall, the share of all calls it stops, and its false alarms among the rows labelled
 `no`. As for decision 2, a person sets `d1.yaml`'s threshold from it.
 
+**Decision 9** (#226): `opspilot labelset report --decision d9` asks Jev and the Playbook's model
+`d9-v1` once per candidate page of each row, shown the Work item and the page as the labeller saw
+it (`candidates_d9_v1.jsonl`), and keeps the calls in `runs_d9_v1.jsonl`. Per row and run, the
+candidate with the highest P(yes) is the fix the stage would send. The decision-9 threshold is the
+lowest P(yes) at which the fixes sent are at least 95% right, the rule decision 2 follows; the
+report also gives how many rows with a fix get a right page at it, and how many rows with none
+are sent one. A person sets `d9.yaml`'s threshold from it.
+
 ## 8. Decided before drafting (2026-09-24)
 
 1. **Drafter**: one batch of 10 is drafted by a GPT model and one by a Gemini model through
