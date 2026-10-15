@@ -192,6 +192,14 @@ decision-1 threshold: the highest P(yes) at which every labelled security item s
 with its recall, the share of all calls it stops, and its false alarms among the rows labelled
 `no`. As for decision 2, a person sets `d1.yaml`'s threshold from it.
 
+**Decisions 7 and 8** (#227): `opspilot labelset report --decision d7` (and `d8`) asks Jev and
+the Playbook's model `d7-v1` (`d8-v1`) of every Incident three times, keeping the calls in
+`runs_d7_v1.jsonl` (`runs_d8_v1.jsonl`). A Score's levels are ordered, so beside exact accuracy
+the report gives how often an answer is within one level of the label, what each engine answered
+for each labelled level, and what always answering the most common label would score. The
+threshold follows decision 2's rule: the lowest probability at which the levels decided without a
+person are at least 95% right. A person sets each file's threshold from it.
+
 **Decision 9** (#226): `opspilot labelset report --decision d9` asks Jev and the Playbook's model
 `d9-v1` once per candidate page of each row, shown the Work item and the page as the labeller saw
 it (`candidates_d9_v1.jsonl`), and keeps the calls in `runs_d9_v1.jsonl`. Per row and run, the

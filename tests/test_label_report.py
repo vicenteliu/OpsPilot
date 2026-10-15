@@ -18,6 +18,7 @@ from opspilot.label_report import (
     report_markdown,
     row_state,
     run_engines,
+    score_report_markdown,
     security_report_markdown,
     threshold,
     wilson,
@@ -588,3 +589,53 @@ def test_cli_keeps_whole_page_to_decision_9() -> None:
         cli.app, ["labelset", "report", "--decision", "d2", "--whole-page", "--no-call"]
     )
     assert result.exit_code == 1 and "--whole-page is for d9 only" in result.output
+
+
+# ── Decisions 7 and 8: a Score on each Incident (#227) ───────────────────────
+
+D7 = load_question(REPO_ROOT / DECISIONS_DIR / "d7.yaml")
+
+
+def _incident(i: int, impact: str) -> dict[str, Any]:
+    space = {"d2": D2.version, "d1": D1.version, "d7": D7.version, "d8": "d8-v1"}
+    return _row(i, "incident", impact=impact, urgency="stopped", answer_space=space)
+
+
+def test_the_score_report_gives_the_level_within_one_and_the_bar_to_clear() -> None:
+    rows = [_incident(i, "single_user" if i <= 8 else "multiple_users") for i in range(1, 11)]
+    answers = {r["id"]: ("single_user", 0.9) for r in rows[:8]}
+    answers |= {"LS1-009": ("multiple_users", 0.8), "LS1-010": ("site_wide", 0.6)}
+    md = score_report_markdown(rows, _records("e", answers), D7)
+
+    assert md.startswith(f"# {D7.version} on the label set's Incidents")
+    assert "single_user 8, multiple_users 2, site_wide 0" in md
+    assert "Always answering single_user would be 80.0% right" in md
+    # 9 of 10 exactly right, all 10 within one level.
+    assert "| e | 10/0 | 90.0% | 100.0% |" in md
+    # Brier on the answer's probability: 8 × 0.1² + 0.2² + 0.6², over 10.
+    assert "| 0.048 |" in md
+    # Only labelled levels get a row; every level is a column.
+    assert "| e | single_user (8) | 8 | 0 | 0 |" in md
+    assert "| e | multiple_users (2) | 0 | 1 | 1 |" in md
+    assert "site_wide (0)" not in md
+    # At 0.8, 9 decided and all right; at 0.6 the wrong one comes in, 9/10 < 95%.
+    assert "| e | 0.800 | 9/10 (90.0%) | 100.0% |" in md
+
+
+def test_cli_reports_impact_on_the_incidents_only(tmp_path: Path) -> None:
+    from typer.testing import CliRunner
+
+    from opspilot import cli
+
+    rows = [_incident(1, "single_user"), _row(2, "service_request"), _incident(3, "site_wide")]
+    set_path, runs_path = tmp_path / "set.jsonl", tmp_path / "runs_d7.jsonl"
+    set_path.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    records = _records("e", {"LS1-001": ("single_user", 0.9), "LS1-003": ("site_wide", 0.7)})
+    runs_path.write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
+    result = CliRunner().invoke(
+        cli.app,
+        ["labelset", "report", "--decision", "d7", "--no-call", "--set", str(set_path), "--runs", str(runs_path)],
+    )  # fmt: skip
+    assert result.exit_code == 0, result.output
+    assert "2 Incidents is not a benchmark" in result.output
+    assert "| e | 2/0 | 100.0% | 100.0% |" in result.output
