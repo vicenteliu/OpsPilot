@@ -212,6 +212,10 @@ score is on the answer: each answer's probability against whether it was right. 
 threshold follows decision 2's rule: the lowest probability at which the levels decided without a
 person are at least 95% right. A person sets each file's threshold from it.
 
+**Decision 6** (#228): `opspilot labelset report --decision d6` reports the team the same way, on
+the same Incidents, into `runs_d6_v1.jsonl`; a Choice's answers are not ordered, so it has no
+within-one figure.
+
 **Decision 9** (#226): `opspilot labelset report --decision d9` asks Jev and the Playbook's model
 `d9-v1` once per candidate page of each row, shown the Work item and the page as the labeller saw
 it (`candidates_d9_v1.jsonl`), and keeps the calls in `runs_d9_v1.jsonl`. Per row and run, the

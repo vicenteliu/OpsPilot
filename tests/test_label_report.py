@@ -12,13 +12,13 @@ from opspilot.errors import ProviderError
 from opspilot.judgment import DECISIONS_DIR, Judgment, Question, load_question
 from opspilot.label_report import (
     brier,
+    incident_report_markdown,
     known_fix_report_markdown,
     percentile,
     recall_cut,
     report_markdown,
     row_state,
     run_engines,
-    score_report_markdown,
     security_report_markdown,
     threshold,
     wilson,
@@ -605,7 +605,7 @@ def test_the_score_report_gives_the_level_within_one_and_the_bar_to_clear() -> N
     rows = [_incident(i, "single_user" if i <= 8 else "multiple_users") for i in range(1, 11)]
     answers = {r["id"]: ("single_user", 0.9) for r in rows[:8]}
     answers |= {"LS1-009": ("multiple_users", 0.8), "LS1-010": ("site_wide", 0.6)}
-    md = score_report_markdown(rows, _records("e", answers), D7)
+    md = incident_report_markdown(rows, _records("e", answers), D7)
 
     assert md.startswith(f"# {D7.version} on the label set's Incidents")
     assert "single_user 8, multiple_users 2, site_wide 0" in md
@@ -644,4 +644,19 @@ def test_cli_reports_impact_on_the_incidents_only(tmp_path: Path) -> None:
 def test_the_score_report_needs_every_incident_labelled() -> None:
     rows = [_incident(1, "single_user"), _row(2, "incident")]
     with pytest.raises(LabelSetError, match="label every Incident's impact first"):
-        score_report_markdown(rows, [], D7)
+        incident_report_markdown(rows, [], D7)
+
+
+def test_a_choice_s_report_has_no_within_one_level() -> None:
+    d6 = load_question(REPO_ROOT / DECISIONS_DIR / "d6.yaml")
+    space = {"d2": D2.version, "d1": D1.version, "d6": d6.version}
+    rows = [
+        _row(i, "incident", team="systems" if i <= 3 else "network", answer_space=space)
+        for i in range(1, 5)
+    ]
+    answers = {r["id"]: ("systems", 0.9) for r in rows}
+    md = incident_report_markdown(rows, _records("e", answers), d6)
+    assert "Within one level" not in md
+    assert "Always answering systems would be 75.0% right" in md
+    assert "| e | 4/0 | 75.0% | 0.210 |" in md
+    assert "| e | network (1) | 0 | 1 |" in md
