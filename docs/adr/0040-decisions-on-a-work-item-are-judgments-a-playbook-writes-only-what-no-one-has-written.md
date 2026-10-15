@@ -23,6 +23,12 @@ Status: accepted (2026-09-23)
 > summary Playbook suggests one as it did before the stage, and both Judgments are in the trace.
 > The table is `judgments/decisions/severity.yaml`. No Incident in the set is site-wide, so
 > Impact's highest level is not yet measured (#288).
+>
+> **Revised 2026-10-16** (#228): the team list is decision 6's answer space, `d6.yaml`, so a
+> changed list is a new version measured again. On the label set's Incidents both engines picked
+> the labelled team every time. A team that clears its cut from the primary engine replaces the
+> summary's free-text escalation hint. Below it, or from the fallback, the hint says a person picks
+> the team; the run itself goes on.
 
 A Work item reaches a suggestion through a string of decisions, and today a
 language model makes every one of them in prose. Classification is one call

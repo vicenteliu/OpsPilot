@@ -162,6 +162,11 @@ def _judge_security(state: Any, rendered: str | None) -> dict[str, Any] | None:
     return {**judgment.as_trace(), "p_yes": p_yes(judgment), "stops": stops}
 
 
+def _writes_incident_summary(pb: Any) -> bool:
+    """Whether the Playbook writes an incident summary, the one the stage's Incident fields fill."""
+    return getattr(pb, "output_schema", None) == "incident_summary_v1"
+
+
 def _judge_severity(
     state: Any, rendered: str | None, pb: Any
 ) -> tuple[dict[str, str] | None, list[dict[str, Any]]]:
@@ -177,7 +182,7 @@ def _judge_severity(
         stage is None
         or stage.severity is None
         or rendered is None
-        or getattr(pb, "output_schema", None) != "incident_summary_v1"
+        or not _writes_incident_summary(pb)
     ):
         return None, []
     try:
@@ -189,6 +194,48 @@ def _judge_severity(
         {"severity_suggested": severity} if severity is not None else None,
         [{**j.as_trace(), "severity": severity} for j in judgments],
     )
+
+
+def _judge_team(
+    state: Any, rendered: str | None, pb: Any
+) -> tuple[dict[str, str] | None, dict[str, Any] | None]:
+    """Decision 6 for an Incident's summary: the team to escalate to, or a person picks (#228).
+
+    A team that stands replaces the summary's free-text escalation hint. Below
+    its cut, from the fallback, or with no engine to answer, the hint says a
+    person picks the team, rather than the model guessing one. Returns the
+    field the summary is given and the Judgment for the trace; None for both
+    when the stage is off, decision 6 is not yet measured, or the Playbook
+    writes no incident summary.
+    """
+    stage = getattr(state, "judgments", None)
+    if stage is None or stage.team is None or rendered is None or not _writes_incident_summary(pb):
+        return None, None
+    try:
+        judgment = stage.team.decide(rendered)
+    except OpsPilotError as e:
+        logger.warning("no engine could answer which team; a person picks: %s", e)
+        return {"escalation_hint": "A person picks the team: no engine could answer."}, None
+    if stage.team.stands(judgment):
+        hint = judgment.answer
+    elif judgment.fallback is not None:
+        hint = f"A person picks the team: {judgment.answer} came from the fallback engine."
+    else:
+        hint = (
+            f"A person picks the team: {judgment.answer} at {judgment.probability:.2f}"
+            " is below its cut."
+        )
+    return {"escalation_hint": hint}, {**judgment.as_trace(), "escalation_hint": hint}
+
+
+def _judge_incident(
+    state: Any, rendered: str | None, pb: Any
+) -> tuple[dict[str, str] | None, list[dict[str, Any]]]:
+    """What the stage decides for an Incident's summary before it runs, and each Judgment."""
+    severity, judged = _judge_severity(state, rendered, pb)
+    team, team_judged = _judge_team(state, rendered, pb)
+    decided = {**(severity or {}), **(team or {})}
+    return decided or None, judged + ([team_judged] if team_judged else [])
 
 
 def _resolve_run_plan(
@@ -272,7 +319,7 @@ async def run_ticket(body: ApiRunRequest, request: Request) -> ApiRunResponse:
             )
             if needs_conf:
                 return None, classification, True, security
-            decided, severity_judgments = _judge_severity(state, rendered, pb)
+            decided, incident_judgments = _judge_incident(state, rendered, pb)
             orch_request = OrchestratorRunRequest(
                 playbook=pb, input_path=ticket_path, owner="api:default"
             )
@@ -289,7 +336,7 @@ async def run_ticket(body: ApiRunRequest, request: Request) -> ApiRunResponse:
             )
             _trace_judgment(state, res.session_id, security)
             _trace_judgment(state, res.session_id, (classification or {}).get("judgment"))
-            for judgment in severity_judgments:
+            for judgment in incident_judgments:
                 _trace_judgment(state, res.session_id, judgment)
             return res, classification, False, security
 
@@ -361,7 +408,7 @@ async def run_ticket_stream(body: ApiRunRequest, request: Request) -> StreamingR
         )
         if needs_conf:
             return None, classification, True, security
-        decided, severity_judgments = _judge_severity(state, rendered, pb)
+        decided, incident_judgments = _judge_incident(state, rendered, pb)
         orch_request = OrchestratorRunRequest(
             playbook=pb, input_path=ticket_path, owner="api:default"
         )
@@ -379,7 +426,7 @@ async def run_ticket_stream(body: ApiRunRequest, request: Request) -> StreamingR
         )
         _trace_judgment(state, res.session_id, security)
         _trace_judgment(state, res.session_id, (classification or {}).get("judgment"))
-        for judgment in severity_judgments:
+        for judgment in incident_judgments:
             _trace_judgment(state, res.session_id, judgment)
         return res, classification, False, security
 

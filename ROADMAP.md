@@ -172,6 +172,12 @@ either claim.
   Incident's Severity is read off `judgments/decisions/severity.yaml` when both
   clear their cuts, and the summary Playbook is given it; below either, it
   suggests one as before.
+- Which team, decision 6 (#228): the team list is `d6.yaml`'s answer space,
+  default `network` and `systems`, and the 39 Incidents are labelled for it.
+  Both engines picked the labelled team on all 117 answers (cuts 0.79 on Jev,
+  0.55 on the Playbook's model), though only 7 Incidents are network ones.
+  With the stage on, a team that clears its cut is the summary's escalation
+  hint; below it, the hint says a person picks the team.
 
 *Not yet:*
 
