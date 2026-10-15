@@ -660,3 +660,20 @@ def test_a_choice_s_report_has_no_within_one_level() -> None:
     assert "Always answering systems would be 75.0% right" in md
     assert "| e | 4/0 | 75.0% | 0.210 |" in md
     assert "| e | network (1) | 0 | 1 |" in md
+
+
+def test_a_noul_s_report_finds_the_cut_at_which_its_asks_are_95_percent_right() -> None:
+    """Decision 4 (#229) acts only on a `no` that stands: the ask goes out."""
+    d4 = load_question(REPO_ROOT / DECISIONS_DIR / "d4.yaml")
+    space = {"d2": D2.version, "d1": D1.version, "d4": d4.version}
+    rows = [
+        _row(i, "incident", enough="no" if i <= 3 else "yes", answer_space=space)
+        for i in range(1, 11)
+    ]
+    answers = {r["id"]: ("yes", 0.9) for r in rows[3:]}
+    answers |= {"LS1-001": ("no", 0.9), "LS1-002": ("no", 0.8), "LS1-003": ("yes", 0.6)}
+    answers["LS1-004"] = ("no", 0.7)  # a wrong ask, less sure than the right ones
+    md = incident_report_markdown(rows, _records("e", answers), d4)
+    assert "## Asks: the lowest P(no)" in md
+    # At 0.8 two asks go out, both right; at 0.7 the wrong one joins: 2/3.
+    assert "| e | 0.800 | 2/10 | 100.0% | 2/3 | 0/7 |" in md

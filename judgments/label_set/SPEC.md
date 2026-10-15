@@ -225,6 +225,11 @@ person are at least 95% right. A person sets each file's threshold from it.
 the same Incidents, into `runs_d6_v1.jsonl`; a Choice's answers are not ordered, so it has no
 within-one figure.
 
+**Decision 4** (#229): `--decision d4` reports whether each Incident has enough to act on, the same
+way, into `runs_d4_v1.jsonl`. The stage acts only on a `no` that clears its cut, so the report
+also gives that cut: the lowest P(no) at which the Work items asked about are at least 95%
+labelled `no`, with how many labelled `no` are asked and how many labelled `yes` are asked.
+
 **Decision 9** (#226): `opspilot labelset report --decision d9` asks Jev and the Playbook's model
 `d9-v1` once per candidate page of each row, shown the Work item and the page as the labeller saw
 it (`candidates_d9_v1.jsonl`), and keeps the calls in `runs_d9_v1.jsonl`. Per row and run, the
