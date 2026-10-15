@@ -15,6 +15,9 @@ class ApiRunRequest(BaseModel):
     model_id: str | None = (
         None  # e.g. "anthropic/claude-haiku-4-5-20251001"; None = playbook default
     )
+    # The reporter was already asked once about this Work item, and this run
+    # carries their reply (#229): decision 4 is not asked again.
+    asked: bool = False
 
 
 class ApiIntakeRequest(BaseModel):
@@ -214,6 +217,10 @@ class ApiRunResponse(BaseModel):
     # (ADR-0040), with "stops". A stop also sets needs_confirmation, so a reader
     # that knows nothing of it still sees that no run happened.
     security: dict[str, Any] | None = None
+    # Decision 4 stood at `no` (#229): "text" is the ask for the reporter,
+    # beside the Judgment behind it. No summary ran, so needs_confirmation is
+    # set too, and a reader that knows nothing of it still sees that.
+    ask: dict[str, Any] | None = None
     # Asset ids drafted from this run's asset_draft block (ADR-0018).
     assets_drafted: list[str] = []
 

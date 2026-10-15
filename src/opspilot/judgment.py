@@ -355,6 +355,7 @@ def judge_with_fallback(
 JUDGMENT_TIMEOUT_S: Final = 20.0
 SECURITY_FILE: Final = "d1.yaml"
 WORK_ITEM_TYPE_FILE: Final = "d2.yaml"
+ENOUGH_FILE: Final = "d4.yaml"
 TEAM_FILE: Final = "d6.yaml"
 IMPACT_FILE: Final = "d7.yaml"
 URGENCY_FILE: Final = "d8.yaml"
@@ -478,6 +479,9 @@ class Stage:
     severity: Severity | None = None
     # Asked of an Incident before its summary; None until measured (#228).
     team: Decision | None = None
+    # Asked of an Incident first, once: a `no` that stands means the reporter
+    # is asked before any summary (decision 5); None until measured (#229).
+    enough: Decision | None = None
 
     def stops_for_security(self, judgment: Judgment) -> bool:
         """At or above decision 1's cut on P(yes), or answered by the fallback: stop.
@@ -571,6 +575,24 @@ def _severity(
     return Severity(impact, urgency, table)
 
 
+def _enough(
+    decisions_dir: Path, primary: JudgmentEngine, fallback: JudgmentEngine | None
+) -> Decision | None:
+    """Decision 4 at its engine's measured cut, or None while it has none, and the log says so.
+
+    Unmeasured, no reporter is asked: every Incident goes straight to its summary.
+    """
+    enough = _measured(decisions_dir, ENOUGH_FILE, primary, fallback)
+    if enough is None:
+        logger.warning(
+            "The Judgments stage runs WITHOUT decision 4: %s has no threshold for %s, so no "
+            "reporter is asked for what is missing (#229).",
+            decisions_dir / ENOUGH_FILE,
+            primary.name,
+        )
+    return enough
+
+
 def _team(
     decisions_dir: Path, primary: JudgmentEngine, fallback: JudgmentEngine | None
 ) -> Decision | None:
@@ -601,8 +623,8 @@ def build_stage(
     With a TypeSafe key, Jev decides both and the Playbook's model is its
     fallback: Classification for decision 2, the Question asked as written for
     decision 1. Without one, the Playbook's model decides alone, and the log
-    says so. Decision 1, the team, and Impact and Urgency run only once they
-    are measured for their engine.
+    says so. Decision 1, enough to act on, the team, and Impact and Urgency
+    run only once they are measured for their engine.
     """
     asked = QuestionJudge(classify_playbook, provider)
     classified = ClassificationJudge(classify_playbook, provider)
@@ -618,12 +640,14 @@ def build_stage(
             work_item_type=_decision(decisions_dir, WORK_ITEM_TYPE_FILE, jev, classified),
             severity=_severity(decisions_dir, jev, asked),
             team=_team(decisions_dir, jev, asked),
+            enough=_enough(decisions_dir, jev, asked),
         )
     stage = Stage(
         security=_security(decisions_dir, asked, None),
         work_item_type=_decision(decisions_dir, WORK_ITEM_TYPE_FILE, classified, None),
         severity=_severity(decisions_dir, asked, None),
         team=_team(decisions_dir, asked, None),
+        enough=_enough(decisions_dir, asked, None),
     )
     logger.warning(
         "The Judgments stage is on without TYPESAFE_API_KEY: %s decides alone.", classified.name

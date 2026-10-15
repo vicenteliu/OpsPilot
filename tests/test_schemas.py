@@ -40,6 +40,7 @@ REQUIRED_SCHEMAS = (
     "incident_summary_v1",
     "request_fulfillment_v1",
     "work_item_classification_v1",
+    "work_item_ask_v1",
 )
 
 
@@ -299,3 +300,11 @@ class TestExampleValidates:
         data = load_data(f)
         for item in iter_items(data):
             validate(schema_name, item, repo_root=repo_root)
+
+
+def test_an_ask_is_one_non_empty_message() -> None:
+    """work_item_ask_v1 (#229): the ask, and nothing else."""
+    validate("work_item_ask_v1", {"ask": "Since when?"})
+    for bad in ({"ask": ""}, {}, {"ask": "x", "fix": "reboot"}):
+        with pytest.raises(SchemaError):
+            validate("work_item_ask_v1", bad)

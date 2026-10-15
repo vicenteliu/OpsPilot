@@ -29,6 +29,14 @@ Status: accepted (2026-09-23)
 > the labelled team every time. A team that clears its cut from the primary engine replaces the
 > summary's free-text escalation hint. Below it, or from the fallback, the hint says a person picks
 > the team; the run itself goes on.
+>
+> **Revised 2026-10-16** (#229): decision 4 is asked first of an Incident, and only a `no` that
+> clears its cut from the primary engine holds the summary back; any other answer runs it as
+> before, listing what is missing. The ask, written by `pb_ask_en`, goes out once: as a JSM comment,
+> whose key the poller then watches for a reply, or as a Telegram reply, whose chat's next message
+> is taken as one; the webhook logs it. A reply re-runs the Work item from decision 1 with its type
+> as decided, so decision 2 is not asked again, and decision 4 is not asked a second time. On the
+> label set only 4 of 39 Incidents are too thin, so its cut rests on very little.
 
 A Work item reaches a suggestion through a string of decisions, and today a
 language model makes every one of them in prose. Classification is one call

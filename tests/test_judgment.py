@@ -41,6 +41,7 @@ D1 = REPO_ROOT / DECISIONS_DIR / "d1.yaml"
 D7 = REPO_ROOT / DECISIONS_DIR / "d7.yaml"
 D8 = REPO_ROOT / DECISIONS_DIR / "d8.yaml"
 D6 = REPO_ROOT / DECISIONS_DIR / "d6.yaml"
+D4 = REPO_ROOT / DECISIONS_DIR / "d4.yaml"
 SEVERITY = REPO_ROOT / DECISIONS_DIR / "severity.yaml"
 
 
@@ -406,8 +407,8 @@ def _with_thresholds(src: Path, dest: Path, thresholds: dict[str, float]) -> Non
 
 
 def _incident_decision_files(tmp_path: Path) -> None:
-    """d6.yaml, d7.yaml, d8.yaml and severity.yaml as committed."""
-    for name in ("d6.yaml", "d7.yaml", "d8.yaml", "severity.yaml"):
+    """d4.yaml, d6.yaml, d7.yaml, d8.yaml and severity.yaml as committed."""
+    for name in ("d4.yaml", "d6.yaml", "d7.yaml", "d8.yaml", "severity.yaml"):
         (tmp_path / name).write_text((D2.parent / name).read_text(encoding="utf-8"))
 
 
@@ -608,6 +609,8 @@ def _app_with_stage(
     security_fallback: _Engine | None = None,
     severity: Severity | None = None,
     team: Decision | None = None,
+    enough: Decision | None = None,
+    ask_provider: Any = None,
 ) -> Any:
     from collections.abc import AsyncIterator
     from contextlib import asynccontextmanager
@@ -637,7 +640,10 @@ def _app_with_stage(
             work_item_type=Decision(load_question(D2), 0.8, primary=engine, fallback=fallback),
             severity=severity,
             team=team,
+            enough=enough,
         )
+        app.state.ask_pb = load_playbook(REPO_ROOT / "playbooks" / "pb_ask_en")
+        app.state.ask_provider = ask_provider or _Classifier(_ASK)
         app.state.sqlite = app.state.lance = app.state.mcp_registry = None
         app.state.embed_fn = lambda text: [0.0]
         yield
@@ -1121,6 +1127,137 @@ class TestTeam:
             "escalation_hint": "systems",
         }
         assert [e["details"]["question"] for e in events] == ["d1", "d7", "d8", "d6"]
+
+
+# ── Decisions 4 and 5: enough to act on, and the ask (#229) ─────────────────
+
+_ASK = json.dumps({"ask": "Since when has it failed, and what does the screen say?"})
+
+
+def _enough(engine: Any, fallback: Any = None) -> Decision:
+    return Decision(load_question(D4), 0.64, primary=engine, fallback=fallback)
+
+
+def _post(app: Any, body: dict[str, Any], path: str = "/api/run") -> tuple[Any, Any]:
+    """Post an Incident with the stage on; return the summary's run mock and the response."""
+    from unittest.mock import patch
+
+    from fastapi.testclient import TestClient
+
+    with (
+        patch("opspilot.api.routes.run.run_ticket_summary", return_value=_run_result()) as run,
+        TestClient(app) as client,
+    ):
+        app.state.playbook.output_schema = "incident_summary_v1"
+        response = client.post(path, json=body)
+    return run, response
+
+
+def test_write_ask_returns_the_message_and_what_it_cost() -> None:
+    from opspilot.orchestrator.ask import write_ask
+
+    provider = _Classifier(_ASK)
+    playbook = load_playbook(REPO_ROOT / "playbooks" / "pb_ask_en")
+    ask = write_ask("Printer broken", playbook=playbook, provider=provider)  # type: ignore[arg-type]
+    assert ask.text == "Since when has it failed, and what does the screen say?"
+    assert ask.usage.cost_usd == 0.00027
+    [call] = provider.calls
+    assert call["messages"][0].content == playbook.system_prompt
+
+
+@pytest.mark.parametrize("content", ["not json", '{"ask": ""}', '{"answer": "x"}'])
+def test_write_ask_refuses_anything_but_one_message(content: str) -> None:
+    from opspilot.errors import OpsPilotError
+    from opspilot.orchestrator.ask import write_ask
+
+    playbook = load_playbook(REPO_ROOT / "playbooks" / "pb_ask_en")
+    with pytest.raises(OpsPilotError):
+        write_ask("Printer broken", playbook=playbook, provider=_Classifier(content))  # type: ignore[arg-type]
+
+
+class TestEnoughAndTheAsk:
+    def test_a_no_that_stands_asks_the_reporter_and_runs_no_summary(self) -> None:
+        provider = _Classifier(_ASK)
+        app = _app_with_stage(
+            _Engine("incident", 0.99),
+            enough=_enough(_Says({"d4": ("no", 0.9)})),
+            ask_provider=provider,
+        )
+        run, response = _post(app, {"input": _INCIDENT})
+        data = response.json()
+        run.assert_not_called()
+        assert data["needs_confirmation"] is True and data["session_id"] == ""
+        assert data["ask"]["text"] == "Since when has it failed, and what does the screen say?"
+        assert (data["ask"]["question"], data["ask"]["answer"]) == ("d4", "no")
+        # The ask writer sees the redacted Work item, as every Judgment does.
+        [call] = provider.calls
+        assert "Need Jira access" in call["messages"][1].content
+        assert "jane.doe@example.com" not in call["messages"][1].content
+
+    def test_the_stream_carries_the_ask_too(self) -> None:
+        app = _app_with_stage(_Engine("incident", 0.99), enough=_enough(_Says({"d4": ("no", 0.9)})))
+        run, response = _post(app, {"input": _INCIDENT}, "/api/run/stream")
+        run.assert_not_called()
+        assert '"ask": {' in response.text and "what does the screen say" in response.text
+
+    @pytest.mark.parametrize(
+        ("answer", "why"),
+        [(("yes", 0.95), "enough"), (("no", 0.6), "a no below its cut")],
+    )
+    def test_otherwise_the_summary_runs_and_decision_4_is_traced(
+        self, answer: tuple[str, float], why: str
+    ) -> None:
+        app = _app_with_stage(_Engine("incident", 0.99), enough=_enough(_Says({"d4": answer})))
+        run, response = _post(app, {"input": _INCIDENT})
+        assert response.json()["ask"] is None, why
+        run.assert_called_once()
+        assert [e["details"]["question"] for e in _events(app)] == ["d1", "d4"]
+
+    def test_a_fallback_s_no_runs_the_summary_however_sure(self) -> None:
+        app = _app_with_stage(
+            _Engine("incident", 0.99),
+            enough=_enough(_Down(), fallback=_Says({"d4": ("no", 0.99)})),
+        )
+        run, response = _post(app, {"input": _INCIDENT})
+        assert response.json()["ask"] is None
+        run.assert_called_once()
+
+    def test_a_reporter_asked_once_is_not_asked_again(self) -> None:
+        says = _Says({"d4": ("no", 0.99)})
+        app = _app_with_stage(_Engine("incident", 0.99), enough=_enough(says))
+        run, response = _post(app, {"input": _INCIDENT, "asked": True})
+        assert says.asked == [] and response.json()["ask"] is None
+        run.assert_called_once()
+
+    def test_when_no_ask_can_be_written_the_summary_runs(self) -> None:
+        app = _app_with_stage(
+            _Engine("incident", 0.99),
+            enough=_enough(_Says({"d4": ("no", 0.9)})),
+            ask_provider=_Classifier("not json"),
+        )
+        run, response = _post(app, {"input": _INCIDENT})
+        assert response.json()["ask"] is None
+        run.assert_called_once()
+
+    def test_a_request_is_not_asked_whether_it_is_enough(self) -> None:
+        says = _Says({"d4": ("no", 0.99)})
+        app = _app_with_stage(_Engine("incident", 0.99), enough=_enough(says))
+        request = {**_UNTYPED, "work_item_type": "service_request"}
+        run, _ = _post(app, {"input": request})
+        assert says.asked == []
+        run.assert_called_once()
+
+    def test_measured_the_stage_asks_it_and_unmeasured_says_so(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        playbook = load_playbook(REPO_ROOT / "playbooks" / "pb_classify_work_item_en")
+        decisions = _decisions(tmp_path, {JEV: 0.94, PLAYBOOK: 0.7})
+        stage = build_stage(decisions, playbook, _Classifier(""))  # type: ignore[arg-type]
+        assert stage.enough is not None and stage.enough.threshold == 0.77
+        _with_thresholds(D4, tmp_path / "d4.yaml", {})
+        with caplog.at_level(logging.WARNING, logger="opspilot.judgment"):
+            stage = build_stage(decisions, playbook, _Classifier(""))  # type: ignore[arg-type]
+        assert stage.enough is None and "runs WITHOUT decision 4" in caplog.text
 
 
 def test_the_trace_schema_accepts_a_judgment_event(tmp_path: Path) -> None:

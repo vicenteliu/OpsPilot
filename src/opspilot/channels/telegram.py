@@ -20,7 +20,7 @@ from typing import Any
 
 import httpx
 
-from ..intake import OpsPilotRunClient, render_comment
+from ..intake import OpsPilotRunClient, render_comment, with_reply
 from .base import OpsPilotChatClient
 
 logger = logging.getLogger("opspilot.channels.telegram")
@@ -66,6 +66,8 @@ class TelegramConfig:
 @dataclass
 class _ChatState:
     history: list[dict[str, str]] = field(default_factory=list)
+    # A filed Work item OpsPilot asked about; the chat's next message is the reply (#229).
+    awaiting: dict[str, Any] | None = None
 
 
 class TelegramChannel:
@@ -110,11 +112,16 @@ class TelegramChannel:
             self._send(chat_id, "Conversation cleared.")
             return
         command, _, rest = text.partition(" ")
+        state = self._states.setdefault(chat_id, _ChatState())
         if command in _INTAKE_COMMANDS:
+            state.awaiting = None  # a new filing replaces one still waiting on a reply
             self._handle_intake(chat_id, message, command, rest.strip())
             return
+        if state.awaiting is not None:
+            work_item, state.awaiting = state.awaiting, None
+            self._handle_reply(chat_id, work_item, text)
+            return
 
-        state = self._states.setdefault(chat_id, _ChatState())
         messages = [*state.history, {"role": "user", "content": text}]
         try:
             answer = self._chat.ask(messages)
@@ -151,11 +158,34 @@ class TelegramChannel:
             logger.error("intake run failed for chat %s: %s", chat_id, exc)
             self._send(chat_id, f"OpsPilot error: {exc}")
             return
+        self._respond(chat_id, res, work_item)
+
+    def _handle_reply(self, chat_id: int, work_item: dict[str, Any], text: str) -> None:
+        """Run the asked-about Work item again with the reporter's reply, once (#229)."""
+        self._send(chat_id, "Thanks — running it again with your reply…")
+        try:
+            res = self._run.run(with_reply(work_item, text), asked=True)
+        except Exception as exc:  # noqa: BLE001 — report, keep polling
+            logger.error("reply run failed for chat %s: %s", chat_id, exc)
+            self._send(chat_id, f"OpsPilot error: {exc}")
+            return
+        self._respond(chat_id, res, work_item)
+
+    def _respond(self, chat_id: int, res: dict[str, Any], work_item: dict[str, Any]) -> None:
+        """Reply with what one run's response calls for."""
         if (res.get("security") or {}).get("stops"):
             self._send(
                 chat_id,
                 "This may be a security issue, so OpsPilot stopped here and made no "
                 "suggestion. A person needs to handle it.",
+            )
+            return
+        if res.get("ask"):
+            self._states.setdefault(chat_id, _ChatState()).awaiting = work_item
+            self._send(
+                chat_id,
+                f"{res['ask'].get('text', '')}\n\nReply here with the details, and OpsPilot "
+                "will suggest again.",
             )
             return
         if res.get("needs_confirmation"):

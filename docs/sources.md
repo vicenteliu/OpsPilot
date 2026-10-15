@@ -95,6 +95,12 @@ full JQL scope — there is deliberately no time cursor to miss things).
   threshold — is marked processed and gets a comment naming the undecided
   decision and its probability instead of a suggestion. Set the issue type
   and `--rerun` the key to run it as that type.
+- A run whose Incident is **too thin to act on** (the Judgments stage's
+  decision 4, #229) gets one comment asking the reporter for what is
+  missing, and the key is held as awaiting a reply. Each pass reads the
+  comments posted since OpsPilot's last one on it; a reply runs the Work item
+  again with the reply appended, and the suggestion is posted as usual. It is
+  asked once: a reply that is still thin gets a suggestion, not a second ask.
 - `--rerun IT-123` forces a fresh run for one key (the key must still
   match the JQL scope). The new suggestion is posted as a new comment.
 

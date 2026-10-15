@@ -50,6 +50,16 @@ export interface SecurityJudgment {
   stops: boolean;
 }
 
+// Decision 4 (ADR-0040, #229): the Work item is too thin to act on, so no
+// Playbook ran; `text` is the one question for the reporter (decision 5).
+export interface AskJudgment {
+  question: string;
+  answer: string;
+  probability: number;
+  engine: string;
+  text: string;
+}
+
 export interface RunResponse {
   session_id: string;
   artifact_id: string | null;
@@ -62,6 +72,7 @@ export interface RunResponse {
   classification?: WorkItemClassification | null;
   needs_confirmation?: boolean;
   security?: SecurityJudgment | null;
+  ask?: AskJudgment | null;
 }
 
 // A work-item artifact: incident_summary_v1 or request_fulfillment_v1.

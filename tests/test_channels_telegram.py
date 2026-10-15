@@ -299,3 +299,74 @@ class TestSplitReply:
 
     def test_empty_reply_placeholder(self) -> None:
         assert split_reply("") == ["(empty response)"]
+
+
+# ── The ask and the reply (#229) ──────────────────────────────────────────────
+
+_ASKED = {
+    "session_id": "",
+    "schema_valid": False,
+    "result": {},
+    "error": None,
+    "needs_confirmation": True,
+    "ask": {"question": "d4", "answer": "no", "text": "Since when, and what does it say?"},
+}
+
+
+class _SeqRun:
+    """Answers each run with the next response, and keeps what it was asked."""
+
+    def __init__(self, *responses: dict[str, Any]) -> None:
+        self.responses = list(responses)
+        self.calls: list[tuple[dict[str, Any], bool]] = []
+
+    def run(self, work_item: dict[str, Any], *, asked: bool = False) -> dict[str, Any]:
+        self.calls.append((dict(work_item), asked))
+        return self.responses.pop(0)
+
+
+def _ask_channel(run: _SeqRun, sent: list[str], chat: FakeChat | None = None) -> TelegramChannel:
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(json.loads(request.content)["text"])
+        return httpx.Response(200, json={"ok": True, "result": {}})
+
+    return TelegramChannel(
+        TelegramConfig(bot_token="t0k", allowed_chat_ids=frozenset({42})),
+        chat_client=chat or FakeChat(),  # type: ignore[arg-type]
+        http=httpx.Client(transport=httpx.MockTransport(handler)),
+        run_client=run,  # type: ignore[arg-type]
+    )
+
+
+class TestTelegramAsk:
+    def test_a_thin_report_is_asked_about_and_the_next_message_is_the_reply(self) -> None:
+        run = _SeqRun(_ASKED, TestTelegramIntake._OK_RUN)
+        sent: list[str] = []
+        ch = _ask_channel(run, sent)
+        ch.handle_update(_update(42, "/incident printer broken"))
+        assert "Since when, and what does it say?" in sent[-1] and "Reply here" in sent[-1]
+
+        ch.handle_update(_update(42, "since Monday, it says paper jam", update_id=2))
+        work_item, asked = run.calls[1]
+        assert asked is True and work_item["work_item_type"] == "incident"
+        assert work_item["body"].startswith("printer broken")
+        assert "since Monday, it says paper jam" in work_item["body"]
+        assert "## OpsPilot suggestion" in sent[-1]
+
+    def test_after_the_reply_the_chat_is_a_chat_again(self) -> None:
+        chat = FakeChat()
+        run = _SeqRun(_ASKED, TestTelegramIntake._OK_RUN)
+        ch = _ask_channel(run, [], chat)
+        ch.handle_update(_update(42, "/incident printer broken"))
+        ch.handle_update(_update(42, "since Monday", update_id=2))
+        ch.handle_update(_update(42, "how do I map a drive?", update_id=3))
+        assert len(run.calls) == 2 and chat.calls  # the third message went to the chat
+
+    def test_reset_drops_the_question_still_waiting(self) -> None:
+        chat = FakeChat()
+        run = _SeqRun(_ASKED)
+        ch = _ask_channel(run, [], chat)
+        ch.handle_update(_update(42, "/incident printer broken"))
+        ch.handle_update(_update(42, "/reset", update_id=2))
+        ch.handle_update(_update(42, "since Monday", update_id=3))
+        assert len(run.calls) == 1 and chat.calls

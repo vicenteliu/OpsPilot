@@ -66,6 +66,7 @@ def row_state(row: dict[str, Any], redactor: Redactor) -> str:
 _COLUMN: Final = {
     "d1": "security",
     "d2": "work_item_type",
+    "d4": "enough",
     "d6": "team",
     "d7": "impact",
     "d8": "urgency",
@@ -593,6 +594,7 @@ def incident_report_markdown(
     ]
     answered: list[str] = []
     cuts: list[str] = []
+    asks: list[str] = []
     for engine in engines:
         mine = [r for r in records if r["engine"] == engine]
         ok = [r for r in mine if r["error"] is None]
@@ -626,6 +628,8 @@ def incident_report_markdown(
             if cut
             else f"| {engine} | none reaches {_pct(TARGET)} | 0/{len(ok)} | – |"
         )
+        if question.kind == "noul":
+            asks.append(_asks_row(engine, ok, labels))
     lines += [
         "",
         "## What each engine answered, by label",
@@ -644,4 +648,39 @@ def incident_report_markdown(
         "The stage applies its threshold to the primary engine's probability; an answer from"
         " the fallback always goes to a person.",
     ]
+    if asks:
+        lines += [
+            "",
+            f"## Asks: the lowest P(no) at which the Work items asked about are at least"
+            f" {_pct(TARGET)} labelled no",
+            "",
+            "Decision 4 acts only on a `no` that clears its cut: the summary waits and the"
+            " reporter is asked (#229). A `yes`, or a `no` below the cut, runs the summary.",
+            "",
+            "| Engine | Threshold | Asked | Right among them | Labelled no, asked"
+            " | Labelled yes, asked |",
+            "|---|---|---|---|---|---|",
+            *asks,
+        ]
     return "\n".join(lines) + "\n"
+
+
+def _asks_row(engine: str, ok: list[dict[str, Any]], labels: dict[str, str]) -> str:
+    """One engine's asks at the lowest cut on its `no` answers that keeps them 95% right."""
+    labelled_no = sum(labels[r["id"]] == "no" for r in ok)
+    labelled_yes = len(ok) - labelled_no
+    nos = [(r["probability"], labels[r["id"]] == "no") for r in ok if r["answer"] == "no"]
+    if not nos:
+        return f"| {engine} | never answered no | 0/{len(ok)} | – | 0/{labelled_no} | 0/{labelled_yes} |"
+    cut = threshold(nos)
+    if cut is None:
+        return (
+            f"| {engine} | none reaches {_pct(TARGET)} | 0/{len(ok)} | – | 0/{labelled_no}"
+            f" | 0/{labelled_yes} |"
+        )
+    sent = [hit for p, hit in nos if p >= cut[0]]
+    hits = sum(sent)
+    return (
+        f"| {engine} | {cut[0]:.3f} | {len(sent)}/{len(ok)} | {_pct(hits / len(sent))}"
+        f" | {hits}/{labelled_no} | {len(sent) - hits}/{labelled_yes} |"
+    )

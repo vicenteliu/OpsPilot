@@ -53,6 +53,10 @@ class SourceTransport(Protocol):
 
     def post_comment(self, key: str, body: str, marker: str) -> None: ...
 
+    def fetch_reply(self, key: str) -> str | None:
+        """What was said on ``key`` since OpsPilot last commented, or None (#229)."""
+        ...
+
 
 class OpsPilotRunClient:
     """Calls ``POST /api/run`` and returns the parsed response body.
@@ -78,11 +82,14 @@ class OpsPilotRunClient:
         self._playbook_id = playbook_id
         self._model_id = model_id
 
-    def run(self, work_item: dict[str, Any]) -> dict[str, Any]:
+    def run(self, work_item: dict[str, Any], *, asked: bool = False) -> dict[str, Any]:
+        """Run one Work item; ``asked`` when it carries the reply to OpsPilot's one ask."""
         headers = {"Content-Type": "application/json"}
         if self._api_token:
             headers["Authorization"] = f"Bearer {self._api_token}"
         payload: dict[str, Any] = {"input": work_item}
+        if asked:
+            payload["asked"] = True
         if self._playbook_id:
             payload["playbook_id"] = self._playbook_id
         if self._model_id:
@@ -92,6 +99,9 @@ class OpsPilotRunClient:
         return dict(res.json())
 
 
+# Every comment OpsPilot writes opens with this, so a reply is told from its own.
+OPSPILOT_HEADING = "## OpsPilot"
+
 _FOOTER = (
     "_Advisory only — suggested by OpsPilot (session `{session_id}`); "
     "the system of record owns the final values._"
@@ -100,7 +110,7 @@ _FOOTER = (
 
 def render_comment(result: dict[str, Any], *, session_id: str) -> str:
     """Render a run artifact as one structured, source-agnostic comment."""
-    lines = ["## OpsPilot suggestion", ""]
+    lines = [f"{OPSPILOT_HEADING} suggestion", ""]
     if result.get("summary"):
         lines += [str(result["summary"]), ""]
     if result.get("requested_item"):
@@ -149,6 +159,36 @@ def render_needs_person_comment(classification: dict[str, Any]) -> str:
     )
 
 
+def render_ask_comment(ask: dict[str, Any]) -> str:
+    """Render the one ask, when decision 4 says the Work item is too thin to act on (#229)."""
+    return "\n".join(
+        [
+            f"{OPSPILOT_HEADING}: more information needed",
+            "",
+            str(ask.get("text", "")),
+            "",
+            "_Reply in a comment here; OpsPilot reads the reply and suggests again._",
+        ]
+    )
+
+
+def with_reply(work_item: dict[str, Any], reply: str) -> dict[str, Any]:
+    """The Work item as first filed, with what was said after the ask (#229).
+
+    On Telegram that is the reporter's next message; on JSM, every comment
+    since OpsPilot's, whoever wrote it, so it is not called the reporter's.
+
+    It was asked about as an Incident, so it says so: decision 2 is not asked
+    again, and the stage re-enters at decision 1, then 4.
+    """
+    body = str(work_item.get("body") or "")
+    return {
+        **work_item,
+        "body": f"{body}\n\nAdded after OpsPilot asked for more information:\n{reply}".strip(),
+        "work_item_type": "incident",
+    }
+
+
 def render_security_comment(security: dict[str, Any]) -> str:
     """Render a run stopped at decision 1, a possible security issue (ADR-0040, #225).
 
@@ -190,10 +230,13 @@ class IntakeState:
         self._path = path
         self._processed: set[str] = set()
         self._pending: dict[str, dict[str, str]] = {}  # key → {"body", "marker"}
+        # key → the Work item as filed, while its reporter is asked for more (#229)
+        self._awaiting: dict[str, dict[str, Any]] = {}
         if path is not None and path.exists():
             data = json.loads(path.read_text(encoding="utf-8"))
             self._processed = set(data.get("processed", []))
             self._pending = dict(data.get("pending_comments", {}))
+            self._awaiting = dict(data.get("awaiting_reply", {}))
 
     def has(self, key: str) -> bool:
         return key in self._processed
@@ -208,10 +251,11 @@ class IntakeState:
         Any queued comment for the key is dropped too — the fresh run
         produces a fresh suggestion.
         """
-        if key not in self._processed and key not in self._pending:
+        if key not in self._processed and key not in self._pending and key not in self._awaiting:
             return False
         self._processed.discard(key)
         self._pending.pop(key, None)
+        self._awaiting.pop(key, None)
         self._save()
         return True
 
@@ -227,6 +271,18 @@ class IntakeState:
         self._pending.pop(key, None)
         self._save()
 
+    def awaiting_reply(self) -> dict[str, dict[str, Any]]:
+        """Keys whose reporter was asked for more, with each Work item as filed (#229)."""
+        return dict(self._awaiting)
+
+    def await_reply(self, key: str, work_item: dict[str, Any]) -> None:
+        self._awaiting[key] = work_item
+        self._save()
+
+    def resolve_reply(self, key: str) -> None:
+        self._awaiting.pop(key, None)
+        self._save()
+
     def _save(self) -> None:
         if self._path is None:
             return
@@ -234,7 +290,11 @@ class IntakeState:
         tmp = self._path.with_suffix(".tmp")
         tmp.write_text(
             json.dumps(
-                {"processed": sorted(self._processed), "pending_comments": self._pending},
+                {
+                    "processed": sorted(self._processed),
+                    "pending_comments": self._pending,
+                    "awaiting_reply": self._awaiting,
+                },
                 indent=2,
             ),
             encoding="utf-8",
@@ -283,6 +343,7 @@ class IntakeLoop:
     def run_once(self) -> IntakeReport:
         report = IntakeReport()
         self._flush_pending(report)
+        self._take_replies(report)
         for item in self._transport.fetch_new():
             if self._state.has(item.key):
                 report.skipped.append((item.key, "duplicate"))
@@ -294,25 +355,50 @@ class IntakeLoop:
                 report.skipped.append((item.key, f"run failed: {exc}"))
                 continue
             self._state.mark(item.key)
-            security = res.get("security") or {}
-            if security.get("stops"):
-                self._deliver(item.key, render_security_comment(security), "", report)
-                continue
-            if res.get("needs_confirmation"):
-                # No run happened, so there is no session id to mark the comment
-                # with: a retry after a lost response can post it twice.
-                body = render_needs_person_comment(res.get("classification") or {})
-                self._deliver(item.key, body, "", report)
-                continue
-            reason = _unusable(res)
-            if reason:
-                logger.warning("no comment for %s: %s", item.key, reason)
-                report.skipped.append((item.key, reason))
-                continue
-            session_id = str(res.get("session_id", ""))
-            body = render_comment(res["result"], session_id=session_id)
-            self._deliver(item.key, body, session_id, report)
+            if res.get("ask"):
+                # The reporter is asked once; their reply runs it again (#229).
+                self._state.await_reply(item.key, item.work_item)
+            self._respond(item.key, res, report)
         return report
+
+    def _take_replies(self, report: IntakeReport) -> None:
+        """Run again each asked-about key whose reporter has replied, once (#229)."""
+        for key, work_item in self._state.awaiting_reply().items():
+            try:
+                reply = self._transport.fetch_reply(key)
+                if not reply:
+                    continue
+                res = self._client.run(with_reply(work_item, reply), asked=True)
+            except Exception as exc:  # noqa: BLE001 — still awaiting: retries next pass
+                logger.error("reply run failed for %s (will retry next pass): %s", key, exc)
+                report.skipped.append((key, f"reply run failed: {exc}"))
+                continue
+            self._state.resolve_reply(key)
+            self._respond(key, res, report)
+
+    def _respond(self, key: str, res: dict[str, Any], report: IntakeReport) -> None:
+        """Turn one run's response into the comment it calls for."""
+        security = res.get("security") or {}
+        if security.get("stops"):
+            self._deliver(key, render_security_comment(security), "", report)
+            return
+        if res.get("ask"):
+            self._deliver(key, render_ask_comment(res["ask"]), "", report)
+            return
+        if res.get("needs_confirmation"):
+            # No run happened, so there is no session id to mark the comment
+            # with: a retry after a lost response can post it twice.
+            body = render_needs_person_comment(res.get("classification") or {})
+            self._deliver(key, body, "", report)
+            return
+        reason = _unusable(res)
+        if reason:
+            logger.warning("no comment for %s: %s", key, reason)
+            report.skipped.append((key, reason))
+            return
+        session_id = str(res.get("session_id", ""))
+        body = render_comment(res["result"], session_id=session_id)
+        self._deliver(key, body, session_id, report)
 
     def _deliver(self, key: str, body: str, marker: str, report: IntakeReport) -> None:
         """Post one comment; a failed post is queued and retried next pass
