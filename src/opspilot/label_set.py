@@ -904,15 +904,14 @@ def label_known_fix(
     )
 
 
-# ── Decisions 7 and 8: Impact and Urgency, asked of an Incident (#227) ───────
+# ── Decisions asked of an Incident: Impact, Urgency (#227), which team (#228) ─
 
 
 @dataclass(frozen=True)
-class ImpactUrgencyResult:
+class IncidentLabelResult:
     labelled: int
     total: int
-    impact: dict[str, int]  # level → rows labelled it
-    urgency: dict[str, int]
+    counts: dict[str, dict[str, int]]  # column → answer → rows labelled it
 
     @property
     def finished(self) -> bool:
@@ -920,26 +919,27 @@ class ImpactUrgencyResult:
 
 
 def _levels(question: Question) -> dict[str, str]:
-    """A Score's levels keyed 1, 2, 3 … in the file's order, as the labeller types them."""
+    """A question's answers keyed 1, 2, 3 … in the file's order, as the labeller types them."""
     return {str(n): level for n, level in enumerate(question.answers, start=1)}
 
 
-def label_impact_urgency(
+def label_incidents(
     path: Path = OUT_PATH,
     *,
     by: str,
     ask: Ask,
     show: Show,
-    impact: Question,
-    urgency: Question,
+    columns: dict[str, Question],
+    stamp: str,
     clock: Clock = _utc_now,
-) -> ImpactUrgencyResult:
-    """Label each Incident's impact and urgency, blind (decisions 7 and 8).
+) -> IncidentLabelResult:
+    """Label each Incident's ``columns``, blind, in one pass (e.g. impact then urgency).
 
-    Only the rows labelled ``incident`` are asked: ADR-0040 asks decisions 7
-    and 8 of an Incident. Each row shows its subject, body and channel, and
-    no other label. Both answers are saved on the row as they are given, so a
-    rerun picks up at the first open row.
+    Only the rows labelled ``incident`` are asked: ADR-0040 asks these
+    decisions of an Incident. Each row shows its subject, body and channel,
+    and no other label. A row's answers are saved as they are given, with
+    ``{stamp}_labelled_by`` and ``{stamp}_labelled_time``, so a rerun picks up
+    at the first open row.
     """
     if not path.is_file():
         raise LabelSetError(f"{path} not found: draft the set first")
@@ -947,18 +947,19 @@ def label_impact_urgency(
     if any(r["work_item_type"] is None for r in rows):
         raise LabelSetError("label every row's type first; only Incidents are asked")
     incidents = [r for r in rows if r["work_item_type"] == "incident"]
-    impact_keys, urgency_keys = _levels(impact), _levels(urgency)
+    keys = {column: _levels(q) for column, q in columns.items()}
+    first = next(iter(columns))
 
-    for q, keys in ((impact, impact_keys), (urgency, urgency_keys)):
+    for column, q in columns.items():
         show(f"{q.version}: {q.text}")
-        for key, level in keys.items():
-            show(f"  {key} {level}: {q.answers[level]}")
+        for key, answer in keys[column].items():
+            show(f"  {key} {answer}: {q.answers[answer]}")
 
-    def prompt(name: str, keys: dict[str, str]) -> str:
-        return f"{name}? " + " · ".join(f"{k} {v}" for k, v in keys.items())
+    def prompt(column: str) -> str:
+        return f"{column}? " + " · ".join(f"{k} {v}" for k, v in keys[column].items())
 
     def next_open(start: int) -> int:
-        open_ = (j for j in range(start, len(incidents)) if "impact" not in incidents[j])
+        open_ = (j for j in range(start, len(incidents)) if first not in incidents[j])
         return next(open_, len(incidents))
 
     i = next_open(0)
@@ -967,33 +968,35 @@ def label_impact_urgency(
         show(f"\n── {row['id']} ({i + 1}/{len(incidents)}) · {row['channel']} ──")
         show(f"Subject: {row['subject'] or '(none)'}")
         show(row["body"] or "(no body)")
-        first = _ask_choice(
-            ask, prompt("impact", impact_keys) + "  (u back, q quit)", impact_keys, nav=True
-        )
-        if first == "q":
+        answer = _ask_choice(ask, prompt(first) + "  (u back, q quit)", keys[first], nav=True)
+        if answer == "q":
             break
-        if first == "u":
+        if answer == "u":
             i = max(i - 1, 0)
             continue
-        second = _ask_choice(ask, prompt("urgency", urgency_keys), urgency_keys, nav=False)
+        labels = {first: answer}
+        for column in list(columns)[1:]:
+            labels[column] = _ask_choice(ask, prompt(column), keys[column], nav=False)
         row.update(
-            impact=first,
-            urgency=second,
-            impact_urgency_labelled_by=by,
-            impact_urgency_labelled_time=clock().astimezone(UTC).isoformat(timespec="seconds"),
+            labels,
+            **{
+                f"{stamp}_labelled_by": by,
+                f"{stamp}_labelled_time": clock().astimezone(UTC).isoformat(timespec="seconds"),
+            },
             answer_space={
                 **(row.get("answer_space") or {}),
-                "d7": impact.version,
-                "d8": urgency.version,
+                **{q.id: q.version for q in columns.values()},
             },
         )
         _write_jsonl(path, rows)
         i = next_open(i + 1)
 
-    done = [r for r in incidents if "impact" in r]
-    return ImpactUrgencyResult(
+    done = [r for r in incidents if first in r]
+    return IncidentLabelResult(
         labelled=len(done),
         total=len(incidents),
-        impact={level: sum(r["impact"] == level for r in done) for level in impact.answers},
-        urgency={level: sum(r["urgency"] == level for r in done) for level in urgency.answers},
+        counts={
+            column: {a: sum(r[column] == a for r in done) for a in q.answers}
+            for column, q in columns.items()
+        },
     )

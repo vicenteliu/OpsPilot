@@ -1,0 +1,25 @@
+# Decision 6 (ADR-0040): which team? The escalation target.
+#
+# Asked of an Incident. A Choice, and its answers are the team list: an
+# organisation edits the teams here, and a changed list is a new version whose
+# thresholds are measured again, since a cut measured on one list says nothing
+# about another. With the stage on, the team it picks replaces the summary's
+# free-text `escalation_hint`; `cause_class` is unchanged (ADR-0039). The
+# answer space the label set's `team` column is labelled against
+# (judgments/label_set/SPEC.md, d6-v1).
+id: d6
+version: d6-v1
+kind: choice
+question: >-
+  Which team would fix the problem in this Work item?
+answers:
+  network: >-
+    The network: connectivity, Wi-Fi, VPN, DNS, DHCP, firewalls, switches,
+    routers, and the links between sites.
+  systems: >-
+    Everything else IT runs: endpoints and their software, accounts and
+    identity, email and collaboration, servers, printers and business
+    applications.
+# Set from the label set, never guessed (ADR-0040), keyed by the engine it was
+# measured on; empty until that report has been run.
+thresholds: {}

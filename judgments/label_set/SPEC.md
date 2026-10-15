@@ -19,6 +19,7 @@ These columns now, the rest in their slices. Each is labelled against a versione
 | `known_fix` | 9 · Seen before? | the candidate pages that fix the row, or none | `d9-v1` | #226 |
 | `impact` | 7 · Impact | `single_user` · `multiple_users` · `site_wide` | `d7-v1` | #227 |
 | `urgency` | 8 · Urgency | `worked_around` · `slowed` · `stopped` | `d8-v1` | #227 |
+| `team` | 6 · Which team? | `network` · `systems` | `d6-v1` | #228 |
 
 **`d2-v1`**, the definitions the Playbook's classifier already uses
 (`playbooks/pb_classify_work_item_en/prompt.md`):
@@ -54,8 +55,15 @@ rows labelled `incident` only: ADR-0040 asks them of an Incident. A request's `i
   is still working, slower or with errors, with no workaround; `stopped` is unable to do the work
   it blocks at all until it is fixed.
 
-The other decisions' columns (already open, enough to act on, network or system) exist in the
-schema and stay empty until their slice.
+**`d6-v1`** (2026-10-16, #228), as `judgments/decisions/d6.yaml` states it, its answers being the
+default team list. Labelled on the rows labelled `incident` only, as `d7` and `d8` are.
+- `network`: connectivity, Wi-Fi, VPN, DNS, DHCP, firewalls, switches, routers, and the links
+  between sites.
+- `systems`: everything else IT runs: endpoints and their software, accounts and identity, email
+  and collaboration, servers, printers and business applications.
+
+The other decisions' columns (already open, enough to act on) exist in the schema and stay empty
+until their slice.
 
 ## 2. Row schema (`label_set_v1.jsonl`, one JSON object per line)
 
@@ -72,6 +80,7 @@ schema and stay empty until their slice.
 | `security` | **person** | `d1-v2`; the `d1-v1` label it replaced is kept as `security_d1_v1` |
 | `known_fix` | **person** | `d9-v1`: the `source_path` of each candidate page that fixes the row, `[]` for none; with `known_fix_labelled_by` and `known_fix_labelled_time` |
 | `impact` · `urgency` | **person** | `d7-v1` · `d8-v1`, Incidents only; with `impact_urgency_labelled_by` and `impact_urgency_labelled_time` |
+| `team` | **person** | `d6-v1`, Incidents only; with `team_labelled_by` and `team_labelled_time` |
 | `label_confidence` | **person** | `high` · `low`. Low = "I picked, but it could go the other way" |
 | `label_note` | person, optional | one line, only when the reason isn't obvious |
 | `answer_space` | script | `{"d2": "d2-v1", "d1": "d1-v1"}` at labelling time |
@@ -169,6 +178,8 @@ security.
 - **Impact and urgency** (#227, `d7-v1`, `d8-v1`): each row labelled `incident` is shown again,
   its subject, body and channel and no other label, and the labeller gives its impact and then
   its urgency in one pass (`opspilot labelset label-impact-urgency`), each a level's number.
+- **Team** (#228, `d6-v1`): each row labelled `incident` is shown the same way, and the labeller
+  picks the team that would fix it (`opspilot labelset label-team`).
 
 ## 7. How the report uses it
 
