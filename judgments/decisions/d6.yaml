@@ -1,0 +1,37 @@
+# Decision 6 (ADR-0040): which team? The escalation target.
+#
+# Asked of an Incident. A Choice, and its answers are the team list: an
+# organisation edits the teams here, and a changed list is a new version whose
+# thresholds are measured again, since a cut measured on one list says nothing
+# about another. With the stage on, the team it picks replaces the summary's
+# free-text `escalation_hint`; `cause_class` is unchanged (ADR-0039). The
+# answer space the label set's `team` column is labelled against
+# (judgments/label_set/SPEC.md, d6-v1).
+id: d6
+version: d6-v1
+kind: choice
+question: >-
+  Which team would fix the problem in this Work item?
+answers:
+  network: >-
+    The network: connectivity, Wi-Fi, VPN, DNS, DHCP, firewalls, switches,
+    routers, and the links between sites.
+  systems: >-
+    Everything else IT runs: endpoints and their software, accounts and
+    identity, email and collaboration, servers, printers and business
+    applications.
+# Set from the label set, never guessed (SPEC §7): the lowest probability at
+# which the teams decided without a person are at least 95% right, keyed by
+# the engine it was measured on (#274). From judgments/label_set/report_d6_v1.md,
+# run on 2026-10-16 over the 39 Incidents, three passes each: both engines
+# picked the labelled team every time, so each cut is the lowest probability
+# it gave, and all 117 answers stand without a person.
+#
+# 0.79 on Jev's probability; 0.55 on the Playbook's model.
+#
+# Only 7 of the 39 are network Incidents, and synthetic ones, so a perfect
+# score here says little about real Work items. Measure again when the label
+# set grows, when the team list changes, or when either model changes.
+thresholds:
+  "typesafe:jev-1.13.0": 0.79
+  "playbook:anthropic/claude-haiku-5-5": 0.55

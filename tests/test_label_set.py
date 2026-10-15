@@ -38,7 +38,7 @@ from opspilot.label_set import (
     Slot,
     build_candidates,
     check_row,
-    label_impact_urgency,
+    label_incidents,
     label_known_fix,
     label_rows,
     near_duplicates,
@@ -1017,13 +1017,13 @@ def _incidents_file(tmp_path: Path) -> Path:
 
 
 def _label_levels(path: Path, keys: Keys, shown: list[str] | None = None) -> Any:
-    return label_impact_urgency(
+    return label_incidents(
         path,
         by="vicenteliu",
         ask=keys,
         show=(shown.append if shown is not None else lambda s: None),
-        impact=D7,
-        urgency=D8,
+        columns={"impact": D7, "urgency": D8},
+        stamp="impact_urgency",
         clock=_at("2026-10-13T05:00:00+00:00"),
     )
 
@@ -1036,8 +1036,8 @@ class TestLabelImpactUrgency:
         res = _label_levels(path, keys, shown)
 
         assert (res.labelled, res.total, res.finished) == (3, 3, True)
-        assert res.impact == {"single_user": 1, "multiple_users": 1, "site_wide": 1}
-        assert res.urgency == {"worked_around": 1, "slowed": 1, "stopped": 1}
+        assert res.counts["impact"] == {"single_user": 1, "multiple_users": 1, "site_wide": 1}
+        assert res.counts["urgency"] == {"worked_around": 1, "slowed": 1, "stopped": 1}
         rows = _read(path)
         assert [(r.get("impact"), r.get("urgency")) for r in rows] == [
             ("single_user", "stopped"),
@@ -1097,3 +1097,40 @@ def test_cli_label_impact_urgency_prints_counts(tmp_path: Path) -> None:
     assert "labelled 3 Incidents against d7-v1 and d8-v1" in result.output
     assert "impact: single_user 2, multiple_users 1, site_wide 0" in result.output
     assert "urgency: worked_around 0, slowed 1, stopped 2" in result.output
+
+
+# ── Decision 6: which team, asked of an Incident (#228) ───────────────────────
+
+D6 = load_question(REPO_ROOT / DECISIONS_DIR / "d6.yaml")
+
+
+def test_each_incident_is_asked_its_team_and_the_row_records_d6(tmp_path: Path) -> None:
+    path = _incidents_file(tmp_path)
+    keys = Keys("1", "2", "2")
+    res = label_incidents(
+        path,
+        by="vicenteliu",
+        ask=keys,
+        show=lambda s: None,
+        columns={"team": D6},
+        stamp="team",
+        clock=_at("2026-10-16T05:00:00+00:00"),
+    )
+    assert (res.labelled, res.total, res.counts["team"]) == (3, 3, {"network": 1, "systems": 2})
+    rows = _read(path)
+    assert [r.get("team") for r in rows] == ["network", None, "systems", "systems"]
+    assert rows[0]["answer_space"] == {"d6": "d6-v1"}
+    assert rows[0]["team_labelled_time"] == "2026-10-16T05:00:00+00:00"
+    assert keys.prompts[0] == "team? 1 network · 2 systems  (u back, q quit)"
+
+
+def test_cli_label_team_prints_counts(tmp_path: Path) -> None:
+    from opspilot import cli
+
+    path = _incidents_file(tmp_path)
+    result = CliRunner().invoke(
+        cli.app, ["labelset", "label-team", "--by", "v", "--set", str(path)], input="2\n2\n1\n"
+    )
+    assert result.exit_code == 0, result.output
+    assert D6.answers["network"] in " ".join(result.output.split())  # d6.yaml's words
+    assert "labelled 3 Incidents against d6-v1 · team: network 1, systems 2" in result.output

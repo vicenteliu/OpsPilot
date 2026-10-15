@@ -66,6 +66,7 @@ def row_state(row: dict[str, Any], redactor: Redactor) -> str:
 _COLUMN: Final = {
     "d1": "security",
     "d2": "work_item_type",
+    "d6": "team",
     "d7": "impact",
     "d8": "urgency",
     "d9": "known_fix",
@@ -549,17 +550,17 @@ def known_fix_report_markdown(
     return "\n".join(lines) + "\n"
 
 
-def score_report_markdown(
+def incident_report_markdown(
     rows: list[dict[str, Any]], records: list[dict[str, Any]], question: Question
 ) -> str:
-    """Decision 7 or 8 on the label set's Incidents: each engine's level against the label (#227).
+    """Decision 6, 7 or 8 on the label set's Incidents: each engine's answer against the label.
 
-    A Score's levels are ordered, so beside the exact level the report gives
-    how often an answer is within one level of the label, and what always
-    answering the most common label would score: with few rows at some
-    levels, that is the bar an engine has to clear. The cut is decision 2's
-    rule: the lowest probability at which the levels decided without a person
-    are at least 95% right (ADR-0040).
+    The report gives what always answering the most common label would score:
+    with few rows at some answers, that is the bar an engine has to clear. A
+    Score's levels are ordered (#227), so for one it also gives how often an
+    answer is within one level of the label; a Choice's answers are not (#228).
+    The cut is decision 2's rule: the lowest probability at which the answers
+    decided without a person are at least 95% right (ADR-0040).
     """
     column = _COLUMN[question.id]
     if any(r.get(column) is None for r in rows):
@@ -569,6 +570,7 @@ def score_report_markdown(
         raise LabelSetError(f"the runs file answers rows the set does not have: {', '.join(stray)}")
     levels = list(question.answers)
     rank = {level: n for n, level in enumerate(levels)}
+    ordered = question.kind == "score"
     labelled = {level: sum(v == level for v in labels.values()) for level in levels}
     common = max(levels, key=labelled.__getitem__)
     engines = list(dict.fromkeys(r["engine"] for r in records))
@@ -584,9 +586,10 @@ def score_report_markdown(
         + ", ".join(f"{level} {n}" for level, n in labelled.items())
         + f". Always answering {common} would be {_pct(labelled[common] / len(rows))} right.",
         "",
-        "| Engine | Calls ok/failed | Accuracy | Within one level | Brier on the answer"
-        " | Cost/call | p50 | p95 |",
-        "|---|---|---|---|---|---|---|---|",
+        "| Engine | Calls ok/failed | Accuracy"
+        + (" | Within one level" if ordered else "")
+        + " | Brier on the answer | Cost/call | p50 | p95 |",
+        "|---|---|---|---|---|---|---|" + ("---|" if ordered else ""),
     ]
     answered: list[str] = []
     cuts: list[str] = []
@@ -594,7 +597,7 @@ def score_report_markdown(
         mine = [r for r in records if r["engine"] == engine]
         ok = [r for r in mine if r["error"] is None]
         if not ok:
-            lines.append(f"| {engine} | 0/{len(mine)} | – | – | – | – | – | – |")
+            lines.append(f"| {engine} | 0/{len(mine)} |" + " – |" * (6 if ordered else 5))
             cuts.append(f"| {engine} | – | 0/0 | – |")
             continue
         judged = [(r["probability"], r["answer"] == labels[r["id"]]) for r in ok]
@@ -603,8 +606,8 @@ def score_report_markdown(
         latencies = [r["latency_ms"] for r in ok]
         lines.append(
             f"| {engine} | {len(ok)}/{len(mine) - len(ok)} | {_pct(right / len(ok))}"
-            f" | {_pct(near / len(ok))}"
-            f" | {sum((p - hit) ** 2 for p, hit in judged) / len(ok):.3f}"
+            + (f" | {_pct(near / len(ok))}" if ordered else "")
+            + f" | {sum((p - hit) ** 2 for p, hit in judged) / len(ok):.3f}"
             f" | ${sum(r['cost_usd'] for r in ok) / len(ok):.6f}"
             f" | {percentile(latencies, 0.5):.0f} ms | {percentile(latencies, 0.95):.0f} ms |"
         )
@@ -631,7 +634,7 @@ def score_report_markdown(
         "|---|---|" + "---|" * len(levels),
         *answered,
         "",
-        f"## Threshold: the lowest probability at which the levels decided are at least"
+        f"## Threshold: the lowest probability at which the answers decided are at least"
         f" {_pct(TARGET)} right",
         "",
         "| Engine | Threshold | Decided without a person | Right among them |",

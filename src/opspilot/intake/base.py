@@ -109,6 +109,9 @@ def render_comment(result: dict[str, Any], *, session_id: str) -> str:
         lines.append(f"**Approval needed:** {'yes' if result['approval_needed'] else 'no'}")
     if result.get("severity_suggested"):
         lines.append(f"**Suggested severity:** {result['severity_suggested']}")
+    if result.get("escalation_hint"):
+        # The team decision 6 picked, or that a person picks it (#228).
+        lines.append(f"**Escalation:** {result['escalation_hint']}")
     tasks = result.get("tasks") or []
     if tasks:
         lines += ["", "**Suggested tasks:**"]

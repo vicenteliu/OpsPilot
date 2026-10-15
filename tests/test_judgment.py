@@ -40,6 +40,7 @@ D2 = REPO_ROOT / DECISIONS_DIR / "d2.yaml"
 D1 = REPO_ROOT / DECISIONS_DIR / "d1.yaml"
 D7 = REPO_ROOT / DECISIONS_DIR / "d7.yaml"
 D8 = REPO_ROOT / DECISIONS_DIR / "d8.yaml"
+D6 = REPO_ROOT / DECISIONS_DIR / "d6.yaml"
 SEVERITY = REPO_ROOT / DECISIONS_DIR / "severity.yaml"
 
 
@@ -404,9 +405,9 @@ def _with_thresholds(src: Path, dest: Path, thresholds: dict[str, float]) -> Non
     )
 
 
-def _severity_files(tmp_path: Path) -> None:
-    """d7.yaml, d8.yaml and severity.yaml as committed."""
-    for name in ("d7.yaml", "d8.yaml", "severity.yaml"):
+def _incident_decision_files(tmp_path: Path) -> None:
+    """d6.yaml, d7.yaml, d8.yaml and severity.yaml as committed."""
+    for name in ("d6.yaml", "d7.yaml", "d8.yaml", "severity.yaml"):
         (tmp_path / name).write_text((D2.parent / name).read_text(encoding="utf-8"))
 
 
@@ -416,7 +417,7 @@ def _decisions(
     """d2.yaml with ``thresholds`` and d1.yaml with ``security`` (both engines measured by default)."""
     _with_thresholds(D2, tmp_path / "d2.yaml", thresholds)
     _with_thresholds(D1, tmp_path / "d1.yaml", _MEASURED if security is None else security)
-    _severity_files(tmp_path)
+    _incident_decision_files(tmp_path)
     return tmp_path
 
 
@@ -445,7 +446,7 @@ class TestBuildStage:
         playbook = load_playbook(REPO_ROOT / "playbooks" / "pb_classify_work_item_en")
         (tmp_path / "d2.yaml").write_text(D2.read_text(encoding="utf-8"), encoding="utf-8")
         _with_thresholds(D1, tmp_path / "d1.yaml", _MEASURED)
-        _severity_files(tmp_path)
+        _incident_decision_files(tmp_path)
         stage = build_stage(tmp_path, playbook, _Classifier(_REQUEST))  # type: ignore[arg-type]
         assert stage.work_item_type.primary.name == PLAYBOOK
         assert stage.work_item_type.threshold == 0.70
@@ -606,6 +607,7 @@ def _app_with_stage(
     security: _Engine | _Down | None = None,
     security_fallback: _Engine | None = None,
     severity: Severity | None = None,
+    team: Decision | None = None,
 ) -> Any:
     from collections.abc import AsyncIterator
     from contextlib import asynccontextmanager
@@ -634,6 +636,7 @@ def _app_with_stage(
             ),
             work_item_type=Decision(load_question(D2), 0.8, primary=engine, fallback=fallback),
             severity=severity,
+            team=team,
         )
         app.state.sqlite = app.state.lance = app.state.mcp_registry = None
         app.state.embed_fn = lambda text: [0.0]
@@ -1039,6 +1042,85 @@ class TestSeverityInTheRun:
             data = client.post("/api/run", json={"input": _INCIDENT}).json()
 
         assert data["session_id"] == "sess_J1" and run.call_args.kwargs["decided"] is None
+
+
+# ── Decision 6: the team an Incident escalates to (#228) ────────────────────
+
+
+def _team(engine: Any, fallback: Any = None) -> Decision:
+    return Decision(load_question(D6), 0.8, primary=engine, fallback=fallback)
+
+
+def _escalation(team: Decision, severity: Severity | None = None) -> tuple[Any, Any]:
+    """Run an Incident with the stage on; return the summary's run call and the trace events."""
+    from unittest.mock import patch
+
+    from fastapi.testclient import TestClient
+
+    app = _app_with_stage(_Engine("incident", 0.99), severity=severity, team=team)
+    with (
+        patch("opspilot.api.routes.run.run_ticket_summary", return_value=_run_result()) as run,
+        TestClient(app) as client,
+    ):
+        app.state.playbook.output_schema = "incident_summary_v1"
+        assert client.post("/api/run", json={"input": _INCIDENT}).status_code == 200
+    return run, _events(app)
+
+
+class TestTeam:
+    def test_measured_the_stage_asks_it_at_its_engine_s_cut(self, tmp_path: Path) -> None:
+        playbook = load_playbook(REPO_ROOT / "playbooks" / "pb_classify_work_item_en")
+        decisions = _decisions(tmp_path, {JEV: 0.94, PLAYBOOK: 0.7})
+        _with_thresholds(D6, tmp_path / "d6.yaml", {PLAYBOOK: 0.8})
+        stage = build_stage(decisions, playbook, _Classifier(""))  # type: ignore[arg-type]
+        assert stage.team is not None and stage.team.threshold == 0.8
+        assert stage.team.primary.name == PLAYBOOK
+
+    def test_unmeasured_the_stage_runs_without_decision_6_and_says_so(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        playbook = load_playbook(REPO_ROOT / "playbooks" / "pb_classify_work_item_en")
+        decisions = _decisions(tmp_path, {JEV: 0.94, PLAYBOOK: 0.7})
+        _with_thresholds(D6, tmp_path / "d6.yaml", {})
+        with caplog.at_level(logging.WARNING, logger="opspilot.judgment"):
+            stage = build_stage(decisions, playbook, _Classifier(""))  # type: ignore[arg-type]
+        assert stage.team is None and "runs WITHOUT decision 6" in caplog.text
+
+    def test_a_team_that_stands_is_the_escalation_hint(self) -> None:
+        run, events = _escalation(_team(_Says({"d6": ("network", 0.9)})))
+        assert run.call_args.kwargs["decided"] == {"escalation_hint": "network"}
+        assert [e["details"]["question"] for e in events] == ["d1", "d6"]
+        assert events[1]["details"]["escalation_hint"] == "network"
+
+    def test_below_its_cut_the_hint_says_a_person_picks(self) -> None:
+        run, _ = _escalation(_team(_Says({"d6": ("network", 0.62)})))
+        assert run.call_args.kwargs["decided"] == {
+            "escalation_hint": "A person picks the team: network at 0.62 is below its cut."
+        }
+
+    def test_a_fallback_s_team_is_not_trusted_however_sure(self) -> None:
+        run, events = _escalation(_team(_Down(), fallback=_Says({"d6": ("systems", 0.99)})))
+        hint = "A person picks the team: systems came from the fallback engine."
+        assert run.call_args.kwargs["decided"] == {"escalation_hint": hint}
+        assert events[1]["details"]["fallback"]
+
+    def test_with_no_engine_to_answer_a_person_picks_and_the_run_goes_on(self) -> None:
+        run, events = _escalation(_team(_Down()))
+        assert run.call_args.kwargs["decided"] == {
+            "escalation_hint": "A person picks the team: no engine could answer."
+        }
+        assert [e["details"]["question"] for e in events] == ["d1", "d6"]
+        assert events[1]["details"]["answer"] is None
+        assert "no engine could answer" in events[1]["details"]["fallback"]
+
+    def test_severity_and_team_are_given_together(self) -> None:
+        says = _Says({**_SURE, "d6": ("systems", 0.95)})
+        run, events = _escalation(_team(says), severity=_severity(says))
+        assert run.call_args.kwargs["decided"] == {
+            "severity_suggested": "P1",
+            "escalation_hint": "systems",
+        }
+        assert [e["details"]["question"] for e in events] == ["d1", "d7", "d8", "d6"]
 
 
 def test_the_trace_schema_accepts_a_judgment_event(tmp_path: Path) -> None:

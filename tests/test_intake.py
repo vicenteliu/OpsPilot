@@ -255,10 +255,17 @@ class TestRenderComment:
         assert body.startswith("## OpsPilot suggestion")
         assert "Multiple users cannot authenticate" in body
         assert "**Suggested severity:** P2" in body
+        assert "**Escalation:**" not in body  # none was written
         assert "`L2` Check RADIUS" in body
         assert "kb/vpn.md" in body
         assert "ses_ok" in body
         assert "Advisory only" in body
+
+    def test_the_escalation_hint_reaches_the_comment(self) -> None:
+        """Decision 6's team, or that a person picks it, is seen where the Work item lives (#228)."""
+        hint = "A person picks the team: network at 0.62 is below its cut."
+        body = render_comment({**_OK["result"], "escalation_hint": hint}, session_id="s")  # type: ignore[dict-item]
+        assert f"**Escalation:** {hint}" in body
 
     def test_request_artifact_rendered(self) -> None:
         body = render_comment(
