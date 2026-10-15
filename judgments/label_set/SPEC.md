@@ -20,6 +20,7 @@ These columns now, the rest in their slices. Each is labelled against a versione
 | `impact` | 7 · Impact | `single_user` · `multiple_users` · `site_wide` | `d7-v1` | #227 |
 | `urgency` | 8 · Urgency | `worked_around` · `slowed` · `stopped` | `d8-v1` | #227 |
 | `team` | 6 · Which team? | `network` · `systems` | `d6-v1` | #228 |
+| `enough` | 4 · Enough to act on? | `yes` · `no` | `d4-v1` | #229 |
 
 **`d2-v1`**, the definitions the Playbook's classifier already uses
 (`playbooks/pb_classify_work_item_en/prompt.md`):
@@ -62,8 +63,12 @@ default team list. Labelled on the rows labelled `incident` only, as `d7` and `d
 - `systems`: everything else IT runs: endpoints and their software, accounts and identity, email
   and collaboration, servers, printers and business applications.
 
-The other decisions' columns (already open, enough to act on) exist in the schema and stay empty
-until their slice.
+**`d4-v1`** (2026-10-16, #229), as `judgments/decisions/d4.yaml` states it, labelled on the rows
+labelled `incident` only. `yes` when the item says what is wrong, who or what is affected, and
+enough of where, since when, or what was seen (an error, a message) to start diagnosing; `no` when
+an engineer would have to ask the reporter first.
+
+The other decision's column (already open) exists in the schema and stays empty until its slice.
 
 ## 2. Row schema (`label_set_v1.jsonl`, one JSON object per line)
 
@@ -81,6 +86,7 @@ until their slice.
 | `known_fix` | **person** | `d9-v1`: the `source_path` of each candidate page that fixes the row, `[]` for none; with `known_fix_labelled_by` and `known_fix_labelled_time` |
 | `impact` · `urgency` | **person** | `d7-v1` · `d8-v1`, Incidents only; with `impact_urgency_labelled_by` and `impact_urgency_labelled_time` |
 | `team` | **person** | `d6-v1`, Incidents only; with `team_labelled_by` and `team_labelled_time` |
+| `enough` | **person** | `d4-v1`, Incidents only; with `enough_labelled_by` and `enough_labelled_time` |
 | `label_confidence` | **person** | `high` · `low`. Low = "I picked, but it could go the other way" |
 | `label_note` | person, optional | one line, only when the reason isn't obvious |
 | `answer_space` | script | `{"d2": "d2-v1", "d1": "d1-v1"}` at labelling time |
@@ -180,6 +186,9 @@ security.
   its urgency in one pass (`opspilot labelset label-impact-urgency`), each a level's number.
 - **Team** (#228, `d6-v1`): each row labelled `incident` is shown the same way, and the labeller
   picks the team that would fix it (`opspilot labelset label-team`).
+- **Enough to act on** (#229, `d4-v1`): each row labelled `incident` is shown the same way, and
+  the labeller says whether an engineer could start on it without asking first (`opspilot
+  labelset label-enough`).
 
 ## 7. How the report uses it
 

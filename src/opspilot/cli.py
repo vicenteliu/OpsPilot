@@ -2155,6 +2155,34 @@ def labelset_label_impact_urgency(
     )
 
 
+@labelset_app.command("label-enough")
+def labelset_label_enough(
+    by: str = typer.Option(..., "--by", help="The labeller's handle, recorded on each row."),
+    path: Path = typer.Option(OUT_PATH, "--set", help="The labelled set."),  # noqa: B008
+) -> None:
+    """Label whether each Incident has enough to act on, blind (decision 4, #229).
+
+    Only the rows labelled incident are asked. Each shows its subject, body and
+    channel; answer 1 for yes or 2 for no. u goes back and q stops; every
+    answer is saved as it is given.
+    """
+    try:
+        d4 = load_question(DECISIONS_DIR / "d4.yaml")
+        res = label_incidents(
+            path, by=by, ask=_ask_line, show=typer.echo, columns={"enough": d4}, stamp="enough"
+        )
+    except OpsPilotError as e:
+        _console.print(f"Error: {e}", style="red", markup=False)
+        raise typer.Exit(1) from e
+    if not res.finished:
+        typer.echo(f"\nsaved · {res.labelled}/{res.total} labelled; rerun to continue")
+        return
+    typer.echo(
+        f"\nlabelled {res.labelled} Incidents against {d4.version}"
+        f" · enough: {_counts(res.counts['enough'])}"
+    )
+
+
 @labelset_app.command("label-team")
 def labelset_label_team(
     by: str = typer.Option(..., "--by", help="The labeller's handle, recorded on each row."),

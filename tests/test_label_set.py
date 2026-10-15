@@ -1134,3 +1134,19 @@ def test_cli_label_team_prints_counts(tmp_path: Path) -> None:
     assert result.exit_code == 0, result.output
     assert D6.answers["network"] in " ".join(result.output.split())  # d6.yaml's words
     assert "labelled 3 Incidents against d6-v1 · team: network 1, systems 2" in result.output
+
+
+def test_cli_label_enough_asks_each_incident_yes_or_no(tmp_path: Path) -> None:
+    """Decision 4 (#229): the Noul's answers are the keys, in d4.yaml's order."""
+    from opspilot import cli
+
+    path = _incidents_file(tmp_path)
+    result = CliRunner().invoke(
+        cli.app, ["labelset", "label-enough", "--by", "v", "--set", str(path)], input="1\n2\n2\n"
+    )
+    assert result.exit_code == 0, result.output
+    assert "enough? 1 yes · 2 no" in result.output
+    assert "labelled 3 Incidents against d4-v1 · enough: yes 1, no 2" in result.output
+    rows = _read(path)
+    assert [r.get("enough") for r in rows] == ["yes", None, "no", "no"]
+    assert rows[0]["answer_space"] == {"d4": "d4-v1"}

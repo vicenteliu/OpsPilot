@@ -1,0 +1,24 @@
+# Decision 4 (ADR-0040): enough to act on?
+#
+# Asked of an Incident. A Noul: when it stands at `no`, the summary does not
+# run; the Playbook's model writes one ask instead (decision 5), and the
+# reporter's reply re-enters the stage here. Below its cut, the summary runs
+# as before and lists what is missing. The answer space the label set's
+# `enough` column is labelled against (judgments/label_set/SPEC.md, d4-v1).
+id: d4
+version: d4-v1
+kind: noul
+question: >-
+  Is there enough in this Work item for an engineer to start on it without
+  asking the reporter first?
+answers:
+  # Quoted: unquoted, YAML reads yes and no as true and false.
+  "yes": >-
+    It says what is wrong, who or what is affected, and enough of where, since
+    when, or what was seen (an error, a message) to start diagnosing.
+  "no": >-
+    An engineer would have to ask first: what is broken, who or where, since
+    when, or what they saw is missing.
+# Set from the label set, never guessed (ADR-0040), keyed by the engine it was
+# measured on; empty until that report has been run.
+thresholds: {}
