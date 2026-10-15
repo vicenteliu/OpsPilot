@@ -561,7 +561,10 @@ def score_report_markdown(
     rule: the lowest probability at which the levels decided without a person
     are at least 95% right (ADR-0040).
     """
-    labels = {r["id"]: r[_COLUMN[question.id]] for r in rows}
+    column = _COLUMN[question.id]
+    if any(r.get(column) is None for r in rows):
+        raise LabelSetError(f"label every Incident's {column} first; the report reads them all")
+    labels = {r["id"]: r[column] for r in rows}
     if stray := sorted({r["id"] for r in records} - labels.keys()):
         raise LabelSetError(f"the runs file answers rows the set does not have: {', '.join(stray)}")
     levels = list(question.answers)

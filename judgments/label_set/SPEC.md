@@ -196,7 +196,8 @@ with its recall, the share of all calls it stops, and its false alarms among the
 the Playbook's model `d7-v1` (`d8-v1`) of every Incident three times, keeping the calls in
 `runs_d7_v1.jsonl` (`runs_d8_v1.jsonl`). A Score's levels are ordered, so beside exact accuracy
 the report gives how often an answer is within one level of the label, what each engine answered
-for each labelled level, and what always answering the most common label would score. The
+for each labelled level, and what always answering the most common label would score. Its Brier
+score is on the answer: each answer's probability against whether it was right. The
 threshold follows decision 2's rule: the lowest probability at which the levels decided without a
 person are at least 95% right. A person sets each file's threshold from it.
 

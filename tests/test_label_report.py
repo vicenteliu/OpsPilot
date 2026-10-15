@@ -639,3 +639,9 @@ def test_cli_reports_impact_on_the_incidents_only(tmp_path: Path) -> None:
     assert result.exit_code == 0, result.output
     assert "2 Incidents is not a benchmark" in result.output
     assert "| e | 2/0 | 100.0% | 100.0% |" in result.output
+
+
+def test_the_score_report_needs_every_incident_labelled() -> None:
+    rows = [_incident(1, "single_user"), _row(2, "incident")]
+    with pytest.raises(LabelSetError, match="label every Incident's impact first"):
+        score_report_markdown(rows, [], D7)
