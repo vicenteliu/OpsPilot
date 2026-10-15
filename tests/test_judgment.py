@@ -22,11 +22,13 @@ from opspilot.judgment import (
     JudgmentError,
     Question,
     QuestionJudge,
+    Severity,
     Stage,
     TypeSafeJudge,
     build_stage,
     judge_with_fallback,
     load_question,
+    load_severity_table,
 )
 from opspilot.label_set import ANSWER_SPACE
 from opspilot.orchestrator.classify import VALID_TYPES
@@ -38,6 +40,7 @@ D2 = REPO_ROOT / DECISIONS_DIR / "d2.yaml"
 D1 = REPO_ROOT / DECISIONS_DIR / "d1.yaml"
 D7 = REPO_ROOT / DECISIONS_DIR / "d7.yaml"
 D8 = REPO_ROOT / DECISIONS_DIR / "d8.yaml"
+SEVERITY = REPO_ROOT / DECISIONS_DIR / "severity.yaml"
 
 
 class _Classifier:
@@ -401,12 +404,19 @@ def _with_thresholds(src: Path, dest: Path, thresholds: dict[str, float]) -> Non
     )
 
 
+def _severity_files(tmp_path: Path) -> None:
+    """d7.yaml, d8.yaml and severity.yaml as committed."""
+    for name in ("d7.yaml", "d8.yaml", "severity.yaml"):
+        (tmp_path / name).write_text((D2.parent / name).read_text(encoding="utf-8"))
+
+
 def _decisions(
     tmp_path: Path, thresholds: dict[str, float], security: dict[str, float] | None = None
 ) -> Path:
     """d2.yaml with ``thresholds`` and d1.yaml with ``security`` (both engines measured by default)."""
     _with_thresholds(D2, tmp_path / "d2.yaml", thresholds)
     _with_thresholds(D1, tmp_path / "d1.yaml", _MEASURED if security is None else security)
+    _severity_files(tmp_path)
     return tmp_path
 
 
@@ -435,6 +445,7 @@ class TestBuildStage:
         playbook = load_playbook(REPO_ROOT / "playbooks" / "pb_classify_work_item_en")
         (tmp_path / "d2.yaml").write_text(D2.read_text(encoding="utf-8"), encoding="utf-8")
         _with_thresholds(D1, tmp_path / "d1.yaml", _MEASURED)
+        _severity_files(tmp_path)
         stage = build_stage(tmp_path, playbook, _Classifier(_REQUEST))  # type: ignore[arg-type]
         assert stage.work_item_type.primary.name == PLAYBOOK
         assert stage.work_item_type.threshold == 0.70
@@ -594,6 +605,7 @@ def _app_with_stage(
     *,
     security: _Engine | _Down | None = None,
     security_fallback: _Engine | None = None,
+    severity: Severity | None = None,
 ) -> Any:
     from collections.abc import AsyncIterator
     from contextlib import asynccontextmanager
@@ -621,6 +633,7 @@ def _app_with_stage(
                 fallback=security_fallback,
             ),
             work_item_type=Decision(load_question(D2), 0.8, primary=engine, fallback=fallback),
+            severity=severity,
         )
         app.state.sqlite = app.state.lance = app.state.mcp_registry = None
         app.state.embed_fn = lambda text: [0.0]
@@ -855,6 +868,177 @@ def _stream_result(text: str) -> dict[str, Any]:
             payload = json.loads(data)
             return dict(payload.get("data", payload))
     raise AssertionError(f"no result event in {text!r}")
+
+
+# ── Severity: Impact × Urgency read off a table (#227) ─────────────────────
+
+
+class _Says:
+    """Answers each question from a table keyed by its id, and counts what it was asked."""
+
+    name = "typesafe:jev-test"
+
+    def __init__(self, answers: dict[str, tuple[str, float]]) -> None:
+        self.answers, self.asked = answers, []
+
+    def judge(self, question: Question, state: str, *, timeout_s: float) -> Judgment:
+        self.asked.append(question.id)
+        answer, probability = self.answers[question.id]
+        return Judgment(question.id, question.version, answer, probability, self.name, 90, 2e-05)
+
+
+def _severity(engine: Any, fallback: Any = None) -> Severity:
+    impact, urgency = load_question(D7), load_question(D8)
+    return Severity(
+        Decision(impact, 0.7, primary=engine, fallback=fallback),
+        Decision(urgency, 0.93, primary=engine, fallback=fallback),
+        load_severity_table(SEVERITY, impact, urgency),
+    )
+
+
+_SURE = {"d7": ("multiple_users", 0.9), "d8": ("stopped", 0.95)}
+
+
+class TestSeverity:
+    def test_the_committed_table_gives_every_pair_a_severity(self) -> None:
+        table = load_severity_table(SEVERITY, load_question(D7), load_question(D8))
+        assert len(table.cells) == 9
+        assert table.read("single_user", "worked_around") == "P4"
+        assert table.read("multiple_users", "stopped") == "P1"
+        assert table.read("site_wide", "stopped") == "P0"
+
+    @pytest.mark.parametrize(
+        ("old", "new", "message"),
+        [
+            ("    stopped: P0", "    stopped: P5", "site_wide × stopped must be one of P0–P4"),
+            ("    slowed: P1\n", "", "site_wide needs a value for each urgency"),
+            ("  site_wide:", "  everyone:", "a row for each impact"),
+        ],
+    )
+    def test_a_table_that_misses_a_pair_or_a_level_is_refused(
+        self, tmp_path: Path, old: str, new: str, message: str
+    ) -> None:
+        path = tmp_path / "severity.yaml"
+        path.write_text(SEVERITY.read_text(encoding="utf-8").replace(old, new), encoding="utf-8")
+        with pytest.raises(JudgmentError, match=message):
+            load_severity_table(path, load_question(D7), load_question(D8))
+
+    def test_both_judgments_at_their_cuts_read_severity_off_the_table(self) -> None:
+        severity, judged = _severity(_Says(_SURE)).decide("s")
+        assert severity == "P1"
+        assert [(j.question, j.answer) for j in judged] == [
+            ("d7", "multiple_users"),
+            ("d8", "stopped"),
+        ]
+
+    def test_below_either_cut_the_table_is_not_read(self) -> None:
+        unsure = {**_SURE, "d8": ("stopped", 0.92)}
+        severity, judged = _severity(_Says(unsure)).decide("s")
+        assert severity is None and [j.question for j in judged] == ["d7", "d8"]
+
+    def test_a_fallback_s_answer_is_not_read_off_the_table_however_sure(self) -> None:
+        severity, judged = _severity(_Down(), fallback=_Says(_SURE)).decide("s")
+        assert severity is None and all(j.fallback for j in judged)
+
+    def test_the_committed_files_read_severity_at_the_playbook_model_s_cuts(self) -> None:
+        playbook = load_playbook(REPO_ROOT / "playbooks" / "pb_classify_work_item_en")
+        stage = build_stage(REPO_ROOT / DECISIONS_DIR, playbook, _Classifier(_REQUEST))  # type: ignore[arg-type]
+        assert stage.severity is not None
+        assert (stage.severity.impact.threshold, stage.severity.urgency.threshold) == (0.45, 0.70)
+        assert stage.severity.impact.primary.name == PLAYBOOK
+
+    def test_unmeasured_the_stage_runs_without_severity_and_says_so(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        playbook = load_playbook(REPO_ROOT / "playbooks" / "pb_classify_work_item_en")
+        decisions = _decisions(tmp_path, {JEV: 0.94, PLAYBOOK: 0.7})
+        _with_thresholds(D8, tmp_path / "d8.yaml", {JEV: 0.93})
+        with caplog.at_level(logging.WARNING, logger="opspilot.judgment"):
+            stage = build_stage(decisions, playbook, _Classifier(""))  # type: ignore[arg-type]
+        assert stage.severity is None
+        assert "runs WITHOUT Severity" in caplog.text and "d8.yaml" in caplog.text
+
+
+_INCIDENT = {**_UNTYPED, "work_item_type": "incident"}
+
+
+def _events(app: Any) -> list[dict[str, Any]]:
+    writes = app.state.session_mgr.trace.return_value.__enter__.return_value.write
+    return [c.args[0].payload for c in writes.call_args_list]
+
+
+class TestSeverityInTheRun:
+    @pytest.mark.parametrize("path", ["/api/run", "/api/run/stream"])
+    def test_an_incident_s_summary_is_given_the_severity_its_judgments_read(
+        self, path: str
+    ) -> None:
+        from unittest.mock import patch
+
+        from fastapi.testclient import TestClient
+
+        app = _app_with_stage(_Engine("incident", 0.99), severity=_severity(_Says(_SURE)))
+        with (
+            patch("opspilot.api.routes.run.run_ticket_summary", return_value=_run_result()) as run,
+            TestClient(app) as client,
+        ):
+            app.state.playbook.output_schema = "incident_summary_v1"
+            assert client.post(path, json={"input": _INCIDENT}).status_code == 200
+
+        assert run.call_args.kwargs["decided"] == {"severity_suggested": "P1"}
+        events = _events(app)
+        assert [e["details"]["question"] for e in events] == ["d1", "d7", "d8"]
+        assert events[2]["details"]["severity"] == "P1"
+
+    def test_below_a_cut_the_summary_suggests_its_own_and_both_are_traced(self) -> None:
+        from unittest.mock import patch
+
+        from fastapi.testclient import TestClient
+
+        unsure = _Says({**_SURE, "d8": ("slowed", 0.5)})
+        app = _app_with_stage(_Engine("incident", 0.99), severity=_severity(unsure))
+        with (
+            patch("opspilot.api.routes.run.run_ticket_summary", return_value=_run_result()) as run,
+            TestClient(app) as client,
+        ):
+            app.state.playbook.output_schema = "incident_summary_v1"
+            client.post("/api/run", json={"input": _INCIDENT})
+
+        assert run.call_args.kwargs["decided"] is None
+        events = _events(app)
+        assert [e["details"]["question"] for e in events] == ["d1", "d7", "d8"]
+        assert events[1]["details"]["severity"] is None
+
+    def test_a_request_s_playbook_is_not_asked_impact_or_urgency(self) -> None:
+        from unittest.mock import patch
+
+        from fastapi.testclient import TestClient
+
+        says = _Says(_SURE)
+        app = _app_with_stage(_Engine("incident", 0.99), severity=_severity(says))
+        request = {**_UNTYPED, "work_item_type": "service_request"}
+        with (
+            patch("opspilot.api.routes.run.run_ticket_summary", return_value=_run_result()) as run,
+            TestClient(app) as client,
+        ):
+            app.state.request_fulfillment_pb.output_schema = "request_fulfillment_v1"
+            client.post("/api/run", json={"input": request})
+
+        assert says.asked == [] and run.call_args.kwargs["decided"] is None
+
+    def test_when_no_engine_can_answer_the_summary_suggests_and_the_run_goes_on(self) -> None:
+        from unittest.mock import patch
+
+        from fastapi.testclient import TestClient
+
+        app = _app_with_stage(_Engine("incident", 0.99), severity=_severity(_Down()))
+        with (
+            patch("opspilot.api.routes.run.run_ticket_summary", return_value=_run_result()) as run,
+            TestClient(app) as client,
+        ):
+            app.state.playbook.output_schema = "incident_summary_v1"
+            data = client.post("/api/run", json={"input": _INCIDENT}).json()
+
+        assert data["session_id"] == "sess_J1" and run.call_args.kwargs["decided"] is None
 
 
 def test_the_trace_schema_accepts_a_judgment_event(tmp_path: Path) -> None:

@@ -1,0 +1,17 @@
+# Severity (ADR-0040): a Lookup over Impact (d7.yaml) × Urgency (d8.yaml),
+# P0 the most severe. The values are policy: an
+# organisation sets its own here. The default rises with how widely and how
+# hard the problem stops work (#227).
+severity:
+  single_user:
+    worked_around: P4
+    slowed: P3
+    stopped: P2
+  multiple_users:
+    worked_around: P3
+    slowed: P2
+    stopped: P1
+  site_wide:
+    worked_around: P2
+    slowed: P1
+    stopped: P0

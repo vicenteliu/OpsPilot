@@ -168,7 +168,10 @@ either claim.
   impacts (at 0.70) and 39% of urgencies (at 0.93); the Playbook's model, all
   impacts (at 0.45) and 30% of urgencies (at 0.70). Both get `stopped` right
   and confuse `worked_around` with `slowed`. No Incident is site-wide, so
-  Impact's highest level is not measured (#288).
+  Impact's highest level is not measured (#288). With the stage on, an
+  Incident's Severity is read off `judgments/decisions/severity.yaml` when both
+  clear their cuts, and the summary Playbook is given it; below either, it
+  suggests one as before.
 
 *Not yet:*
 

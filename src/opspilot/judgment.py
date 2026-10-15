@@ -21,6 +21,7 @@ stretching it to fit would make every chat provider pretend to have one.
 from __future__ import annotations
 
 import logging
+import re
 import time
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
@@ -354,6 +355,10 @@ def judge_with_fallback(
 JUDGMENT_TIMEOUT_S: Final = 20.0
 SECURITY_FILE: Final = "d1.yaml"
 WORK_ITEM_TYPE_FILE: Final = "d2.yaml"
+IMPACT_FILE: Final = "d7.yaml"
+URGENCY_FILE: Final = "d8.yaml"
+# A Lookup, not a Question, kept beside the decisions it reads (ADR-0040).
+SEVERITY_FILE: Final = "severity.yaml"
 
 
 @dataclass(frozen=True)
@@ -376,6 +381,64 @@ class Decision:
         return judge_with_fallback(
             self.primary, self.fallback, self.question, state, timeout_s=self.timeout_s
         )
+
+
+@dataclass(frozen=True)
+class SeverityTable:
+    """Severity as a Lookup over Impact × Urgency, P0–P4 (ADR-0040).
+
+    Its values are policy, so they live in the file, not in code.
+    """
+
+    cells: dict[tuple[str, str], str]  # (impact, urgency) → P0…P4
+
+    def read(self, impact: str, urgency: str) -> str:
+        return self.cells[(impact, urgency)]
+
+
+_SEVERITY: Final = re.compile(r"P[0-4]")
+
+
+def load_severity_table(path: Path, impact: Question, urgency: Question) -> SeverityTable:
+    """Read the Severity table; refuse one that does not give every pair a P0–P4."""
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    table = data.get("severity") or {}
+    if not isinstance(table, dict) or set(table) != set(impact.answers):
+        raise JudgmentError(f"{path}: severity needs a row for each impact: {list(impact.answers)}")
+    cells: dict[tuple[str, str], str] = {}
+    for i in impact.answers:
+        row = table[i] or {}
+        if not isinstance(row, dict) or set(row) != set(urgency.answers):
+            raise JudgmentError(
+                f"{path}: {i} needs a value for each urgency: {list(urgency.answers)}"
+            )
+        for u in urgency.answers:
+            if not (isinstance(row[u], str) and _SEVERITY.fullmatch(row[u])):
+                raise JudgmentError(f"{path}: {i} × {u} must be one of P0–P4, not {row[u]!r}")
+            cells[(i, u)] = row[u]
+    return SeverityTable(cells)
+
+
+@dataclass(frozen=True)
+class Severity:
+    """Impact (7) and Urgency (8), and the table that reads Severity off them (#227)."""
+
+    impact: Decision
+    urgency: Decision
+    table: SeverityTable
+
+    def decide(self, state: str) -> tuple[str | None, list[Judgment]]:
+        """Severity from the table, or None when either Judgment cannot stand alone.
+
+        Each must clear its cut and come from its primary engine, the rule a
+        type follows. Below that, the summary Playbook suggests a Severity as it
+        did before the stage, rather than the run waiting for a person.
+        """
+        judged = [(d, d.decide(state)) for d in (self.impact, self.urgency)]
+        if any(j.fallback is not None or j.probability < d.threshold for d, j in judged):
+            return None, [j for _, j in judged]
+        (_, impact), (_, urgency) = judged
+        return self.table.read(impact.answer, urgency.answer), [impact, urgency]
 
 
 def p_yes_of(answer: str, probability: float) -> float:
@@ -405,6 +468,9 @@ class Stage:
     # measured on the label set, it is not ready to be automated (#225).
     security: Decision | None
     work_item_type: Decision
+    # Asked of an Incident before its summary; None until Impact and Urgency
+    # are both measured for the engine that would decide them (#227).
+    severity: Severity | None = None
 
     def stops_for_security(self, judgment: Judgment) -> bool:
         """At or above decision 1's cut on P(yes), or answered by the fallback: stop.
@@ -465,6 +531,32 @@ def _security(
     return Decision(question, threshold, primary=primary, fallback=fallback)
 
 
+def _severity(
+    decisions_dir: Path, primary: JudgmentEngine, fallback: JudgmentEngine | None
+) -> Severity | None:
+    """Impact and Urgency at their engine's measured cuts, with the table; None while unmeasured.
+
+    Like decision 1, an unmeasured Severity does not stop the stage: the
+    summary Playbook suggests one, as it did before, and the log says so.
+    """
+    decisions = []
+    for name in (IMPACT_FILE, URGENCY_FILE):
+        question = load_question(decisions_dir / name)
+        threshold = question.thresholds.get(primary.name)
+        if threshold is None:
+            logger.warning(
+                "The Judgments stage runs WITHOUT Severity: %s has no threshold for %s, so the "
+                "summary Playbook suggests one (#227).",
+                decisions_dir / name,
+                primary.name,
+            )
+            return None
+        decisions.append(Decision(question, threshold, primary=primary, fallback=fallback))
+    impact, urgency = decisions
+    table = load_severity_table(decisions_dir / SEVERITY_FILE, impact.question, urgency.question)
+    return Severity(impact, urgency, table)
+
+
 def build_stage(
     decisions_dir: Path,
     classify_playbook: PlaybookSpec,
@@ -477,7 +569,8 @@ def build_stage(
     With a TypeSafe key, Jev decides both and the Playbook's model is its
     fallback: Classification for decision 2, the Question asked as written for
     decision 1. Without one, the Playbook's model decides alone, and the log
-    says so. Decision 1 runs only once it is measured for its engine.
+    says so. Decision 1, and Impact and Urgency, run only once they are
+    measured for their engine.
     """
     asked = QuestionJudge(classify_playbook, provider)
     classified = ClassificationJudge(classify_playbook, provider)
@@ -491,10 +584,12 @@ def build_stage(
         return Stage(
             security=_security(decisions_dir, jev, asked),
             work_item_type=_decision(decisions_dir, WORK_ITEM_TYPE_FILE, jev, classified),
+            severity=_severity(decisions_dir, jev, asked),
         )
     stage = Stage(
         security=_security(decisions_dir, asked, None),
         work_item_type=_decision(decisions_dir, WORK_ITEM_TYPE_FILE, classified, None),
+        severity=_severity(decisions_dir, asked, None),
     )
     logger.warning(
         "The Judgments stage is on without TYPESAFE_API_KEY: %s decides alone.", classified.name
