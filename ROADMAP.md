@@ -178,6 +178,14 @@ either claim.
   0.55 on the Playbook's model), though only 7 Incidents are network ones.
   With the stage on, a team that clears its cut is the summary's escalation
   hint; below it, the hint says a person picks the team.
+- Enough to act on, and the ask, decisions 4 and 5 (#229): the 39 Incidents
+  are labelled, only 4 of them too thin. At a P(no) of 0.64, Jev asks about
+  all 4 (in all three passes) and about none of the rest; the Playbook's
+  model, at 0.77, about 2 of them. With the stage on, an Incident whose `no`
+  clears its cut gets one ask instead of a summary, written by `pb_ask_en`:
+  a JSM comment, whose key the poller watches for a reply, or a Telegram
+  reply, whose chat's next message is the reply. The reply runs it again,
+  once.
 
 *Not yet:*
 

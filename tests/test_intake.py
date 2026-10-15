@@ -20,6 +20,7 @@ from opspilot.intake import (
     JsmTransport,
     OpsPilotRunClient,
     ReplayTransport,
+    SourceItem,
     normalize_issue,
     render_comment,
 )
@@ -551,3 +552,112 @@ class TestIntakeLoopPersistence:
         rerun = FakeRunClient()
         IntakeLoop(ReplayTransport(FIXTURES, out), rerun, state=st).run_once()  # type: ignore[arg-type]
         assert rerun.calls == ["IT-102"]
+
+
+# ── The ask and the reply coming back (#229) ──────────────────────────────────
+
+_ASKED = {
+    "session_id": "",
+    "artifact_id": None,
+    "schema_valid": False,
+    "result": {},
+    "error": None,
+    "needs_confirmation": True,
+    "ask": {"question": "d4", "answer": "no", "text": "Since when, and what does it say?"},
+}
+
+
+class _AskedTransport:
+    """One thin Incident; replies are set by the test, comments are kept."""
+
+    def __init__(self) -> None:
+        self.reply: str | None = None
+        self.comments: list[tuple[str, str]] = []
+        self.asked_for: list[str] = []
+
+    def fetch_new(self) -> list[SourceItem]:
+        return [
+            SourceItem(
+                key="IT-9",
+                work_item={"ticket_id": "IT-9", "subject": "s", "body": "printer broken"},
+            )
+        ]
+
+    def post_comment(self, key: str, body: str, marker: str) -> None:
+        self.comments.append((key, body))
+
+    def fetch_reply(self, key: str) -> str | None:
+        self.asked_for.append(key)
+        return self.reply
+
+
+class _SeqRunClient:
+    def __init__(self, *responses: dict[str, Any]) -> None:
+        self.responses = list(responses)
+        self.calls: list[tuple[dict[str, Any], bool]] = []
+
+    def run(self, work_item: dict[str, Any], *, asked: bool = False) -> dict[str, Any]:
+        self.calls.append((dict(work_item), asked))
+        return self.responses.pop(0)
+
+
+class TestTheAskAndTheReply:
+    def test_a_thin_incident_is_asked_once_and_its_reply_runs_it_again(
+        self, tmp_path: Path
+    ) -> None:
+        transport, client = _AskedTransport(), _SeqRunClient(_ASKED, _OK)
+        state = IntakeState(tmp_path / "state.json")
+        loop = IntakeLoop(transport, client, state)  # type: ignore[arg-type]
+
+        loop.run_once()
+        [(key, body)] = transport.comments
+        assert key == "IT-9" and body.startswith("## OpsPilot: more information needed")
+        assert "Since when, and what does it say?" in body
+        assert "IT-9" in IntakeState(tmp_path / "state.json").awaiting_reply()  # survives a restart
+
+        loop.run_once()  # no reply yet: nothing runs, nothing is posted
+        assert len(client.calls) == 1 and len(transport.comments) == 1
+
+        transport.reply = "since Monday; it says paper jam"
+        report = loop.run_once()
+        work_item, asked = client.calls[1]
+        assert asked is True and work_item["work_item_type"] == "incident"
+        assert work_item["body"].startswith("printer broken")
+        assert "since Monday; it says paper jam" in work_item["body"]
+        assert transport.comments[-1][1].startswith("## OpsPilot suggestion")
+        assert report.commented == ["IT-9"] and state.awaiting_reply() == {}
+
+    def test_forget_drops_a_key_still_awaiting_a_reply(self, tmp_path: Path) -> None:
+        state = IntakeState(tmp_path / "state.json")
+        state.await_reply("IT-9", {"ticket_id": "IT-9"})
+        assert state.forget("IT-9") is True and state.awaiting_reply() == {}
+
+
+class TestJsmFetchReply:
+    def _transport(self, comments: list[str]) -> JsmTransport:
+        def handler(request: httpx.Request) -> httpx.Response:
+            assert request.url.path == "/rest/api/2/issue/IT-9/comment"
+            return httpx.Response(200, json={"comments": [{"body": b} for b in comments]})
+
+        return JsmTransport(
+            base_url="https://example.atlassian.net",
+            email="ops@example.com",
+            api_token="jsm-tok",
+            jql="project = IT",
+            http=httpx.Client(transport=httpx.MockTransport(handler)),
+        )
+
+    def test_the_reply_is_what_follows_opspilot_s_last_comment(self) -> None:
+        comments = [
+            "an agent's note",
+            "## OpsPilot: more information needed\n\nSince when?",
+            "since Monday",
+            "and it says paper jam",
+        ]
+        assert (
+            self._transport(comments).fetch_reply("IT-9") == "since Monday\n\nand it says paper jam"
+        )
+
+    def test_no_reply_while_opspilot_s_comment_is_the_last(self) -> None:
+        comments = ["## OpsPilot: more information needed\n\nSince when?"]
+        assert self._transport(comments).fetch_reply("IT-9") is None

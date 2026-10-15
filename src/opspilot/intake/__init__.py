@@ -8,7 +8,9 @@ from .base import (
     OpsPilotRunClient,
     SourceItem,
     SourceTransport,
+    render_ask_comment,
     render_comment,
+    with_reply,
 )
 from .jsm import JsmTransport, ReplayTransport, normalize_issue
 
@@ -23,5 +25,7 @@ __all__ = [
     "SourceItem",
     "SourceTransport",
     "normalize_issue",
+    "render_ask_comment",
     "render_comment",
+    "with_reply",
 ]

@@ -86,6 +86,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     request_fulfillment_pb = load_playbook(playbooks_base / request_pb_id)
     classify_pb_id = os.environ.get("OPSPILOT_CLASSIFY_PLAYBOOK", "pb_classify_work_item_en")
     classify_pb = load_playbook(playbooks_base / classify_pb_id)
+    # Decision 5 (ADR-0040): writes the ask when decision 4 stands at `no` (#229).
+    ask_pb = load_playbook(playbooks_base / os.environ.get("OPSPILOT_ASK_PLAYBOOK", "pb_ask_en"))
 
     # Hand-authored runtime skills (ADR-0022) — the chat agent loads them on
     # demand via load_skill; weak models get the best match injected.
@@ -141,6 +143,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         kind=vendor_doc_pb.model.kind,
         api_key=cfg.anthropic_api_key,
     )
+    ask_provider = make_provider(
+        ask_pb.model.provider_id, kind=ask_pb.model.kind, api_key=cfg.anthropic_api_key
+    )
     # The Judgments stage (ADR-0040), off unless asked for. On, it refuses to
     # start until decision 2's threshold has been measured on the label set,
     # and asks Jev when there is a TypeSafe key to ask it with.
@@ -172,6 +177,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.vendor_doc_pb = vendor_doc_pb
     app.state.request_fulfillment_pb = request_fulfillment_pb
     app.state.classify_pb = classify_pb
+    app.state.ask_pb = ask_pb
+    app.state.ask_provider = ask_provider
     app.state.skills = skills
     # Web search for the chat agent (#120) — gated on a Brave key, since it
     # egresses the query to an external engine. No key → the tool isn't offered.

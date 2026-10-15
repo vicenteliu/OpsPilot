@@ -302,6 +302,14 @@
       A person needs to handle it. OpsPilot made no suggestion, offered no knowledge-base fix and ran no Playbook.
     </p>
   </div>
+{:else if result?.ask}
+  <div class="confirm-banner">
+    <p>
+      <strong>More information is needed before a suggestion.</strong>
+      OpsPilot would ask the reporter: “{result.ask.text}” Add the answer to the Work item and run
+      it again. No Playbook ran.
+    </p>
+  </div>
 {:else if result?.needs_confirmation && result.classification}
   <div class="confirm-banner">
     <p>

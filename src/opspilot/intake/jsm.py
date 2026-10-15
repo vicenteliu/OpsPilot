@@ -17,7 +17,7 @@ from typing import Any
 
 import httpx
 
-from .base import SourceItem
+from .base import OPSPILOT_HEADING, SourceItem
 
 logger = logging.getLogger("opspilot.intake.jsm")
 
@@ -62,6 +62,13 @@ class ReplayTransport:
     def post_comment(self, key: str, body: str, marker: str) -> None:
         self._out_dir.mkdir(parents=True, exist_ok=True)
         (self._out_dir / f"{key}.md").write_text(body, encoding="utf-8")
+
+    def fetch_reply(self, key: str) -> str | None:
+        """A recorded reply, ``replies/<key>.txt`` beside ``search.json``, if there is one."""
+        path = self._fixtures_dir / "replies" / f"{key}.txt"
+        if not path.is_file():
+            return None
+        return path.read_text(encoding="utf-8").strip() or None
 
 
 class JsmTransport:
@@ -123,6 +130,25 @@ class JsmTransport:
             auth=self._auth,
         )
         res.raise_for_status()
+
+    def fetch_reply(self, key: str) -> str | None:
+        """The comments posted since OpsPilot's last one on ``key``, or None (#229).
+
+        Read in the order JSM keeps them, oldest first. OpsPilot's own comments
+        all open with its heading, so whatever follows the last of them, and is
+        not one of them, is what the reporter (or anyone) said since.
+        """
+        res = self._http.get(
+            f"{self._base_url}/rest/api/2/issue/{key}/comment",
+            params={"maxResults": 100},
+            auth=self._auth,
+        )
+        res.raise_for_status()
+        bodies = [str(c.get("body") or "") for c in res.json().get("comments", [])]
+        ours = [i for i, b in enumerate(bodies) if b.startswith(OPSPILOT_HEADING)]
+        since = bodies[ours[-1] + 1 :] if ours else bodies
+        said = [b.strip() for b in since if b.strip() and not b.startswith(OPSPILOT_HEADING)]
+        return "\n\n".join(said) or None
 
     def _already_commented(self, key: str, marker: str) -> bool:
         """True when an existing comment carries this run's session marker."""

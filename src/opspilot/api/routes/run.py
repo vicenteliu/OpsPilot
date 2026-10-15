@@ -17,6 +17,7 @@ from fastapi.responses import StreamingResponse
 
 from ...errors import OpsPilotError
 from ...judgment import p_yes
+from ...orchestrator.ask import write_ask
 from ...orchestrator.classify import classify_work_item, declared_type, render_state
 from ...orchestrator.ticket_summary import run_ticket_summary
 from ...orchestrator.types import RunRequest as OrchestratorRunRequest
@@ -238,6 +239,50 @@ def _judge_team(
     return {"escalation_hint": hint}, {**judgment.as_trace(), "escalation_hint": hint}
 
 
+def _judge_enough(
+    state: Any, rendered: str | None, pb: Any, *, asked: bool
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Decision 4, and when it stands at `no`, the ask (decision 5), for an Incident (#229).
+
+    Returns the ask, with the Judgment behind it, when the reporter should be
+    asked before any summary; and decision 4's Judgment for the trace when the
+    summary runs instead. The summary runs, and nobody is asked, when the stage
+    is off, decision 4 is unmeasured, the Playbook writes no incident summary,
+    the reporter was already asked once (``asked``), the answer is `yes` or a
+    `no` below its cut or from the fallback, or no engine or no ask can be had.
+    """
+    stage = getattr(state, "judgments", None)
+    if (
+        asked
+        or stage is None
+        or stage.enough is None
+        or rendered is None
+        or not _writes_incident_summary(pb)
+    ):
+        return None, None
+    try:
+        judgment = stage.enough.decide(rendered)
+    except OpsPilotError as e:
+        logger.warning("no engine could answer decision 4; the summary runs: %s", e)
+        return None, None
+    trace = judgment.as_trace()
+    if judgment.answer != "no" or not stage.enough.stands(judgment):
+        return None, trace
+    try:
+        ask = write_ask(rendered, playbook=state.ask_pb, provider=state.ask_provider)
+    except OpsPilotError as e:
+        logger.warning(
+            "decision 4 stood at no but no ask could be written; the summary runs: %s", e
+        )
+        return None, trace
+    logger.info(
+        "ask: %s answered no (p=%.2f), so the reporter is asked",
+        judgment.engine,
+        judgment.probability,
+    )
+    return {**trace, "text": ask.text, "usage": ask.usage.model_dump()}, None
+
+
 def _judge_incident(
     state: Any, rendered: str | None, pb: Any
 ) -> tuple[dict[str, str] | None, list[dict[str, Any]]]:
@@ -319,16 +364,21 @@ async def run_ticket(body: ApiRunRequest, request: Request) -> ApiRunResponse:
     try:
         loop = asyncio.get_event_loop()
 
-        def _plan_and_run() -> tuple[Any, dict[str, Any] | None, bool, dict[str, Any] | None]:
+        def _plan_and_run() -> tuple[
+            Any, dict[str, Any] | None, bool, dict[str, Any] | None, dict[str, Any] | None
+        ]:
             rendered = _stage_state(state, ticket_path)
             security = _judge_security(state, rendered)
             if security is not None and security["stops"]:
-                return None, None, True, security
+                return None, None, True, security, None
             provider, pb, classification, needs_conf = _resolve_run_plan(
                 body, state, ticket_path, rendered
             )
             if needs_conf:
-                return None, classification, True, security
+                return None, classification, True, security, None
+            ask, enough = _judge_enough(state, rendered, pb, asked=body.asked)
+            if ask is not None:
+                return None, classification, True, security, ask
             decided, incident_judgments = _judge_incident(state, rendered, pb)
             orch_request = OrchestratorRunRequest(
                 playbook=pb, input_path=ticket_path, owner="api:default"
@@ -346,11 +396,11 @@ async def run_ticket(body: ApiRunRequest, request: Request) -> ApiRunResponse:
             )
             _trace_judgment(state, res.session_id, security)
             _trace_judgment(state, res.session_id, (classification or {}).get("judgment"))
-            for judgment in incident_judgments:
+            for judgment in [enough, *incident_judgments]:
                 _trace_judgment(state, res.session_id, judgment)
-            return res, classification, False, security
+            return res, classification, False, security, None
 
-        result, classification, needs_conf, security = await loop.run_in_executor(
+        result, classification, needs_conf, security, ask = await loop.run_in_executor(
             None, _plan_and_run
         )
     finally:
@@ -367,6 +417,7 @@ async def run_ticket(body: ApiRunRequest, request: Request) -> ApiRunResponse:
             classification=classification,
             needs_confirmation=True,
             security=security,
+            ask=ask,
         )
 
     return ApiRunResponse(
@@ -408,16 +459,21 @@ async def run_ticket_stream(body: ApiRunRequest, request: Request) -> StreamingR
     def on_progress(msg: str) -> None:
         loop.call_soon_threadsafe(queue.put_nowait, {"type": "status", "message": msg})
 
-    def _plan_and_run() -> tuple[Any, dict[str, Any] | None, bool, dict[str, Any] | None]:
+    def _plan_and_run() -> tuple[
+        Any, dict[str, Any] | None, bool, dict[str, Any] | None, dict[str, Any] | None
+    ]:
         rendered = _stage_state(state, ticket_path)
         security = _judge_security(state, rendered)
         if security is not None and security["stops"]:
-            return None, None, True, security
+            return None, None, True, security, None
         provider, pb, classification, needs_conf = _resolve_run_plan(
             body, state, ticket_path, rendered
         )
         if needs_conf:
-            return None, classification, True, security
+            return None, classification, True, security, None
+        ask, enough = _judge_enough(state, rendered, pb, asked=body.asked)
+        if ask is not None:
+            return None, classification, True, security, ask
         decided, incident_judgments = _judge_incident(state, rendered, pb)
         orch_request = OrchestratorRunRequest(
             playbook=pb, input_path=ticket_path, owner="api:default"
@@ -436,13 +492,13 @@ async def run_ticket_stream(body: ApiRunRequest, request: Request) -> StreamingR
         )
         _trace_judgment(state, res.session_id, security)
         _trace_judgment(state, res.session_id, (classification or {}).get("judgment"))
-        for judgment in incident_judgments:
+        for judgment in [enough, *incident_judgments]:
             _trace_judgment(state, res.session_id, judgment)
-        return res, classification, False, security
+        return res, classification, False, security, None
 
     async def _run_in_thread() -> None:
         try:
-            result, classification, needs_conf, security = await loop.run_in_executor(
+            result, classification, needs_conf, security, ask = await loop.run_in_executor(
                 None, _plan_and_run
             )
             if needs_conf:
@@ -456,6 +512,7 @@ async def run_ticket_stream(body: ApiRunRequest, request: Request) -> StreamingR
                     "classification": classification,
                     "needs_confirmation": True,
                     "security": security,
+                    "ask": ask,
                 }
             else:
                 payload = {

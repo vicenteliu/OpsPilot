@@ -36,6 +36,9 @@ async def _process(body: ApiIntakeRequest, request: Request) -> None:
         return
     if (res.security or {}).get("stops"):
         logger.warning("webhook intake %s stopped: possible security issue", body.key)
+    elif res.ask:
+        # A pusher has no comment destination (ADR-0015), so the ask goes nowhere.
+        logger.warning("webhook intake %s needs more information: %s", body.key, res.ask["text"])
     elif res.needs_confirmation:
         logger.warning("webhook intake %s withheld: classification needs confirmation", body.key)
     elif res.error:

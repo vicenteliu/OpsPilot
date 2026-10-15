@@ -61,8 +61,12 @@ classify → summarise/fulfill → validate) and replies with the same
 structured suggestion the JSM adapter posts as a comment: summary, suggested
 Severity, Tasks with Tiers, KB citations. The `work_item_ref` is
 `TG-<chat id>-<message id>`. When Classification is not confident, the bot
-asks you to resend with `/incident` or `/request` instead of guessing. Each
-filing is a full LLM run — the chat-id allowlist is also the cost boundary.
+asks you to resend with `/incident` or `/request` instead of guessing. When
+an Incident is too thin to act on (the Judgments stage's decision 4, #229),
+the bot asks one question instead of suggesting, and your next message in the
+chat is taken as the reply: the Work item runs again with it, once. `/reset`
+or a new filing drops the question. Each filing is a full LLM run — the
+chat-id allowlist is also the cost boundary.
 
 ### Security notes
 

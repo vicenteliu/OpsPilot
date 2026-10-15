@@ -27,7 +27,8 @@ answers:
 #
 # 0.64 on Jev's probability: 12 of 117 asked, all labelled `no`, and every
 #   `no` asked (12 of 12); no `yes` asked.
-# 0.77 on the Playbook's model: 4 asked, all `no`, but only 4 of the 12.
+# 0.77 on the Playbook's model: 4 asked, all `no`, but only 4 of the 12
+#   (2 of the 4 Incidents).
 #
 # Only 4 of the 39 Incidents are labelled `no`, so this rests on very little.
 # Measure again when the label set grows, or when either model changes.

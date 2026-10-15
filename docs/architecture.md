@@ -17,7 +17,8 @@ FastAPI  (opspilot.api)
   │    Judgments stage (off by default, ADR-0040) › Classification
   │  then the provider from model_id; for an Incident with the stage on,
   │    Severity from Impact × Urgency (judgments/decisions/severity.yaml)
-  │    and the escalation team (judgments/decisions/d6.yaml)
+  │    and the escalation team (judgments/decisions/d6.yaml); first, an
+  │    Incident too thin to act on (d4.yaml) gets one ask (pb_ask_en) instead
   ▼
 Orchestrator  (opspilot.orchestrator)
   ├─▶ Redactor ──────────────── strips PII from work-item text

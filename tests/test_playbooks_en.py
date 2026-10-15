@@ -22,3 +22,12 @@ def test_request_fulfillment_en_loads() -> None:
     assert pb.output_schema == "request_fulfillment_v1"
     assert pb.tools[0].name == "kb_search"
     assert "request_fulfillment_v1" in pb.system_prompt
+
+
+def test_ask_en_loads() -> None:
+    """Decision 5 (#229): the ask is a Playbook's model's to write."""
+    pb = load_playbook(PLAYBOOKS / "pb_ask_en")
+    assert pb.id == "pb_ask_en"
+    assert pb.output_schema == "work_item_ask_v1"
+    assert "work_item_ask_v1" in pb.system_prompt
+    assert pb.tools == []

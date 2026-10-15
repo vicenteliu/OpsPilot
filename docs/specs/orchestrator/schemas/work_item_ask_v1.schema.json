@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opspilot.dev/schemas/work-item-ask-v1.schema.json",
+  "title": "Work Item Ask v1",
+  "description": "Output of pb_ask_* (ADR-0040, decision 5): the one message OpsPilot sends the reporter when a Work item does not say enough for an engineer to start (#229).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["ask"],
+  "properties": {
+    "ask": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 800,
+      "description": "The message to the reporter: what is missing, as one short, answerable question."
+    }
+  }
+}
