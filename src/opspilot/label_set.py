@@ -146,6 +146,20 @@ def check_row(row: dict[str, Any], slot: Slot, redactor: Redactor) -> list[str]:
     subject, body, channel = row.get("subject"), row.get("body"), row.get("channel")
     if not isinstance(subject, str) or not isinstance(body, str):
         return [*problems, "subject and body must be strings"]
+    problems += _text_problems(subject, body, channel, redactor)
+    words = len(body.split())
+    if slot.form == "one_liner" and words >= 12:
+        problems.append(f"a one-liner's body is {words} words, not under 12")
+    if slot.form == "long_rambling" and not 100 <= words <= 150:
+        problems.append(f"a long item's body is {words} words, not 100 to 150")
+    if slot.form == "forwarded_email" and channel != "email":
+        problems.append(f"a forwarded email came in by {channel!r}")
+    return problems
+
+
+def _text_problems(subject: str, body: str, channel: Any, redactor: Redactor) -> list[str]:
+    """What keeps a drafted Work item's text out of the set, whatever its slot."""
+    problems = []
     if not (subject.strip() or body.strip()):
         problems.append("the item is empty")
     if channel not in CHANNELS:
@@ -153,12 +167,6 @@ def check_row(row: dict[str, Any], slot: Slot, redactor: Redactor) -> list[str]:
     words = len(body.split())
     if words > 150:
         problems.append(f"the body is {words} words, over 150")
-    if slot.form == "one_liner" and words >= 12:
-        problems.append(f"a one-liner's body is {words} words, not under 12")
-    if slot.form == "long_rambling" and not 100 <= words <= 150:
-        problems.append(f"a long item's body is {words} words, not 100 to 150")
-    if slot.form == "forwarded_email" and channel != "email":
-        problems.append(f"a forwarded email came in by {channel!r}")
     text = f"{subject}\n{body}"
     foreign = sorted(
         {m.group(0) for m in _DOMAIN_RE.finditer(text) if not _ALLOWED_DOMAIN_RE.search(m.group(0))}
@@ -999,4 +1007,222 @@ def label_incidents(
             column: {a: sum(r[column] == a for r in done) for a in q.answers}
             for column, q in columns.items()
         },
+    )
+
+
+# ── Decision 3: already open, over duplicates drafted for it (#230) ──────────
+
+DUPLICATE_PROMPT_PATH: Final = LABEL_SET_DIR / "DUPLICATE_PROMPT.md"
+DUPLICATES_PATH: Final = LABEL_SET_DIR / "duplicates_d3_v1.jsonl"
+ALREADY_OPEN_PATH: Final = LABEL_SET_DIR / "already_open_d3_v1.jsonl"
+OPEN_ITEMS: Final = 5  # open Work items offered with each Work item
+
+
+def _duplicate_message(batch: list[dict[str, Any]]) -> str:
+    items = [
+        {"of": r["id"], "subject": r["subject"], "body": r["body"], "channel": r["channel"]}
+        for r in batch
+    ]
+    return "\n".join(
+        [
+            "Write one duplicate for each of these Work items:",
+            "```json",
+            json.dumps(items, indent=1),
+            "```",
+        ]
+    )
+
+
+def draft_duplicates(
+    rows: list[dict[str, Any]],
+    provider: ProviderProtocol,
+    model: str,
+    *,
+    system_prompt: str,
+    redactor: Redactor,
+    ledger: Path,
+    budget_usd: float = BUDGET_USD,
+) -> list[dict[str, Any]]:
+    """One duplicate of each Incident: the same problem, told by someone else (#230).
+
+    Each is checked as the set's rows were, and must not nearly repeat the
+    Incident it was written from. A batch's failures are drafted again, up to
+    ``MAX_ROUNDS`` times; every call's charge goes to ``ledger``, and none
+    starts once it reaches ``budget_usd``.
+    """
+    incidents = {r["id"]: r for r in rows if r["work_item_type"] == "incident"}
+    kept: dict[str, dict[str, Any]] = {}
+    failed: dict[str, list[str]] = {}
+    drafted_by = f"openrouter:{model} {datetime.now(UTC).date().isoformat()}"
+    for _ in range(MAX_ROUNDS + 1):
+        todo = [r for i, r in incidents.items() if i not in kept]
+        if not todo:
+            break
+        for start in range(0, len(todo), BATCH_SIZE):
+            batch = todo[start : start + BATCH_SIZE]
+            spent = _spent(ledger)
+            if spent >= budget_usd:
+                raise LabelSetError(f"budget reached: ${spent:.4f} of ${budget_usd:.2f} spent")
+            resp = provider.chat(
+                [
+                    Message(role="system", content=system_prompt),
+                    Message(role="user", content=_duplicate_message(batch)),
+                ],
+                model=model,
+                params=SamplingParams(temperature=0.9, max_tokens=8_000),
+                timeout_ms=300_000,
+            )
+            ledger.parent.mkdir(parents=True, exist_ok=True)
+            with ledger.open("a", encoding="utf-8") as f:
+                f.write(
+                    json.dumps(
+                        {"phase": "duplicates", "model": model, "cost_usd": resp.usage.cost_usd}
+                    )
+                    + "\n"
+                )
+            parsed, err = _parse_summary_json(resp.content)
+            drafted = parsed.get("rows") if err is None else None
+            by_of = {d.get("of"): d for d in drafted or [] if isinstance(d, dict)}
+            for r in batch:
+                d = by_of.get(r["id"])
+                if d is None:
+                    failed[r["id"]] = [err or "missing from the response"]
+                    continue
+                subject, body = d.get("subject"), d.get("body")
+                if not isinstance(subject, str) or not isinstance(body, str):
+                    failed[r["id"]] = ["subject and body must be strings"]
+                    continue
+                problems = _text_problems(subject, body, d.get("channel"), redactor)
+                if (
+                    SequenceMatcher(None, body.lower(), r["body"].lower()).ratio()
+                    >= _NEAR_DUPLICATE
+                ):
+                    problems.append("it nearly repeats the Incident it was written from")
+                if problems:
+                    failed[r["id"]] = problems
+                    continue
+                kept[r["id"]] = {
+                    "of": r["id"],
+                    "subject": subject.strip(),
+                    "body": body.strip(),
+                    "channel": d["channel"],
+                    "drafted_by": drafted_by,
+                }
+                failed.pop(r["id"], None)
+    if missing := [i for i in incidents if i not in kept]:
+        detail = "; ".join(f"{i}: {', '.join(failed.get(i, ['?']))}" for i in missing)
+        raise LabelSetError(
+            f"{len(missing)} duplicates still fail after {MAX_ROUNDS} rounds: {detail}"
+        )
+    return [kept[i] for i in incidents]
+
+
+def build_already_open(
+    rows: list[dict[str, Any]], duplicates: list[dict[str, Any]], *, seed: int = 230
+) -> list[dict[str, Any]]:
+    """The Work items decision 3 is measured on, each with its open Work items (#230).
+
+    Each duplicate is offered the Incident it was written from among four
+    others, two on its topic where there are two; each Incident is offered five
+    others and not its duplicate. Every item gets the same number of open Work
+    items, in shuffled order, and the items are shuffled together, so neither
+    the count nor the order says which kind an item is.
+    """
+    incidents = [r for r in rows if r["work_item_type"] == "incident"]
+    by_id = {r["id"]: r for r in incidents}
+    rng = random.Random(seed)
+
+    def others(exclude: set[str], topic: str, count: int) -> list[dict[str, Any]]:
+        same = [r for r in incidents if r["topic"] == topic and r["id"] not in exclude]
+        rng.shuffle(same)
+        picked = same[:2]
+        rest = [r for r in incidents if r["id"] not in exclude and r not in picked]
+        return picked + rng.sample(rest, count - len(picked))
+
+    def offered(open_items: list[dict[str, Any]]) -> list[dict[str, str]]:
+        rng.shuffle(open_items)
+        return [{"key": r["id"], "subject": r["subject"], "body": r["body"]} for r in open_items]
+
+    items = []
+    for d in duplicates:
+        of = by_id[d["of"]]
+        open_items = [of, *others({of["id"]}, of["topic"], OPEN_ITEMS - 1)]
+        items.append({"kind": "duplicate", **d, "candidates": offered(open_items)})
+    for r in incidents:
+        open_items = others({r["id"]}, r["topic"], OPEN_ITEMS)
+        item = {"kind": "incident", "of": r["id"], "subject": r["subject"], "body": r["body"]}
+        items.append({**item, "channel": r["channel"], "candidates": offered(open_items)})
+    rng.shuffle(items)
+    return [{"id": f"AO-{n:03d}", **item, "same": None} for n, item in enumerate(items, start=1)]
+
+
+@dataclass(frozen=True)
+class AlreadyOpenResult:
+    labelled: int
+    total: int
+    matched: int  # items labelled the same problem as one of their open Work items
+
+    @property
+    def finished(self) -> bool:
+        return self.labelled == self.total
+
+
+def label_already_open(
+    path: Path = ALREADY_OPEN_PATH,
+    *,
+    by: str,
+    ask: Ask,
+    show: Show,
+    question: Question,
+    clock: Clock = _utc_now,
+) -> AlreadyOpenResult:
+    """Label which open Work item, if any, each item repeats, blind (decision 3, #230).
+
+    Each item shows its subject, body and channel, and its open Work items by
+    number, with their subject and body; not their keys, not which item was
+    drafted from which. Each answer is saved as it is given.
+    """
+    if not path.is_file():
+        raise LabelSetError(f"{path} not found: run `opspilot labelset draft-duplicates` first")
+    items = _read_jsonl(path)
+
+    def next_open(start: int) -> int:
+        return next((j for j in range(start, len(items)) if items[j]["same"] is None), len(items))
+
+    show(f"{question.version}: {question.text}")
+    show(f"  none: {question.answers['none']}")
+    i = next_open(0)
+    while i < len(items):
+        item = items[i]
+        show(f"\n── {item['id']} ({i + 1}/{len(items)}) · {item['channel']} ──")
+        show(f"Subject: {item['subject'] or '(none)'}")
+        show(item["body"] or "(no body)")
+        show("\nOpen Work items:")
+        for n, c in enumerate(item["candidates"], start=1):
+            show(f"  [{n}] {c['subject'] or '(no subject)'}")
+            show("      " + (c["body"] or "(no body)").replace("\n", "\n      "))
+        keys = {str(n): c["key"] for n, c in enumerate(item["candidates"], start=1)} | {"0": "none"}
+        answer = _ask_choice(
+            ask,
+            f"same problem? 1–{len(item['candidates'])}, or 0 for none  (u back, q quit)",
+            keys,
+            nav=True,
+        )
+        if answer == "q":
+            break
+        if answer == "u":
+            i = max(i - 1, 0)
+            continue
+        item.update(
+            same=answer,
+            same_labelled_by=by,
+            same_labelled_time=clock().astimezone(UTC).isoformat(timespec="seconds"),
+            answer_space={"d3": question.version},
+        )
+        _write_jsonl(path, items)
+        i = next_open(i + 1)
+
+    done = [it for it in items if it["same"] is not None]
+    return AlreadyOpenResult(
+        labelled=len(done), total=len(items), matched=sum(it["same"] != "none" for it in done)
     )

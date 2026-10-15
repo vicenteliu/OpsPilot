@@ -1282,3 +1282,40 @@ def test_the_trace_schema_accepts_a_judgment_event(tmp_path: Path) -> None:
     [event] = [json.loads(line) for line in lines]
     assert event["type"] == "system" and event["event"] == "judgment"
     assert event["details"] == j.as_trace()
+
+
+# ── Decision 3: a Choice over the open Work items found for it (#230) ────────
+
+
+def test_d3_is_a_choice_whose_open_items_come_first_and_none_last() -> None:
+    from opspilot.judgment import with_candidates
+
+    d3 = load_question(REPO_ROOT / DECISIONS_DIR / "d3.yaml")
+    assert (d3.kind, list(d3.answers)) == ("choice", ["none"])
+    asked = with_candidates(d3, {"IT-1": "VPN down for the floor", "IT-2": "printer jam"})
+    assert list(asked.answers) == ["IT-1", "IT-2", "none"]
+    assert (
+        asked.answers["IT-1"] == "The same problem as this open Work item: VPN down for the floor"
+    )
+    assert asked.answers["none"] == d3.answers["none"] and asked.version == d3.version
+
+
+def test_with_candidates_refuses_a_key_named_like_an_answer_and_a_question_without() -> None:
+    from opspilot.judgment import with_candidates
+
+    d3 = load_question(REPO_ROOT / DECISIONS_DIR / "d3.yaml")
+    with pytest.raises(JudgmentError, match="named like an answer"):
+        with_candidates(d3, {"none": "x"})
+    with pytest.raises(JudgmentError, match="takes no candidates"):
+        with_candidates(load_question(D2), {"IT-1": "x"})
+
+
+def test_only_a_choice_has_candidates(tmp_path: Path) -> None:
+    path = tmp_path / "d9.yaml"
+    path.write_text(
+        "id: d9\nversion: d9-x\nkind: noul\nquestion: q\ncandidates: 'x {text}'\n"
+        'answers:\n  "yes": a\n  "no": b\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(JudgmentError, match="only a choice has candidates"):
+        load_question(path)

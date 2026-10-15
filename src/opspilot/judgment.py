@@ -62,6 +62,10 @@ class Question:
     # Engine name → its cut, set from the label set. A probability is on its
     # engine's own scale, so a cut means nothing for any other engine (#274).
     thresholds: dict[str, float]
+    # A Choice whose answers are found per Work item (decision 3, #230): what
+    # each found answer means, "{text}" standing for what it says. The file's
+    # own answers, such as "none", follow them.
+    candidates: str | None = None
 
 
 def load_question(path: Path) -> Question:
@@ -80,7 +84,11 @@ def load_question(path: Path) -> Question:
         raise JudgmentError(f"{path}: kind must be one of {', '.join(_KINDS)}, not {kind!r}")
     if kind == "noul" and set(answers) != {"yes", "no"}:
         raise JudgmentError(f"{path}: a noul question answers yes or no")
-    if len(answers) < 2:
+    candidates = data.get("candidates")
+    if candidates is not None and (kind != "choice" or "{text}" not in str(candidates)):
+        raise JudgmentError(f"{path}: only a choice has candidates, and their meaning has {{text}}")
+    # A Choice over candidates has its own answers as well, found per Work item.
+    if len(answers) < (1 if candidates else 2):
         raise JudgmentError(f"{path}: a question needs at least two answers")
     for engine, cut in thresholds.items():
         if not 0 <= float(cut) <= 1:
@@ -92,6 +100,23 @@ def load_question(path: Path) -> Question:
         text=str(data["question"]),
         answers={str(k): str(v) for k, v in answers.items()},
         thresholds={str(k): float(v) for k, v in thresholds.items()},
+        candidates=str(candidates) if candidates is not None else None,
+    )
+
+
+def with_candidates(question: Question, found: dict[str, str]) -> Question:
+    """A Choice over the answers found for one Work item, then the file's own (#230).
+
+    ``found`` maps each answer, e.g. an open Work item's key, to what it says.
+    """
+    if question.candidates is None:
+        raise JudgmentError(f"{question.version} takes no candidates")
+    if clash := sorted(found.keys() & question.answers.keys()):
+        raise JudgmentError(f"a candidate is named like an answer of its own: {', '.join(clash)}")
+    meaning = question.candidates
+    return replace(
+        question,
+        answers={**{k: meaning.format(text=t) for k, t in found.items()}, **question.answers},
     )
 
 

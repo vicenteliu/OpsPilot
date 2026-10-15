@@ -1,0 +1,25 @@
+# Decision 3 (ADR-0040): already open?
+#
+# Asked of an Incident that has open Work items filed in the last hour, which
+# code lists from the source (a JQL query on JSM); the model only picks. A
+# Choice: each open Work item is an answer, keyed by its key, and `none` is
+# the file's own. A match that clears its cut is named in the write-back
+# comment, for a person to link; OpsPilot links, merges and closes nothing
+# (ADR-0006, ADR-0013). Below its cut, nothing is said. The answer space the
+# label set's already-open sets are labelled against
+# (judgments/label_set/SPEC.md, d3-v1).
+id: d3
+version: d3-v1
+kind: choice
+question: >-
+  Does this Work item report the same problem as one of these open Work items,
+  filed in the last hour?
+# What each open Work item means as an answer, {text} being what it says.
+candidates: >-
+  The same problem as this open Work item: {text}
+answers:
+  none: >-
+    None of them: it is a different problem, even if on the same subject.
+# Set from the label set, never guessed (ADR-0040), keyed by the engine it was
+# measured on; empty until that report has been run.
+thresholds: {}

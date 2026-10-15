@@ -82,9 +82,12 @@ from .label_report import (
     with_whole_pages,
 )
 from .label_set import (
+    ALREADY_OPEN_PATH,
     BUDGET_USD,
     CANDIDATES_PATH,
     DRAFT_PROMPT_PATH,
+    DUPLICATE_PROMPT_PATH,
+    DUPLICATES_PATH,
     OUT_PATH,
     RELABEL_AFTER,
     RELABEL_PATH,
@@ -93,7 +96,10 @@ from .label_set import (
     LabelSetError,
     _read_jsonl,
     _write_jsonl,
+    build_already_open,
     build_candidates,
+    draft_duplicates,
+    label_already_open,
     label_incidents,
     label_known_fix,
     label_rows,
@@ -2152,6 +2158,75 @@ def labelset_label_impact_urgency(
     typer.echo(
         f"\nlabelled {res.labelled} Incidents against {d7.version} and {d8.version}"
         f" · impact: {_counts(res.counts['impact'])} · urgency: {_counts(res.counts['urgency'])}"
+    )
+
+
+@labelset_app.command("draft-duplicates")
+def labelset_draft_duplicates(
+    model: str | None = typer.Option(
+        None, "--model", "-m", help="OpenRouter id. Default: the model that drafted the set."
+    ),
+    path: Path = typer.Option(OUT_PATH, "--set", help="The labelled set."),  # noqa: B008
+    budget_usd: float = typer.Option(BUDGET_USD, "--budget-usd", help=_BUDGET_HELP),
+) -> None:
+    """Draft a duplicate of each Incident and build decision 3's sets (#230).
+
+    Writes the duplicates and, for each of them and each Incident, the open
+    Work items it is offered, ready to label. Only counts are printed: the
+    labeller must not read them first.
+    """
+    try:
+        if ALREADY_OPEN_PATH.exists():
+            raise LabelSetError(f"{ALREADY_OPEN_PATH} already exists and may hold labels")
+        if not DUPLICATE_PROMPT_PATH.is_file():
+            raise LabelSetError(f"{DUPLICATE_PROMPT_PATH} not found; run from the repo root")
+        rows = _read_jsonl(path)
+        # "openrouter:<model> <date>", as the set's drafter recorded it.
+        drafter = model or rows[0]["drafted_by"].split(" ")[0].removeprefix("openrouter:")
+        duplicates = draft_duplicates(
+            rows,
+            make_provider("openrouter"),
+            drafter,
+            system_prompt=DUPLICATE_PROMPT_PATH.read_text(encoding="utf-8"),
+            redactor=Redactor.from_yaml(),
+            ledger=load_config().home / "label_set_v1" / "ledger.jsonl",
+            budget_usd=budget_usd,
+        )
+        _write_jsonl(DUPLICATES_PATH, duplicates)
+        items = build_already_open(rows, duplicates)
+        _write_jsonl(ALREADY_OPEN_PATH, items)
+    except OpsPilotError as e:
+        _console.print(f"Error: {e}", style="red", markup=False)
+        raise typer.Exit(1) from e
+    typer.echo(
+        f"drafted {len(duplicates)} duplicates with {drafter}; wrote {len(items)} items to label"
+        f" in {ALREADY_OPEN_PATH}"
+    )
+
+
+@labelset_app.command("label-already-open")
+def labelset_label_already_open(
+    by: str = typer.Option(..., "--by", help="The labeller's handle, recorded on each item."),
+    path: Path = typer.Option(ALREADY_OPEN_PATH, "--items", help="Decision 3's items."),  # noqa: B008
+) -> None:
+    """Label which open Work item, if any, each item repeats, blind (decision 3, #230).
+
+    Each item shows its subject, body and channel, then its open Work items by
+    number; answer with the number of the one that is the same problem, or 0
+    for none. u goes back and q stops; every answer is saved as it is given.
+    """
+    try:
+        d3 = load_question(DECISIONS_DIR / "d3.yaml")
+        res = label_already_open(path, by=by, ask=_ask_line, show=typer.echo, question=d3)
+    except OpsPilotError as e:
+        _console.print(f"Error: {e}", style="red", markup=False)
+        raise typer.Exit(1) from e
+    if not res.finished:
+        typer.echo(f"\nsaved · {res.labelled}/{res.total} labelled; rerun to continue")
+        return
+    typer.echo(
+        f"\nlabelled {res.labelled} items against {d3.version}"
+        f" · the same problem as an open one: {res.matched}"
     )
 
 

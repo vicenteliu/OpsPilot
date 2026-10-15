@@ -21,6 +21,7 @@ These columns now, the rest in their slices. Each is labelled against a versione
 | `urgency` | 8 · Urgency | `worked_around` · `slowed` · `stopped` | `d8-v1` | #227 |
 | `team` | 6 · Which team? | `network` · `systems` | `d6-v1` | #228 |
 | `enough` | 4 · Enough to act on? | `yes` · `no` | `d4-v1` | #229 |
+| `same` (in `already_open_d3_v1.jsonl`) | 3 · Already open? | an open Work item's key, or `none` | `d3-v1` | #230 |
 
 **`d2-v1`**, the definitions the Playbook's classifier already uses
 (`playbooks/pb_classify_work_item_en/prompt.md`):
@@ -68,7 +69,10 @@ labelled `incident` only. `yes` when the item says what is wrong, who or what is
 enough of where, since when, or what was seen (an error, a message) to start diagnosing; `no` when
 an engineer would have to ask the reporter first.
 
-The other decision's column (already open) exists in the schema and stays empty until its slice.
+**`d3-v1`** (2026-10-16, #230), as `judgments/decisions/d3.yaml` states it: whether a Work item
+reports the same problem as one of the open Work items it is offered, or `none` when it is a
+different problem, even on the same subject. The set's rows were drafted as distinct problems, so
+decision 3 is measured on items of its own (§5, §6), not on a column of `label_set_v1.jsonl`.
 
 ## 2. Row schema (`label_set_v1.jsonl`, one JSON object per line)
 
@@ -186,6 +190,10 @@ security.
   its urgency in one pass (`opspilot labelset label-impact-urgency`), each a level's number.
 - **Team** (#228, `d6-v1`): each row labelled `incident` is shown the same way, and the labeller
   picks the team that would fix it (`opspilot labelset label-team`).
+- **Already open** (#230, `d3-v1`): each item of `already_open_d3_v1.jsonl` shows its subject,
+  body and channel and its five open Work items by number, with their subject and body and not
+  their keys; the labeller picks the one that is the same problem, or none (`opspilot labelset
+  label-already-open`). What an item was drafted from stays hidden.
 - **Enough to act on** (#229, `d4-v1`): each row labelled `incident` is shown the same way, and
   the labeller says whether an engineer could start on it without asking first (`opspilot
   labelset label-enough`).

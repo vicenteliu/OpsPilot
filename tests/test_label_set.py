@@ -36,8 +36,11 @@ from opspilot.label_set import (
     LabelSetError,
     RelabelResult,
     Slot,
+    build_already_open,
     build_candidates,
     check_row,
+    draft_duplicates,
+    label_already_open,
     label_incidents,
     label_known_fix,
     label_rows,
@@ -1150,3 +1153,104 @@ def test_cli_label_enough_asks_each_incident_yes_or_no(tmp_path: Path) -> None:
     rows = _read(path)
     assert [r.get("enough") for r in rows] == ["yes", None, "no", "no"]
     assert rows[0]["answer_space"] == {"d4": "d4-v1"}
+
+
+# ── Decision 3: already open, over drafted duplicates (#230) ─────────────────
+
+D3 = load_question(REPO_ROOT / DECISIONS_DIR / "d3.yaml")
+
+
+class DuplicateDrafter:
+    """Writes one duplicate per item; ``copy`` makes an item's first try repeat its source."""
+
+    def __init__(self, *, copy: frozenset[str] = frozenset(), cost: float = 0.01) -> None:
+        self.copy, self.cost = set(copy), cost
+        self.calls = 0
+
+    def chat(self, messages: list[Message], **kw: Any) -> ChatResponse:
+        self.calls += 1
+        match = re.search(r"```json\n(.*?)\n```", messages[1].content, re.S)
+        assert match is not None
+        rows = []
+        for item in json.loads(match.group(1)):
+            if item["of"] in self.copy:
+                self.copy.discard(item["of"])
+                body = item["body"]
+            else:
+                body = f"Same trouble on my side since this morning, case {item['of'][-3:]}"
+            rows.append({"of": item["of"], "subject": "me too", "body": body, "channel": "chat"})
+        return ChatResponse(
+            content=json.dumps({"rows": rows}),
+            finish_reason="stop",
+            usage=Usage(input_tokens=100, output_tokens=200, cost_usd=self.cost),
+        )
+
+
+def _duplicates(tmp_path: Path, drafter: DuplicateDrafter, n: int = 6, **kw: Any) -> Any:
+    rows = _read(_set_file(tmp_path, n, labelled=True))
+    out = draft_duplicates(
+        rows,
+        drafter,  # type: ignore[arg-type]
+        MODEL,
+        system_prompt=PROMPT,
+        redactor=Redactor.from_yaml(),
+        ledger=tmp_path / "work" / "ledger.jsonl",
+        **kw,
+    )
+    return rows, out
+
+
+class TestDecision3Sets:
+    def test_each_incident_gets_one_duplicate_and_a_copy_is_drafted_again(
+        self, tmp_path: Path
+    ) -> None:
+        drafter = DuplicateDrafter(copy=frozenset({"LS1-002"}))
+        rows, duplicates = _duplicates(tmp_path, drafter)
+        assert [d["of"] for d in duplicates] == [r["id"] for r in rows]
+        assert drafter.calls == 2  # the copy was refused and drafted again
+        assert all(d["body"] != r["body"] for d, r in zip(duplicates, rows, strict=True))
+
+    def test_no_call_starts_past_the_budget(self, tmp_path: Path) -> None:
+        with pytest.raises(LabelSetError, match="budget reached"):
+            _duplicates(tmp_path, DuplicateDrafter(cost=2.0), n=12, budget_usd=1.0)
+
+    def test_every_item_is_offered_five_open_items_and_only_a_duplicate_its_source(
+        self, tmp_path: Path
+    ) -> None:
+        rows, duplicates = _duplicates(tmp_path, DuplicateDrafter(), n=8)
+        items = build_already_open(rows, duplicates)
+        assert len(items) == 16 and [i["id"] for i in items][:2] == ["AO-001", "AO-002"]
+        assert all(len(i["candidates"]) == 5 and i["same"] is None for i in items)
+        for item in items:
+            keys = [c["key"] for c in item["candidates"]]
+            if item["kind"] == "duplicate":
+                assert item["of"] in keys
+            else:
+                assert item["of"] not in keys
+        assert build_already_open(rows, duplicates) == items  # seeded: the same every time
+
+    def test_labelling_records_the_open_item_or_none_and_shows_nothing_it_should_not(
+        self, tmp_path: Path
+    ) -> None:
+        rows, duplicates = _duplicates(tmp_path, DuplicateDrafter(), n=8)
+        items = build_already_open(rows, duplicates)[:3]
+        path = tmp_path / "already_open_d3_v1.jsonl"
+        path.write_text("".join(json.dumps(i) + "\n" for i in items), encoding="utf-8")
+        shown: list[str] = []
+        res = label_already_open(
+            path,
+            by="vicenteliu",
+            ask=Keys("2", "0", "6", "5"),  # "6" names no open item and is asked again
+            show=shown.append,
+            question=D3,
+            clock=_at("2026-10-16T05:00:00+00:00"),
+        )
+        assert (res.labelled, res.total, res.matched) == (3, 3, 2)
+        labelled = _read(path)
+        assert labelled[0]["same"] == items[0]["candidates"][1]["key"]
+        assert labelled[1]["same"] == "none"
+        assert labelled[2]["same"] == items[2]["candidates"][4]["key"]
+        assert labelled[0]["answer_space"] == {"d3": "d3-v1"}
+        text = "\n".join(shown)
+        assert D3.answers["none"] in text and "[5]" in text
+        assert "LS1-" not in text and "duplicate" not in text  # no keys, no kinds
