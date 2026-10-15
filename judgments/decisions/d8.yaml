@@ -1,0 +1,23 @@
+# Decision 8 (ADR-0040): Urgency. How much does the problem stop the work?
+#
+# Asked of an Incident. A Score: its answers are levels, least urgent first,
+# and Jev numbers them in this order. With Impact (d7.yaml) it is read off the
+# Severity table. The answer space the label set's `urgency` column is
+# labelled against (judgments/label_set/SPEC.md, d8-v1).
+id: d8
+version: d8-v1
+kind: score
+question: >-
+  How much does the problem in this Work item stop the work of the people it
+  affects?
+answers:
+  worked_around: >-
+    They are working: a workaround is in use, or the problem does not block
+    what they need to do now.
+  slowed: >-
+    They can still work, but slower or with errors, and have no workaround.
+  stopped: >-
+    They cannot do the work it blocks at all until it is fixed.
+# Set from the label set, never guessed (ADR-0040), keyed by the engine it was
+# measured on; empty until that report has been run.
+thresholds: {}

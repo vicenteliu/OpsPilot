@@ -93,6 +93,7 @@ from .label_set import (
     _read_jsonl,
     _write_jsonl,
     build_candidates,
+    label_impact_urgency,
     label_known_fix,
     label_rows,
     relabel_rows,
@@ -2111,6 +2112,39 @@ def labelset_label_known_fix(
     typer.echo(
         f"\nlabelled {res.labelled} of {res.total} against {d9.version}"
         f" · a known fix for {res.with_a_fix} of them"
+    )
+
+
+@labelset_app.command("label-impact-urgency")
+def labelset_label_impact_urgency(
+    by: str = typer.Option(..., "--by", help="The labeller's handle, recorded on each row."),
+    path: Path = typer.Option(OUT_PATH, "--set", help="The labelled set."),  # noqa: B008
+) -> None:
+    """Label each Incident's impact and urgency, blind (decisions 7 and 8, #227).
+
+    Only the rows labelled incident are asked. Each shows its subject, body and
+    channel; answer each with its level's number. u goes back and q stops;
+    every answer is saved as it is given.
+    """
+    try:
+        d7 = load_question(DECISIONS_DIR / "d7.yaml")
+        d8 = load_question(DECISIONS_DIR / "d8.yaml")
+        res = label_impact_urgency(
+            path, by=by, ask=_ask_line, show=typer.echo, impact=d7, urgency=d8
+        )
+    except OpsPilotError as e:
+        _console.print(f"Error: {e}", style="red", markup=False)
+        raise typer.Exit(1) from e
+    if not res.finished:
+        typer.echo(f"\nsaved · {res.labelled}/{res.total} labelled; rerun to continue")
+        return
+
+    def counts(by_level: dict[str, int]) -> str:
+        return ", ".join(f"{level} {n}" for level, n in by_level.items())
+
+    typer.echo(
+        f"\nlabelled {res.labelled} Incidents against {d7.version} and {d8.version}"
+        f" · impact: {counts(res.impact)} · urgency: {counts(res.urgency)}"
     )
 
 
