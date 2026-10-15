@@ -635,9 +635,13 @@ class TestTheAskAndTheReply:
 
 class TestJsmFetchReply:
     def _transport(self, comments: list[str]) -> JsmTransport:
+        """``comments`` oldest first; JSM is asked for, and answers, newest first."""
+
         def handler(request: httpx.Request) -> httpx.Response:
             assert request.url.path == "/rest/api/2/issue/IT-9/comment"
-            return httpx.Response(200, json={"comments": [{"body": b} for b in comments]})
+            assert request.url.params["orderBy"] == "-created"
+            newest_first = [{"body": b} for b in reversed(comments)]
+            return httpx.Response(200, json={"comments": newest_first})
 
         return JsmTransport(
             base_url="https://example.atlassian.net",

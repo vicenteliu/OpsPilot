@@ -134,17 +134,18 @@ class JsmTransport:
     def fetch_reply(self, key: str) -> str | None:
         """The comments posted since OpsPilot's last one on ``key``, or None (#229).
 
-        Read in the order JSM keeps them, oldest first. OpsPilot's own comments
-        all open with its heading, so whatever follows the last of them, and is
-        not one of them, is what the reporter (or anyone) said since.
+        The newest 100, newest first, put back in order: the ask and its reply
+        are the latest, however long the issue's history. OpsPilot's own
+        comments all open with its heading, so whatever follows the last of
+        them, and is not one of them, is what was said on the issue since.
         """
         res = self._http.get(
             f"{self._base_url}/rest/api/2/issue/{key}/comment",
-            params={"maxResults": 100},
+            params={"maxResults": 100, "orderBy": "-created"},
             auth=self._auth,
         )
         res.raise_for_status()
-        bodies = [str(c.get("body") or "") for c in res.json().get("comments", [])]
+        bodies = [str(c.get("body") or "") for c in reversed(res.json().get("comments", []))]
         ours = [i for i, b in enumerate(bodies) if b.startswith(OPSPILOT_HEADING)]
         since = bodies[ours[-1] + 1 :] if ours else bodies
         said = [b.strip() for b in since if b.strip() and not b.startswith(OPSPILOT_HEADING)]

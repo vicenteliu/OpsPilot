@@ -173,7 +173,10 @@ def render_ask_comment(ask: dict[str, Any]) -> str:
 
 
 def with_reply(work_item: dict[str, Any], reply: str) -> dict[str, Any]:
-    """The Work item as first filed, with the reporter's reply to the ask (#229).
+    """The Work item as first filed, with what was said after the ask (#229).
+
+    On Telegram that is the reporter's next message; on JSM, every comment
+    since OpsPilot's, whoever wrote it, so it is not called the reporter's.
 
     It was asked about as an Incident, so it says so: decision 2 is not asked
     again, and the stage re-enters at decision 1, then 4.
@@ -181,7 +184,7 @@ def with_reply(work_item: dict[str, Any], reply: str) -> dict[str, Any]:
     body = str(work_item.get("body") or "")
     return {
         **work_item,
-        "body": f"{body}\n\nThe reporter's reply to OpsPilot's question:\n{reply}".strip(),
+        "body": f"{body}\n\nAdded after OpsPilot asked for more information:\n{reply}".strip(),
         "work_item_type": "incident",
     }
 

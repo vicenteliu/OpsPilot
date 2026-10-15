@@ -87,7 +87,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     classify_pb_id = os.environ.get("OPSPILOT_CLASSIFY_PLAYBOOK", "pb_classify_work_item_en")
     classify_pb = load_playbook(playbooks_base / classify_pb_id)
     # Decision 5 (ADR-0040): writes the ask when decision 4 stands at `no` (#229).
-    ask_pb = load_playbook(playbooks_base / os.environ.get("OPSPILOT_ASK_PLAYBOOK", "pb_ask_en"))
+    # Loaded only with the Judgments stage on, its one user.
+    judgments_on = os.environ.get("OPSPILOT_JUDGMENTS") == "1"
+    ask_pb = (
+        load_playbook(playbooks_base / os.environ.get("OPSPILOT_ASK_PLAYBOOK", "pb_ask_en"))
+        if judgments_on
+        else None
+    )
 
     # Hand-authored runtime skills (ADR-0022) — the chat agent loads them on
     # demand via load_skill; weak models get the best match injected.
@@ -143,8 +149,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         kind=vendor_doc_pb.model.kind,
         api_key=cfg.anthropic_api_key,
     )
-    ask_provider = make_provider(
-        ask_pb.model.provider_id, kind=ask_pb.model.kind, api_key=cfg.anthropic_api_key
+    ask_provider = (
+        make_provider(
+            ask_pb.model.provider_id, kind=ask_pb.model.kind, api_key=cfg.anthropic_api_key
+        )
+        if ask_pb is not None
+        else None
     )
     # The Judgments stage (ADR-0040), off unless asked for. On, it refuses to
     # start until decision 2's threshold has been measured on the label set,
@@ -156,7 +166,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             chat_provider,
             typesafe_api_key=os.environ.get("TYPESAFE_API_KEY"),
         )
-        if os.environ.get("OPSPILOT_JUDGMENTS") == "1"
+        if judgments_on
         else None
     )
 
