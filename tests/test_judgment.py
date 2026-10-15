@@ -1109,7 +1109,9 @@ class TestTeam:
         assert run.call_args.kwargs["decided"] == {
             "escalation_hint": "A person picks the team: no engine could answer."
         }
-        assert [e["details"]["question"] for e in events] == ["d1"]
+        assert [e["details"]["question"] for e in events] == ["d1", "d6"]
+        assert events[1]["details"]["answer"] is None
+        assert "no engine could answer" in events[1]["details"]["fallback"]
 
     def test_severity_and_team_are_given_together(self) -> None:
         says = _Says({**_SURE, "d6": ("systems", 0.95)})

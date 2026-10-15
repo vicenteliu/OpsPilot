@@ -204,9 +204,9 @@ def _judge_team(
     A team that stands replaces the summary's free-text escalation hint. Below
     its cut, from the fallback, or with no engine to answer, the hint says a
     person picks the team, rather than the model guessing one. Returns the
-    field the summary is given and the Judgment for the trace; None for both
-    when the stage is off, decision 6 is not yet measured, or the Playbook
-    writes no incident summary.
+    field the summary is given and what the trace records; None for both when
+    the stage is off, decision 6 is not yet measured, or the Playbook writes
+    no incident summary.
     """
     stage = getattr(state, "judgments", None)
     if stage is None or stage.team is None or rendered is None or not _writes_incident_summary(pb):
@@ -215,7 +215,17 @@ def _judge_team(
         judgment = stage.team.decide(rendered)
     except OpsPilotError as e:
         logger.warning("no engine could answer which team; a person picks: %s", e)
-        return {"escalation_hint": "A person picks the team: no engine could answer."}, None
+        hint = "A person picks the team: no engine could answer."
+        question = stage.team.question
+        return {"escalation_hint": hint}, {
+            "question": question.id,
+            "version": question.version,
+            "answer": None,
+            "probability": None,
+            "engine": None,
+            "fallback": f"no engine could answer: {e}",
+            "escalation_hint": hint,
+        }
     if stage.team.stands(judgment):
         hint = judgment.answer
     elif judgment.fallback is not None:
