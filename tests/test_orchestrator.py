@@ -1106,3 +1106,35 @@ def test_fallback_can_be_turned_off(
     assert result.answered_by is None
     assert result.error is not None and "404" in result.error
     assert result.usage.output_tokens == 0
+
+
+def test_a_decided_field_reaches_the_model_and_stands_in_the_artifact(
+    session_manager: SessionManager,
+    populated_kb: tuple[SqliteStore, LanceStore],
+    redactor: Redactor,
+) -> None:
+    """The Judgments stage's Severity is given, and kept whatever the model wrote (#227)."""
+    sqlite, lance = populated_kb
+    result = run_ticket_summary(
+        _request(SAMPLE_TICKET),
+        session_manager=session_manager,
+        provider=_ScriptedProvider(_scripted_two_round()),  # the model writes P2
+        redactor=redactor,
+        embed_fn=_topic_embed,
+        sqlite_store=sqlite,
+        lance_store=lance,
+        decided={"severity_suggested": "P1"},
+    )
+    assert result.schema_valid is True
+    assert result.summary["severity_suggested"] == "P1"
+    sdir = session_manager.session_dir(result.session_id)
+    stored = json.loads((sdir / "artifacts" / f"{result.artifact_id}.json").read_text())
+    assert stored["severity_suggested"] == "P1"
+    user_prompt = next(
+        e
+        for e in map(json.loads, (sdir / "trace.jsonl").read_text(encoding="utf-8").splitlines())
+        if e.get("type") == "prompt" and e.get("role") == "user"
+    )
+    assert (
+        "Decided before this run; use as given:\n- severity_suggested: P1" in user_prompt["content"]
+    )

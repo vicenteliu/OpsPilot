@@ -34,7 +34,7 @@ import json
 import os
 import re
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any, Literal
 
 from ..errors import ProviderError
@@ -99,6 +99,7 @@ def run_ticket_summary(
     user_msg_fn: Callable[[dict[str, Any]], str] | None = None,
     on_progress: Callable[[str], None] | None = None,
     allow_model_fallback: bool = True,
+    decided: Mapping[str, str] | None = None,
 ) -> RunResult:
     """Run the playbook end-to-end. Returns a :class:`RunResult`.
 
@@ -106,6 +107,10 @@ def run_ticket_summary(
     refused call on ``extra_models[0]`` so a Work item still gets processed when
     the primary provider is down. A **comparison** run must measure the model it
     names, so the harness turns it off (#175).
+
+    ``decided`` holds output fields the Judgments stage decided before the run,
+    e.g. ``{"severity_suggested": "P2"}`` (ADR-0040). The model is given them,
+    and the summary carries them whatever it wrote.
     """
     _prog = on_progress or (lambda _: None)
     _t0 = time.monotonic()
@@ -121,6 +126,10 @@ def run_ticket_summary(
     ticket = _load_ticket(request.input_path)
     fmt = user_msg_fn if user_msg_fn is not None else _format_ticket
     rendered_user_msg = fmt(ticket)
+    if decided:
+        rendered_user_msg += "\n\nDecided before this run; use as given:\n" + "\n".join(
+            f"- {field}: {value}" for field, value in decided.items()
+        )
     redaction = redactor.redact(rendered_user_msg)
     user_msg = redaction.text
 
@@ -404,6 +413,9 @@ def run_ticket_summary(
                 # Strong models (Claude) sometimes add helpful extras
                 # (e.g. kb_handles_used) that fail additionalProperties: false.
                 summary = _drop_extra_fields(summary, pb.output_schema)
+
+                # The stage's decisions stand, whatever the model wrote.
+                summary.update(decided or {})
 
                 try:
                     schema_validate(pb.output_schema, summary)

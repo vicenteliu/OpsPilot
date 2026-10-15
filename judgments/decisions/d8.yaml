@@ -18,6 +18,17 @@ answers:
     They can still work, but slower or with errors, and have no workaround.
   stopped: >-
     They cannot do the work it blocks at all until it is fixed.
-# Set from the label set, never guessed (ADR-0040), keyed by the engine it was
-# measured on; empty until that report has been run.
-thresholds: {}
+# Set from the label set, never guessed (SPEC §7): the lowest probability at
+# which the levels decided without a person are at least 95% right, keyed by
+# the engine it was measured on (#274). From judgments/label_set/report_d8_v1.md,
+# run on 2026-10-15 over the 39 Incidents, three passes each:
+#
+# 0.93 on Jev's probability: 46 of 117 answers decided, 95.7% of them right.
+# 0.70 on the Playbook's model: 35 of 117 decided, 97.1% right.
+#
+# Both engines get `stopped` right and confuse `worked_around` with `slowed`.
+# Measure again when the label set grows, or when JEV_MODEL or the
+# classification Playbook's model changes.
+thresholds:
+  "typesafe:jev-1.13.0": 0.93
+  "playbook:anthropic/claude-haiku-5-5": 0.70

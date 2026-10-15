@@ -15,7 +15,8 @@ FastAPI  (opspilot.api)
   │  GET /health · GET /metrics (Prometheus)
   │  picks the playbook: playbook_id › declared work_item_type ›
   │    Judgments stage (off by default, ADR-0040) › Classification
-  │  then the provider from model_id
+  │  then the provider from model_id; for an Incident with the stage on,
+  │    Severity from Impact × Urgency (judgments/decisions/severity.yaml)
   ▼
 Orchestrator  (opspilot.orchestrator)
   ├─▶ Redactor ──────────────── strips PII from work-item text

@@ -77,6 +77,7 @@ from .label_report import (
     report_markdown,
     run_engines,
     runs_path,
+    score_report_markdown,
     security_report_markdown,
     with_whole_pages,
 )
@@ -2151,7 +2152,9 @@ def labelset_label_impact_urgency(
 @labelset_app.command("report")
 def labelset_report(
     decision: str = typer.Option(
-        "d2", "--decision", help="d2 (incident or request), d1 (security), d9 (known fix)."
+        "d2",
+        "--decision",
+        help="d2 (incident or request), d1 (security), d7 (impact), d8 (urgency), d9 (known fix).",
     ),
     path: Path = typer.Option(OUT_PATH, "--set", help="The labelled set."),  # noqa: B008
     runs_file: Path | None = typer.Option(  # noqa: B008
@@ -2171,20 +2174,23 @@ def labelset_report(
 ) -> None:
     """Run Jev and the Playbook's model over the labelled set and report a decision (SPEC §7).
 
-    Each engine answers every row three times; for d9, every candidate page of
-    every row. Every call is saved as it returns, so a rerun resumes and only
+    Each engine answers every row three times; for d7 and d8, every Incident;
+    for d9, every candidate page of every row. Every call is saved as it returns, so a rerun resumes and only
     retries what failed; ``--no-call`` recomputes the report from the runs
     file. Needs TYPESAFE_API_KEY and the classification Playbook's provider
     key. Writes nothing to a decision file: its threshold is set from the
     report by a person.
     """
     try:
-        if decision not in ("d1", "d2", "d9"):
-            raise LabelSetError(f"--decision is d1, d2 or d9, not {decision!r}")
+        if decision not in ("d1", "d2", "d7", "d8", "d9"):
+            raise LabelSetError(f"--decision is d1, d2, d7, d8 or d9, not {decision!r}")
         if not path.is_file():
             raise LabelSetError(f"{path} not found; run from the repo root")
         rows = _read_jsonl(path)
-        name = {"d1": SECURITY_FILE, "d2": WORK_ITEM_TYPE_FILE, "d9": "d9.yaml"}[decision]
+        if decision in ("d7", "d8"):
+            # ADR-0040 asks Impact and Urgency of an Incident, and only those are labelled.
+            rows = [r for r in rows if r["work_item_type"] == "incident"]
+        name = {"d1": SECURITY_FILE, "d2": WORK_ITEM_TYPE_FILE}.get(decision, f"{decision}.yaml")
         question = load_question(DECISIONS_DIR / name)
         if whole_page and decision != "d9":
             raise LabelSetError("--whole-page is for d9 only")
@@ -2213,8 +2219,8 @@ def labelset_report(
             provider = make_provider(
                 pb.model.provider_id, kind=pb.model.kind, api_key=cfg.anthropic_api_key
             )
-            # Decision 2's baseline is Classification as it stands; decisions 1 and
-            # 9 have none of their own, so the Playbook's model is asked as written.
+            # Decision 2's baseline is Classification as it stands; the others have
+            # none of their own, so the Playbook's model is asked as written.
             baseline = (
                 ClassificationJudge(pb, provider)
                 if decision == "d2"
@@ -2235,7 +2241,9 @@ def labelset_report(
         if not runs_out.is_file():
             raise LabelSetError(f"{runs_out} not found; run without --no-call first")
         reviews = _read_jsonl(review) if review.is_file() else None
-        if decision == "d9":
+        if decision in ("d7", "d8"):
+            md = score_report_markdown(rows, _read_jsonl(runs_out), question)
+        elif decision == "d9":
             md = known_fix_report_markdown(
                 rows, _read_jsonl(runs_out), question, whole_page=whole_page
             )

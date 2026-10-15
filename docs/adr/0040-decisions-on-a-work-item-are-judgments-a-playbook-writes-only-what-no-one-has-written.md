@@ -15,6 +15,14 @@ Status: accepted (2026-09-23)
 > does rank the pages: for about nine in ten rows with a fix, the page it finds likeliest fixes
 > it, against seven in ten for retrieval's first hit. #286 weighs showing the person the pages in
 > that order.
+>
+> **Revised 2026-10-15** (#227): Impact and Urgency were measured on the label set's Incidents,
+> and each has a cut per engine. Severity is read off the table only when both clear their cuts
+> and come from the primary engine; the summary Playbook is then given it and its artifact carries
+> it. Below either cut, Severity is not a decision a person must make before the run goes on: the
+> summary Playbook suggests one as it did before the stage, and both Judgments are in the trace.
+> The table is `judgments/decisions/severity.yaml`. No Incident in the set is site-wide, so
+> Impact's highest level is not yet measured (#288).
 
 A Work item reaches a suggestion through a string of decisions, and today a
 language model makes every one of them in prose. Classification is one call

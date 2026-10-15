@@ -63,7 +63,13 @@ def row_state(row: dict[str, Any], redactor: Redactor) -> str:
 
 
 # The label column each decision is measured against (SPEC §1).
-_COLUMN: Final = {"d1": "security", "d2": "work_item_type", "d9": "known_fix"}
+_COLUMN: Final = {
+    "d1": "security",
+    "d2": "work_item_type",
+    "d7": "impact",
+    "d8": "urgency",
+    "d9": "known_fix",
+}
 
 
 def _check_set(rows: list[dict[str, Any]], question: Question) -> None:
@@ -539,5 +545,100 @@ def known_fix_report_markdown(
         " | Rows with none, sent a page |",
         "|---|---|---|---|---|---|",
         *cuts,
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def score_report_markdown(
+    rows: list[dict[str, Any]], records: list[dict[str, Any]], question: Question
+) -> str:
+    """Decision 7 or 8 on the label set's Incidents: each engine's level against the label (#227).
+
+    A Score's levels are ordered, so beside the exact level the report gives
+    how often an answer is within one level of the label, and what always
+    answering the most common label would score: with few rows at some
+    levels, that is the bar an engine has to clear. The cut is decision 2's
+    rule: the lowest probability at which the levels decided without a person
+    are at least 95% right (ADR-0040).
+    """
+    column = _COLUMN[question.id]
+    if any(r.get(column) is None for r in rows):
+        raise LabelSetError(f"label every Incident's {column} first; the report reads them all")
+    labels = {r["id"]: r[column] for r in rows}
+    if stray := sorted({r["id"] for r in records} - labels.keys()):
+        raise LabelSetError(f"the runs file answers rows the set does not have: {', '.join(stray)}")
+    levels = list(question.answers)
+    rank = {level: n for n, level in enumerate(levels)}
+    labelled = {level: sum(v == level for v in labels.values()) for level in levels}
+    common = max(levels, key=labelled.__getitem__)
+    engines = list(dict.fromkeys(r["engine"] for r in records))
+    runs = max((r["run"] for r in records), default=0)
+    lines = [
+        f"# {question.version} on the label set's Incidents: the engines compared",
+        "",
+        f"{len(rows)} Incidents is not a benchmark: synthetic, English, labelled by one person, and"
+        " the threshold is set on the same rows it is reported on; there is no held-out split at"
+        f" this size. Each engine answered every Incident {runs} times; the figures pool the runs.",
+        "",
+        "Labelled: "
+        + ", ".join(f"{level} {n}" for level, n in labelled.items())
+        + f". Always answering {common} would be {_pct(labelled[common] / len(rows))} right.",
+        "",
+        "| Engine | Calls ok/failed | Accuracy | Within one level | Brier on the answer"
+        " | Cost/call | p50 | p95 |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
+    answered: list[str] = []
+    cuts: list[str] = []
+    for engine in engines:
+        mine = [r for r in records if r["engine"] == engine]
+        ok = [r for r in mine if r["error"] is None]
+        if not ok:
+            lines.append(f"| {engine} | 0/{len(mine)} | – | – | – | – | – | – |")
+            cuts.append(f"| {engine} | – | 0/0 | – |")
+            continue
+        judged = [(r["probability"], r["answer"] == labels[r["id"]]) for r in ok]
+        right = sum(hit for _, hit in judged)
+        near = sum(abs(rank[r["answer"]] - rank[labels[r["id"]]]) <= 1 for r in ok)
+        latencies = [r["latency_ms"] for r in ok]
+        lines.append(
+            f"| {engine} | {len(ok)}/{len(mine) - len(ok)} | {_pct(right / len(ok))}"
+            f" | {_pct(near / len(ok))}"
+            f" | {sum((p - hit) ** 2 for p, hit in judged) / len(ok):.3f}"
+            f" | ${sum(r['cost_usd'] for r in ok) / len(ok):.6f}"
+            f" | {percentile(latencies, 0.5):.0f} ms | {percentile(latencies, 0.95):.0f} ms |"
+        )
+        for level in levels:
+            if labelled[level]:
+                said = [r["answer"] for r in ok if labels[r["id"]] == level]
+                answered.append(
+                    f"| {engine} | {level} ({len(said)})"
+                    + "".join(f" | {said.count(a)}" for a in levels)
+                    + " |"
+                )
+        cut = threshold(judged)
+        cuts.append(
+            f"| {engine} | {cut[0]:.3f} | {cut[1]}/{len(ok)} ({_pct(cut[1] / len(ok))}) |"
+            f" {_pct(cut[2] / cut[1])} |"
+            if cut
+            else f"| {engine} | none reaches {_pct(TARGET)} | 0/{len(ok)} | – |"
+        )
+    lines += [
+        "",
+        "## What each engine answered, by label",
+        "",
+        "| Engine | Labelled (answers) | " + " | ".join(levels) + " |",
+        "|---|---|" + "---|" * len(levels),
+        *answered,
+        "",
+        f"## Threshold: the lowest probability at which the levels decided are at least"
+        f" {_pct(TARGET)} right",
+        "",
+        "| Engine | Threshold | Decided without a person | Right among them |",
+        "|---|---|---|---|",
+        *cuts,
+        "",
+        "The stage applies its threshold to the primary engine's probability; an answer from"
+        " the fallback always goes to a person.",
     ]
     return "\n".join(lines) + "\n"

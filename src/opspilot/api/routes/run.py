@@ -162,6 +162,35 @@ def _judge_security(state: Any, rendered: str | None) -> dict[str, Any] | None:
     return {**judgment.as_trace(), "p_yes": p_yes(judgment), "stops": stops}
 
 
+def _judge_severity(
+    state: Any, rendered: str | None, pb: Any
+) -> tuple[dict[str, str] | None, list[dict[str, Any]]]:
+    """Impact and Urgency, and the Severity read off them, for an Incident's summary (#227).
+
+    Returns the fields the summary Playbook is given as decided, or None when
+    it should suggest a Severity as before: the stage is off, Severity is not
+    yet measured, the Playbook writes no incident summary, or either Judgment
+    cannot stand alone. Also returns each Judgment, for the trace.
+    """
+    stage = getattr(state, "judgments", None)
+    if (
+        stage is None
+        or stage.severity is None
+        or rendered is None
+        or getattr(pb, "output_schema", None) != "incident_summary_v1"
+    ):
+        return None, []
+    try:
+        severity, judgments = stage.severity.decide(rendered)
+    except OpsPilotError as e:
+        logger.warning("no engine could answer Impact or Urgency; the Playbook suggests: %s", e)
+        return None, []
+    return (
+        {"severity_suggested": severity} if severity is not None else None,
+        [{**j.as_trace(), "severity": severity} for j in judgments],
+    )
+
+
 def _resolve_run_plan(
     body: ApiRunRequest, state: Any, ticket_path: Path, rendered: str | None = None
 ) -> tuple[Any, Any, dict[str, Any] | None, bool]:
@@ -243,6 +272,7 @@ async def run_ticket(body: ApiRunRequest, request: Request) -> ApiRunResponse:
             )
             if needs_conf:
                 return None, classification, True, security
+            decided, severity_judgments = _judge_severity(state, rendered, pb)
             orch_request = OrchestratorRunRequest(
                 playbook=pb, input_path=ticket_path, owner="api:default"
             )
@@ -255,9 +285,12 @@ async def run_ticket(body: ApiRunRequest, request: Request) -> ApiRunResponse:
                 sqlite_store=state.sqlite,
                 lance_store=state.lance,
                 mcp_registry=getattr(state, "mcp_registry", None),
+                decided=decided,
             )
             _trace_judgment(state, res.session_id, security)
             _trace_judgment(state, res.session_id, (classification or {}).get("judgment"))
+            for judgment in severity_judgments:
+                _trace_judgment(state, res.session_id, judgment)
             return res, classification, False, security
 
         result, classification, needs_conf, security = await loop.run_in_executor(
@@ -328,6 +361,7 @@ async def run_ticket_stream(body: ApiRunRequest, request: Request) -> StreamingR
         )
         if needs_conf:
             return None, classification, True, security
+        decided, severity_judgments = _judge_severity(state, rendered, pb)
         orch_request = OrchestratorRunRequest(
             playbook=pb, input_path=ticket_path, owner="api:default"
         )
@@ -341,9 +375,12 @@ async def run_ticket_stream(body: ApiRunRequest, request: Request) -> StreamingR
             lance_store=state.lance,
             mcp_registry=getattr(state, "mcp_registry", None),
             on_progress=on_progress,
+            decided=decided,
         )
         _trace_judgment(state, res.session_id, security)
         _trace_judgment(state, res.session_id, (classification or {}).get("judgment"))
+        for judgment in severity_judgments:
+            _trace_judgment(state, res.session_id, judgment)
         return res, classification, False, security
 
     async def _run_in_thread() -> None:
