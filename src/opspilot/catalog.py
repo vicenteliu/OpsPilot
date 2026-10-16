@@ -16,7 +16,7 @@ from typing import Any, Final
 
 import yaml
 
-from .judgment import JudgmentError, Question, load_question, with_candidates
+from .judgment import Decision, JudgmentError, Question, load_question, with_candidates
 
 CATALOG_FILE: Final = "catalog.yaml"
 CATALOG_ITEM_FILE: Final = "r1.yaml"
@@ -95,3 +95,20 @@ def entitled(item: CatalogItem, submitter_role: str | None) -> bool | None:
     if not submitter_role:
         return None
     return submitter_role.strip().lower() in item.entitled
+
+
+@dataclass(frozen=True)
+class CatalogDecision:
+    """Which catalog item, at its engine's measured cut, and the catalog its Lookups read."""
+
+    decision: Decision  # r1, its question built over ``catalog``
+    catalog: Catalog
+
+
+def in_stock(inventory: Any, category: str) -> int:
+    """How many Assets of ``category`` are in stock (ADR-0017), whatever their case."""
+    wanted = category.strip().lower()
+    return sum(
+        str(a.get("category") or "").strip().lower() == wanted
+        for a in inventory.list(status="in_stock")
+    )

@@ -407,8 +407,17 @@ def _with_thresholds(src: Path, dest: Path, thresholds: dict[str, float]) -> Non
 
 
 def _incident_decision_files(tmp_path: Path) -> None:
-    """d3.yaml, d4.yaml, d6.yaml, d7.yaml, d8.yaml and severity.yaml as committed."""
-    for name in ("d3.yaml", "d4.yaml", "d6.yaml", "d7.yaml", "d8.yaml", "severity.yaml"):
+    """The decisions after d1 and d2, their tables and the catalog, as committed."""
+    for name in (
+        "d3.yaml",
+        "d4.yaml",
+        "d6.yaml",
+        "d7.yaml",
+        "d8.yaml",
+        "severity.yaml",
+        "r1.yaml",
+        "catalog.yaml",
+    ):
         (tmp_path / name).write_text((D2.parent / name).read_text(encoding="utf-8"))
 
 
@@ -612,6 +621,7 @@ def _app_with_stage(
     enough: Decision | None = None,
     ask_provider: Any = None,
     already_open: Decision | None = None,
+    catalog: Any = None,
 ) -> Any:
     from collections.abc import AsyncIterator
     from contextlib import asynccontextmanager
@@ -643,7 +653,14 @@ def _app_with_stage(
             team=team,
             enough=enough,
             already_open=already_open,
+            catalog=catalog,
         )
+        app.state.inventory = MagicMock()
+        app.state.inventory.list.return_value = [
+            {"category": "Laptop", "status": "in_stock"},
+            {"category": "laptop", "status": "in_stock"},
+            {"category": "monitor", "status": "in_stock"},
+        ]
         app.state.ask_pb = load_playbook(REPO_ROOT / "playbooks" / "pb_ask_en")
         app.state.ask_provider = ask_provider or _Classifier(_ASK)
         app.state.sqlite = app.state.lance = app.state.mcp_registry = None
@@ -1339,7 +1356,7 @@ def _already_open(engine: Any, fallback: Any = None) -> Decision:
 
 
 class _Picks:
-    """Answers decision 3 as told, and keeps the answers it was offered."""
+    """Answers a Choice over found answers as told, and keeps the answers it was offered."""
 
     name = "typesafe:jev-test"
 
@@ -1349,7 +1366,9 @@ class _Picks:
 
     def judge(self, question: Question, state: str, *, timeout_s: float) -> Judgment:
         self.offered.append(dict(question.answers))
-        return Judgment("d3", question.version, self.answer, self.probability, self.name, 80, 2e-05)
+        return Judgment(
+            question.id, question.version, self.answer, self.probability, self.name, 80, 2e-05
+        )
 
 
 class TestAlreadyOpen:
@@ -1406,3 +1425,81 @@ def test_an_open_work_item_is_offered_at_most_its_first_thousand_characters() ->
     long = [{"key": "IT-7", "subject": "log", "body": "x" * 5000}]
     meaning = open_items_question(d3, long, Redactor.from_yaml()).answers["IT-7"]
     assert len(meaning) == len(d3.candidates.format(text="")) + OPEN_ITEM_CHARS  # type: ignore[union-attr]
+
+
+# ── The request path: which catalog item, then Lookups (#231) ───────────────
+
+
+def _catalog(engine: Any, fallback: Any = None) -> Any:
+    from opspilot.catalog import CatalogDecision, catalog_question, load_catalog
+
+    catalog = load_catalog(REPO_ROOT / DECISIONS_DIR / "catalog.yaml")
+    question = catalog_question(REPO_ROOT / DECISIONS_DIR / "r1.yaml", catalog)
+    return CatalogDecision(Decision(question, 0.6, primary=engine, fallback=fallback), catalog)
+
+
+def _request_run(item: tuple[str, float], **work_item: Any) -> tuple[Any, Any, Any]:
+    """Run a declared request with the catalog on; the summary's run mock, the response, the app."""
+    from unittest.mock import patch
+
+    from fastapi.testclient import TestClient
+
+    app = _app_with_stage(_Engine("service_request", 0.99), catalog=_catalog(_Picks(*item)))
+    request = {**_UNTYPED, "work_item_type": "service_request", **work_item}
+    result = replace(
+        _run_result(),
+        summary={"summary": "ok", "asset_draft": {"category": "monitor", "quantity": 1}},
+    )
+    with (
+        patch("opspilot.api.routes.run.run_ticket_summary", return_value=result) as run,
+        TestClient(app) as client,
+    ):
+        app.state.request_fulfillment_pb.output_schema = "request_fulfillment_v1"
+        response = client.post("/api/run", json={"input": request})
+    return run, response.json(), app
+
+
+class TestCatalog:
+    def test_an_item_that_stands_is_looked_up_and_no_model_decides_its_approval(self) -> None:
+        run, data, app = _request_run(("vpn_access", 0.9))
+        assert run.call_args.kwargs["decided"] == {
+            "requested_item": "VPN access",
+            "approval_needed": True,
+        }
+        catalog = data["catalog"]
+        assert (catalog["item"], catalog["approval"], catalog["entitled"]) == (
+            "vpn_access",
+            "manager",
+            True,
+        )
+        assert catalog["automated"] is False and catalog["fields"] == ["who needs it", "why"]
+        assert [e["details"]["question"] for e in _events(app)] == ["d1", "r1"]
+
+    def test_an_automated_item_runs_no_playbook(self) -> None:
+        run, data, _ = _request_run(("password_reset", 0.9))
+        run.assert_not_called()
+        assert data["needs_confirmation"] is True and data["session_id"] == ""
+        assert data["catalog"]["automated"] is True
+
+    @pytest.mark.parametrize("item", [("none", 0.95), ("vpn_access", 0.4)], ids=["none", "unsure"])
+    def test_otherwise_the_playbook_runs_and_a_person_checks_the_item(
+        self, item: tuple[str, float]
+    ) -> None:
+        run, data, _ = _request_run(item)
+        assert run.call_args.kwargs["decided"] is None
+        assert data["catalog"]["item"] is None
+
+    def test_an_item_s_category_is_counted_in_stock(self) -> None:
+        _, data, _ = _request_run(("loaner", 0.9))
+        assert (data["catalog"]["stock_category"], data["catalog"]["in_stock"]) == ("laptop", 2)
+
+    def test_the_requested_category_is_counted_once_the_artifact_names_it(self) -> None:
+        _, data, _ = _request_run(("new_hardware", 0.9))
+        assert (data["catalog"]["stock_category"], data["catalog"]["in_stock"]) == ("monitor", 1)
+
+    @pytest.mark.parametrize(("role", "entitled"), [("engineering", True), ("finance", False)])
+    def test_entitlement_is_looked_up_from_the_submitter_s_role(
+        self, role: str, entitled: bool
+    ) -> None:
+        _, data, _ = _request_run(("admin_rights", 0.9), submitter_role=role)
+        assert data["catalog"]["entitled"] is entitled

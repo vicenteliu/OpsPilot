@@ -19,6 +19,20 @@ candidates: >-
 answers:
   none: >-
     None of them: the catalog has no item for what is asked.
-# Set from the label set, never guessed (ADR-0040), keyed by the engine it was
-# measured on; empty until that report has been run.
-thresholds: {}
+# Set from the label set, never guessed (SPEC §7), keyed by the engine it was
+# measured on (#274). `none` and an answer below the cut take the same way, so
+# each is the named answers' cut in judgments/label_set/report_r1_v1.md, run
+# on 2026-10-16 over the 41 service requests, three passes each: the lowest
+# probability at which the items named are at least 95% right.
+#
+# 0.96 on Jev's probability: 60 of 123 answers name an item, 95.0% rightly;
+#   57 of the 75 labelled with an item, and 3 of the 48 labelled none.
+# 0.70 on the Playbook's model: 48 named, 97.9% rightly; 47 of the 75, and 1
+#   of the 48.
+#
+# Only 9 of the catalog's 16 items appear in the set, and 16 of the 41
+# requests are for none of them. Measure again on a changed catalog, when the
+# label set grows, or when either model changes.
+thresholds:
+  "typesafe:jev-1.13.0": 0.96
+  "playbook:anthropic/claude-haiku-5-5": 0.70

@@ -45,6 +45,14 @@ Status: accepted (2026-09-23)
 > each Incident, offered among five open Work items, and each Incident offered five that are not.
 > At their cuts both engines name a match 95% rightly, finding nearly every duplicate. A match that
 > clears its cut is named in the comment, and nothing below it is said.
+>
+> **Revised 2026-10-16** (#231, #293, #294): the request path starts with one Judgment, which
+> catalog item, a Choice over a sample catalog (`judgments/decisions/catalog.yaml`, `r1.yaml`).
+> An item that clears its cut is looked up for its approval, entitlement (the submitter's role),
+> stock (Assets in stock, ADR-0017) and automation, and its looked-up `approval_needed` replaces
+> the model's. An automated item runs no Playbook. Below the cut, or no item, the request
+> Playbook runs as before and a person checks the item. Whether it is really a request (#293) and
+> whether it gives enough to fulfil (#294) are filed. A changed catalog is a new answer space.
 
 A Work item reaches a suggestion through a string of decisions, and today a
 language model makes every one of them in prose. Classification is one call

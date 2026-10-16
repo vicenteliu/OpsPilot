@@ -99,7 +99,7 @@ def run_ticket_summary(
     user_msg_fn: Callable[[dict[str, Any]], str] | None = None,
     on_progress: Callable[[str], None] | None = None,
     allow_model_fallback: bool = True,
-    decided: Mapping[str, str] | None = None,
+    decided: Mapping[str, Any] | None = None,
 ) -> RunResult:
     """Run the playbook end-to-end. Returns a :class:`RunResult`.
 
@@ -109,8 +109,9 @@ def run_ticket_summary(
     names, so the harness turns it off (#175).
 
     ``decided`` holds output fields the Judgments stage decided before the run,
-    e.g. ``{"severity_suggested": "P2"}`` (ADR-0040). The model is given them,
-    and the summary carries them whatever it wrote.
+    e.g. ``{"severity_suggested": "P2"}``, or a catalog item's looked-up
+    ``approval_needed`` (ADR-0040). The model is given them, and the summary
+    carries them whatever it wrote.
     """
     _prog = on_progress or (lambda _: None)
     _t0 = time.monotonic()

@@ -753,3 +753,6 @@ def test_a_wide_choice_s_report_gives_right_none_or_another_per_label() -> None:
     assert "| Engine | Labelled (answers) | Right | Said none | Another |" in md
     assert "| e | loaner (3) | 1 | 1 | 1 |" in md
     assert "| e | none (2) | 1 | – | 1 |" in md
+    # Named answers: loaner 0.9 (right), reimage 0.5, guest_wifi 0.4 (both wrong).
+    assert "## Named: the lowest probability at which the answers other than `none`" in md
+    assert "| e | 0.900 | 1/5 | 100.0% | 1/3 | 0/2 |" in md

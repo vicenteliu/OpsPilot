@@ -34,8 +34,11 @@ async def _process(body: ApiIntakeRequest, request: Request) -> None:
         logger.exception("webhook intake run failed for %s (redelivery will retry)", body.key)
         request.app.state.intake_seen.discard(body.key)
         return
+    catalog = res.catalog or {}
     if (res.security or {}).get("stops"):
         logger.warning("webhook intake %s stopped: possible security issue", body.key)
+    elif catalog.get("automated"):
+        logger.info("webhook intake %s: %s is fulfilled by automation", body.key, catalog["item"])
     elif res.ask:
         # A pusher has no comment destination (ADR-0015), so the ask goes nowhere.
         logger.warning("webhook intake %s needs more information: %s", body.key, res.ask["text"])

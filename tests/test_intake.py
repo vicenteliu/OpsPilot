@@ -725,3 +725,44 @@ class TestAlreadyOpenOnJsm:
         client = _SeqRunClient(_OK)
         report = IntakeLoop(Down(), client).run_once()  # type: ignore[arg-type]
         assert report.commented == ["IT-9"]
+
+
+# ── The catalog in the comment (#231) ─────────────────────────────────────────
+
+
+class TestCatalogComment:
+    def test_a_matched_item_and_what_was_looked_up_for_it(self) -> None:
+        catalog = {
+            "item": "loaner",
+            "name": "Loaner device",
+            "approval": "none",
+            "entitled": None,
+            "fields": ["who", "from when"],
+            "stock_category": "laptop",
+            "in_stock": 2,
+        }
+        body = render_comment(_OK["result"], session_id="s", catalog=catalog)  # type: ignore[arg-type]
+        assert (
+            "**Catalog item:** Loaner device · **Approval:** none needed · **Entitled:** not known"
+            in body
+        )
+        assert "**In stock:** 2 laptop" in body and "**Needs:** who, from when" in body
+        assert "not decided by a model" in body
+
+    def test_no_match_says_a_person_checks(self) -> None:
+        body = render_comment(_OK["result"], session_id="s", catalog={"item": None})  # type: ignore[arg-type]
+        assert (
+            "**Catalog item:** not matched, so a person checks the item and its approval." in body
+        )
+
+    def test_an_automated_item_gets_its_own_comment(self) -> None:
+        transport = _AskedTransport()
+        automated = {
+            **_ASKED,
+            "ask": None,
+            "catalog": {"item": "password_reset", "name": "Password reset", "automated": True},
+        }
+        IntakeLoop(transport, _SeqRunClient(automated)).run_once()  # type: ignore[arg-type]
+        body = transport.comments[0][1]
+        assert body.startswith("## OpsPilot: fulfilled by automation")
+        assert "Password reset" in body and "OpsPilot ran nothing" in body

@@ -253,7 +253,9 @@ many labelled matches are named rightly and how many items labelled `none` are n
 **The request path's r1** (#231): `--decision r1` asks each service request which catalog item it is
 for, over the catalog's items and `none`, into `runs_r1_v1.jsonl`, and reports it as the Incident
 decisions are; with many answers, each labelled item gets right, `none` or another instead of a
-column per item.
+column per item. `none` and an answer below the cut both go to a person, so only a named item
+acts, and the report also gives that cut: the lowest probability at which the items named are
+at least 95% right.
 
 **Decision 4** (#229): `--decision d4` reports whether each Incident has enough to act on, the same
 way, into `runs_d4_v1.jsonl`. The stage acts only on a `no` that clears its cut, so the report
