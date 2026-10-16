@@ -398,6 +398,7 @@ def judge_with_fallback(
 JUDGMENT_TIMEOUT_S: Final = 20.0
 SECURITY_FILE: Final = "d1.yaml"
 WORK_ITEM_TYPE_FILE: Final = "d2.yaml"
+ALREADY_OPEN_FILE: Final = "d3.yaml"
 ENOUGH_FILE: Final = "d4.yaml"
 TEAM_FILE: Final = "d6.yaml"
 IMPACT_FILE: Final = "d7.yaml"
@@ -420,11 +421,13 @@ class Decision:
     fallback: JudgmentEngine | None = None
     timeout_s: float = JUDGMENT_TIMEOUT_S
 
-    def decide(self, state: str) -> Judgment:
+    def decide(self, state: str, question: Question | None = None) -> Judgment:
+        """Ask the decision's question, or ``question``: the same one over found answers (#230)."""
+        asked = question or self.question
         if self.fallback is None:
-            return self.primary.judge(self.question, state, timeout_s=self.timeout_s)
+            return self.primary.judge(asked, state, timeout_s=self.timeout_s)
         return judge_with_fallback(
-            self.primary, self.fallback, self.question, state, timeout_s=self.timeout_s
+            self.primary, self.fallback, asked, state, timeout_s=self.timeout_s
         )
 
     def stands(self, judgment: Judgment) -> bool:
@@ -525,6 +528,9 @@ class Stage:
     # Asked of an Incident first, once: a `no` that stands means the reporter
     # is asked before any summary (decision 5); None until measured (#229).
     enough: Decision | None = None
+    # Asked of an Incident a source offers open Work items for; a match that
+    # stands is named for a person to link. None until measured (#230).
+    already_open: Decision | None = None
 
     def stops_for_security(self, judgment: Judgment) -> bool:
         """At or above decision 1's cut on P(yes), or answered by the fallback: stop.
@@ -618,6 +624,24 @@ def _severity(
     return Severity(impact, urgency, table)
 
 
+def _already_open(
+    decisions_dir: Path, primary: JudgmentEngine, fallback: JudgmentEngine | None
+) -> Decision | None:
+    """Decision 3 at its engine's measured cut, or None while it has none, and the log says so.
+
+    Unmeasured, no Work item is named as already open.
+    """
+    already_open = _measured(decisions_dir, ALREADY_OPEN_FILE, primary, fallback)
+    if already_open is None:
+        logger.warning(
+            "The Judgments stage runs WITHOUT decision 3: %s has no threshold for %s, so no "
+            "open Work item is named as the same problem (#230).",
+            decisions_dir / ALREADY_OPEN_FILE,
+            primary.name,
+        )
+    return already_open
+
+
 def _enough(
     decisions_dir: Path, primary: JudgmentEngine, fallback: JudgmentEngine | None
 ) -> Decision | None:
@@ -666,8 +690,8 @@ def build_stage(
     With a TypeSafe key, Jev decides both and the Playbook's model is its
     fallback: Classification for decision 2, the Question asked as written for
     decision 1. Without one, the Playbook's model decides alone, and the log
-    says so. Decision 1, enough to act on, the team, and Impact and Urgency
-    run only once they are measured for their engine.
+    says so. Decision 1, already open, enough to act on, the team, and Impact
+    and Urgency run only once they are measured for their engine.
     """
     asked = QuestionJudge(classify_playbook, provider)
     classified = ClassificationJudge(classify_playbook, provider)
@@ -684,6 +708,7 @@ def build_stage(
             severity=_severity(decisions_dir, jev, asked),
             team=_team(decisions_dir, jev, asked),
             enough=_enough(decisions_dir, jev, asked),
+            already_open=_already_open(decisions_dir, jev, asked),
         )
     stage = Stage(
         security=_security(decisions_dir, asked, None),
@@ -691,6 +716,7 @@ def build_stage(
         severity=_severity(decisions_dir, asked, None),
         team=_team(decisions_dir, asked, None),
         enough=_enough(decisions_dir, asked, None),
+        already_open=_already_open(decisions_dir, asked, None),
     )
     logger.warning(
         "The Judgments stage is on without TYPESAFE_API_KEY: %s decides alone.", classified.name

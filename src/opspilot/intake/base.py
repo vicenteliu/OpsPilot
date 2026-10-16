@@ -57,6 +57,14 @@ class SourceTransport(Protocol):
         """What was said on ``key`` since OpsPilot last commented, or None (#229)."""
         ...
 
+    def fetch_open_items(self, key: str) -> list[dict[str, Any]]:
+        """Open Work items filed in the last hour, other than ``key`` (#230).
+
+        Each is ``{"key", "subject", "body"}``: decision 3 asks whether ``key``
+        is the same problem as one of them.
+        """
+        ...
+
 
 class OpsPilotRunClient:
     """Calls ``POST /api/run`` and returns the parsed response body.
@@ -82,14 +90,25 @@ class OpsPilotRunClient:
         self._playbook_id = playbook_id
         self._model_id = model_id
 
-    def run(self, work_item: dict[str, Any], *, asked: bool = False) -> dict[str, Any]:
-        """Run one Work item; ``asked`` when it carries the reply to OpsPilot's one ask."""
+    def run(
+        self,
+        work_item: dict[str, Any],
+        *,
+        asked: bool = False,
+        open_items: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Run one Work item; ``asked`` when it carries the reply to OpsPilot's one ask.
+
+        ``open_items`` are the source's open Work items from the last hour (#230).
+        """
         headers = {"Content-Type": "application/json"}
         if self._api_token:
             headers["Authorization"] = f"Bearer {self._api_token}"
         payload: dict[str, Any] = {"input": work_item}
         if asked:
             payload["asked"] = True
+        if open_items:
+            payload["open_items"] = open_items
         if self._playbook_id:
             payload["playbook_id"] = self._playbook_id
         if self._model_id:
@@ -108,9 +127,24 @@ _FOOTER = (
 )
 
 
-def render_comment(result: dict[str, Any], *, session_id: str) -> str:
+def _already_open_line(already_open: dict[str, Any] | None) -> list[str]:
+    """The open Work item decision 3 named, for a person to link; OpsPilot links nothing (#230)."""
+    if not already_open:
+        return []
+    p = float(already_open.get("probability") or 0.0)
+    return [
+        f"**Already open?** This looks like the same problem as {already_open['key']} "
+        f"(p={p:.2f}). A person should link them; OpsPilot links nothing.",
+        "",
+    ]
+
+
+def render_comment(
+    result: dict[str, Any], *, session_id: str, already_open: dict[str, Any] | None = None
+) -> str:
     """Render a run artifact as one structured, source-agnostic comment."""
     lines = [f"{OPSPILOT_HEADING} suggestion", ""]
+    lines += _already_open_line(already_open)
     if result.get("summary"):
         lines += [str(result["summary"]), ""]
     if result.get("requested_item"):
@@ -159,12 +193,13 @@ def render_needs_person_comment(classification: dict[str, Any]) -> str:
     )
 
 
-def render_ask_comment(ask: dict[str, Any]) -> str:
+def render_ask_comment(ask: dict[str, Any], already_open: dict[str, Any] | None = None) -> str:
     """Render the one ask, when decision 4 says the Work item is too thin to act on (#229)."""
     return "\n".join(
         [
             f"{OPSPILOT_HEADING}: more information needed",
             "",
+            *_already_open_line(already_open),
             str(ask.get("text", "")),
             "",
             "_Reply in a comment here; OpsPilot reads the reply and suggests again._",
@@ -349,7 +384,7 @@ class IntakeLoop:
                 report.skipped.append((item.key, "duplicate"))
                 continue
             try:
-                res = self._client.run(item.work_item)
+                res = self._client.run(item.work_item, open_items=self._open_items(item.key))
             except Exception as exc:  # noqa: BLE001 — not marked: retries next pass
                 logger.error("run failed for %s (will retry next pass): %s", item.key, exc)
                 report.skipped.append((item.key, f"run failed: {exc}"))
@@ -368,13 +403,23 @@ class IntakeLoop:
                 reply = self._transport.fetch_reply(key)
                 if not reply:
                     continue
-                res = self._client.run(with_reply(work_item, reply), asked=True)
+                res = self._client.run(
+                    with_reply(work_item, reply), asked=True, open_items=self._open_items(key)
+                )
             except Exception as exc:  # noqa: BLE001 — still awaiting: retries next pass
                 logger.error("reply run failed for %s (will retry next pass): %s", key, exc)
                 report.skipped.append((key, f"reply run failed: {exc}"))
                 continue
             self._state.resolve_reply(key)
             self._respond(key, res, report)
+
+    def _open_items(self, key: str) -> list[dict[str, Any]]:
+        """The source's open Work items for decision 3; none when they cannot be read (#230)."""
+        try:
+            return self._transport.fetch_open_items(key)
+        except Exception as exc:  # noqa: BLE001 — decision 3 is advisory; run without it
+            logger.warning("open Work items unread for %s; no match is named: %s", key, exc)
+            return []
 
     def _respond(self, key: str, res: dict[str, Any], report: IntakeReport) -> None:
         """Turn one run's response into the comment it calls for."""
@@ -383,7 +428,8 @@ class IntakeLoop:
             self._deliver(key, render_security_comment(security), "", report)
             return
         if res.get("ask"):
-            self._deliver(key, render_ask_comment(res["ask"]), "", report)
+            body = render_ask_comment(res["ask"], res.get("already_open"))
+            self._deliver(key, body, "", report)
             return
         if res.get("needs_confirmation"):
             # No run happened, so there is no session id to mark the comment
@@ -397,7 +443,9 @@ class IntakeLoop:
             report.skipped.append((key, reason))
             return
         session_id = str(res.get("session_id", ""))
-        body = render_comment(res["result"], session_id=session_id)
+        body = render_comment(
+            res["result"], session_id=session_id, already_open=res.get("already_open")
+        )
         self._deliver(key, body, session_id, report)
 
     def _deliver(self, key: str, body: str, marker: str, report: IntakeReport) -> None:

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,9 @@ from .base import OPSPILOT_HEADING, SourceItem
 logger = logging.getLogger("opspilot.intake.jsm")
 
 _TYPE_HINTS = (("incident", "incident"), ("request", "service_request"))
+_ORDER_BY = re.compile(r"\s+ORDER\s+BY\s+.*$", re.IGNORECASE | re.DOTALL)
+# Open Work items offered to decision 3 at most: the newest, in the intake scope.
+OPEN_ITEMS_MAX = 20
 
 
 def _declared_type(issuetype_name: str) -> str | None:
@@ -62,6 +66,10 @@ class ReplayTransport:
     def post_comment(self, key: str, body: str, marker: str) -> None:
         self._out_dir.mkdir(parents=True, exist_ok=True)
         (self._out_dir / f"{key}.md").write_text(body, encoding="utf-8")
+
+    def fetch_open_items(self, key: str) -> list[dict[str, Any]]:
+        """None: a replay has no clock to say what was filed in the last hour."""
+        return []
 
     def fetch_reply(self, key: str) -> str | None:
         """A recorded reply, ``replies/<key>.txt`` beside ``search.json``, if there is one."""
@@ -130,6 +138,32 @@ class JsmTransport:
             auth=self._auth,
         )
         res.raise_for_status()
+
+    def fetch_open_items(self, key: str) -> list[dict[str, Any]]:
+        """The intake scope's open issues created in the last hour, other than ``key`` (#230).
+
+        Code builds the list (ADR-0040): the configured JQL, narrowed to the last
+        hour and to issues not done, newest first, at most ``OPEN_ITEMS_MAX``.
+        """
+        scope = _ORDER_BY.sub("", self._jql).strip()
+        jql = (
+            f'({scope}) AND created >= "-1h" AND statusCategory != Done AND key != "{key}"'
+            " ORDER BY created DESC"
+        )
+        res = self._http.get(
+            f"{self._base_url}/rest/api/2/search",
+            params={"jql": jql, "fields": "summary,description", "maxResults": OPEN_ITEMS_MAX},
+            auth=self._auth,
+        )
+        res.raise_for_status()
+        return [
+            {
+                "key": str(issue["key"]),
+                "subject": (issue.get("fields") or {}).get("summary") or "",
+                "body": (issue.get("fields") or {}).get("description") or "",
+            }
+            for issue in res.json().get("issues", [])
+        ]
 
     def fetch_reply(self, key: str) -> str | None:
         """The comments posted since OpsPilot's last one on ``key``, or None (#229).

@@ -407,8 +407,8 @@ def _with_thresholds(src: Path, dest: Path, thresholds: dict[str, float]) -> Non
 
 
 def _incident_decision_files(tmp_path: Path) -> None:
-    """d4.yaml, d6.yaml, d7.yaml, d8.yaml and severity.yaml as committed."""
-    for name in ("d4.yaml", "d6.yaml", "d7.yaml", "d8.yaml", "severity.yaml"):
+    """d3.yaml, d4.yaml, d6.yaml, d7.yaml, d8.yaml and severity.yaml as committed."""
+    for name in ("d3.yaml", "d4.yaml", "d6.yaml", "d7.yaml", "d8.yaml", "severity.yaml"):
         (tmp_path / name).write_text((D2.parent / name).read_text(encoding="utf-8"))
 
 
@@ -611,6 +611,7 @@ def _app_with_stage(
     team: Decision | None = None,
     enough: Decision | None = None,
     ask_provider: Any = None,
+    already_open: Decision | None = None,
 ) -> Any:
     from collections.abc import AsyncIterator
     from contextlib import asynccontextmanager
@@ -641,6 +642,7 @@ def _app_with_stage(
             severity=severity,
             team=team,
             enough=enough,
+            already_open=already_open,
         )
         app.state.ask_pb = load_playbook(REPO_ROOT / "playbooks" / "pb_ask_en")
         app.state.ask_provider = ask_provider or _Classifier(_ASK)
@@ -1319,3 +1321,78 @@ def test_only_a_choice_has_candidates(tmp_path: Path) -> None:
     )
     with pytest.raises(JudgmentError, match="only a choice has candidates"):
         load_question(path)
+
+
+_OPEN = [
+    {
+        "key": "IT-7",
+        "subject": "Printer on 3 jammed",
+        "body": "Paper jam, mail me at a@example.com",
+    },
+    {"key": "IT-8", "subject": "VPN slow", "body": "since 9"},
+]
+
+
+def _already_open(engine: Any, fallback: Any = None) -> Decision:
+    d3 = load_question(REPO_ROOT / DECISIONS_DIR / "d3.yaml")
+    return Decision(d3, 0.79, primary=engine, fallback=fallback)
+
+
+class _Picks:
+    """Answers decision 3 as told, and keeps the answers it was offered."""
+
+    name = "typesafe:jev-test"
+
+    def __init__(self, answer: str, probability: float) -> None:
+        self.answer, self.probability = answer, probability
+        self.offered: list[dict[str, str]] = []
+
+    def judge(self, question: Question, state: str, *, timeout_s: float) -> Judgment:
+        self.offered.append(dict(question.answers))
+        return Judgment("d3", question.version, self.answer, self.probability, self.name, 80, 2e-05)
+
+
+class TestAlreadyOpen:
+    def test_a_match_that_stands_is_named_and_traced_and_the_run_goes_on(self) -> None:
+        picks = _Picks("IT-7", 0.9)
+        app = _app_with_stage(_Engine("incident", 0.99), already_open=_already_open(picks))
+        run, response = _post(app, {"input": _INCIDENT, "open_items": _OPEN})
+        data = response.json()
+        run.assert_called_once()
+        assert (data["already_open"]["key"], data["already_open"]["probability"]) == ("IT-7", 0.9)
+        assert [e["details"]["question"] for e in _events(app)] == ["d1", "d3"]
+        # The open Work items are offered redacted, keyed by their keys, then none.
+        [offered] = picks.offered
+        assert list(offered) == ["IT-7", "IT-8", "none"]
+        assert "Printer on 3 jammed" in offered["IT-7"] and "a@example.com" not in offered["IT-7"]
+
+    @pytest.mark.parametrize(
+        "picks", [_Picks("IT-7", 0.6), _Picks("none", 0.95)], ids=["below its cut", "none"]
+    )
+    def test_otherwise_nothing_is_named(self, picks: _Picks) -> None:
+        app = _app_with_stage(_Engine("incident", 0.99), already_open=_already_open(picks))
+        _, response = _post(app, {"input": _INCIDENT, "open_items": _OPEN})
+        assert response.json()["already_open"] is None
+        assert [e["details"]["question"] for e in _events(app)] == ["d1", "d3"]
+
+    def test_a_fallback_s_match_is_not_named(self) -> None:
+        decision = _already_open(_Down(), fallback=_Picks("IT-7", 0.99))
+        app = _app_with_stage(_Engine("incident", 0.99), already_open=decision)
+        _, response = _post(app, {"input": _INCIDENT, "open_items": _OPEN})
+        assert response.json()["already_open"] is None
+
+    def test_without_open_items_it_is_not_asked(self) -> None:
+        picks = _Picks("IT-7", 0.9)
+        app = _app_with_stage(_Engine("incident", 0.99), already_open=_already_open(picks))
+        _post(app, {"input": _INCIDENT})
+        assert picks.offered == []
+
+    def test_an_ask_carries_the_match_too(self) -> None:
+        app = _app_with_stage(
+            _Engine("incident", 0.99),
+            already_open=_already_open(_Picks("IT-7", 0.9)),
+            enough=_enough(_Says({"d4": ("no", 0.9)})),
+        )
+        run, response = _post(app, {"input": _INCIDENT, "open_items": _OPEN}, "/api/run/stream")
+        run.assert_not_called()
+        assert '"ask": {' in response.text and '"already_open": {' in response.text

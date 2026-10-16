@@ -37,6 +37,14 @@ Status: accepted (2026-09-23)
 > is taken as one; the webhook logs it. A reply re-runs the Work item from decision 1 with its type
 > as decided, so decision 2 is not asked again, and decision 4 is not asked a second time. On the
 > label set only 4 of 39 Incidents are too thin, so its cut rests on very little.
+>
+> **Revised 2026-10-16** (#230): decision 3 is asked only where a source can list open Work items:
+> on JSM the intake adapter queries its own JQL scope for issues created in the last hour and not
+> done, and sends them with the run. Each is an answer, keyed by its key, beside `none`. The set's
+> rows are distinct problems, so decision 3 is measured on items of its own: a drafted duplicate of
+> each Incident, offered among five open Work items, and each Incident offered five that are not.
+> At their cuts both engines name a match 95% rightly, finding nearly every duplicate. A match that
+> clears its cut is named in the comment, and nothing below it is said.
 
 A Work item reaches a suggestion through a string of decisions, and today a
 language model makes every one of them in prose. Classification is one call

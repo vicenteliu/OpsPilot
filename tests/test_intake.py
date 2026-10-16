@@ -132,7 +132,7 @@ class FakeRunClient:
         self._responses = responses or {}
         self.calls: list[str] = []
 
-    def run(self, work_item: dict[str, Any]) -> dict[str, Any]:
+    def run(self, work_item: dict[str, Any], **_: Any) -> dict[str, Any]:
         key = str(work_item["ticket_id"])
         self.calls.append(key)
         return self._responses.get(key, dict(_OK))
@@ -236,7 +236,7 @@ class TestIntakeLoop:
 
     def test_run_exception_skips_item_and_continues(self, tmp_path: Path) -> None:
         class Boom(FakeRunClient):
-            def run(self, work_item: dict[str, Any]) -> dict[str, Any]:
+            def run(self, work_item: dict[str, Any], **_: Any) -> dict[str, Any]:
                 if work_item["ticket_id"] == "IT-101":
                     raise RuntimeError("connection refused")
                 return super().run(work_item)
@@ -458,7 +458,7 @@ class TestIntakeLoopPersistence:
         path, out = tmp_path / "state.json", tmp_path / "out"
 
         class Boom(FakeRunClient):
-            def run(self, work_item: dict[str, Any]) -> dict[str, Any]:
+            def run(self, work_item: dict[str, Any], **_: Any) -> dict[str, Any]:
                 if work_item["ticket_id"] == "IT-101":
                     raise RuntimeError("connection refused")
                 return super().run(work_item)
@@ -590,13 +590,16 @@ class _AskedTransport:
         self.asked_for.append(key)
         return self.reply
 
+    def fetch_open_items(self, key: str) -> list[dict[str, Any]]:
+        return []
+
 
 class _SeqRunClient:
     def __init__(self, *responses: dict[str, Any]) -> None:
         self.responses = list(responses)
         self.calls: list[tuple[dict[str, Any], bool]] = []
 
-    def run(self, work_item: dict[str, Any], *, asked: bool = False) -> dict[str, Any]:
+    def run(self, work_item: dict[str, Any], *, asked: bool = False, **_: Any) -> dict[str, Any]:
         self.calls.append((dict(work_item), asked))
         return self.responses.pop(0)
 
@@ -665,3 +668,60 @@ class TestJsmFetchReply:
     def test_no_reply_while_opspilot_s_comment_is_the_last(self) -> None:
         comments = ["## OpsPilot: more information needed\n\nSince when?"]
         assert self._transport(comments).fetch_reply("IT-9") is None
+
+
+# ── Already open: the open Work items and the match (#230) ────────────────────
+
+
+class TestAlreadyOpenOnJsm:
+    def test_open_items_are_the_scope_s_last_hour_newest_first(self) -> None:
+        capture: dict[str, Any] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            capture.update(dict(request.url.params))
+            issue = {"key": "IT-7", "fields": {"summary": "Printer jam", "description": None}}
+            return httpx.Response(200, json={"issues": [issue], "total": 1})
+
+        transport = JsmTransport(
+            base_url="https://example.atlassian.net",
+            email="ops@example.com",
+            api_token="jsm-tok",
+            jql='project = IT AND status = "Open" ORDER BY created ASC',
+            http=httpx.Client(transport=httpx.MockTransport(handler)),
+        )
+        assert transport.fetch_open_items("IT-9") == [
+            {"key": "IT-7", "subject": "Printer jam", "body": ""}
+        ]
+        assert capture["jql"] == (
+            '(project = IT AND status = "Open") AND created >= "-1h" AND statusCategory != Done'
+            ' AND key != "IT-9" ORDER BY created DESC'
+        )
+        assert capture["maxResults"] == "20"
+
+    def test_the_loop_offers_them_and_the_comment_names_the_match(self) -> None:
+        class Open(_AskedTransport):
+            def fetch_open_items(self, key: str) -> list[dict[str, Any]]:
+                return [{"key": "IT-7", "subject": "Printer jam", "body": "floor 3"}]
+
+        offered: list[Any] = []
+
+        class Client:
+            def run(self, work_item: dict[str, Any], **kw: Any) -> dict[str, Any]:
+                offered.append(kw.get("open_items"))
+                return {**_OK, "already_open": {"key": "IT-7", "probability": 0.91}}
+
+        transport = Open()
+        IntakeLoop(transport, Client()).run_once()  # type: ignore[arg-type]
+        assert offered == [[{"key": "IT-7", "subject": "Printer jam", "body": "floor 3"}]]
+        body = transport.comments[0][1]
+        assert "**Already open?** This looks like the same problem as IT-7 (p=0.91)" in body
+        assert "OpsPilot links nothing" in body
+
+    def test_open_items_that_cannot_be_read_run_it_without_them(self) -> None:
+        class Down(_AskedTransport):
+            def fetch_open_items(self, key: str) -> list[dict[str, Any]]:
+                raise httpx.ConnectError("refused")
+
+        client = _SeqRunClient(_OK)
+        report = IntakeLoop(Down(), client).run_once()  # type: ignore[arg-type]
+        assert report.commented == ["IT-9"]

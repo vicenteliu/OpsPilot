@@ -186,6 +186,14 @@ either claim.
   a JSM comment, whose key the poller watches for a reply, or a Telegram
   reply, whose chat's next message is the reply. The reply runs it again,
   once.
+- Already open, decision 3 (#230): a Choice over the open Work items a source
+  lists, or `none`. Measured on a drafted duplicate of each Incident and the
+  Incidents themselves, each offered five open Work items (78 items, labelled
+  blind): at 0.79 Jev names a match for 116 of the 117 duplicate answers and
+  for 6 of the 117 others, 95% of its matches right; the Playbook's model, at
+  0.72, alike. On JSM the intake adapter sends the scope's open issues from
+  the last hour, and a match that clears its cut is named in the comment for a
+  person to link; OpsPilot links nothing.
 
 *Not yet:*
 
