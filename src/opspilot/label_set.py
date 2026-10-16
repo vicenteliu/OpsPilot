@@ -912,11 +912,11 @@ def label_known_fix(
     )
 
 
-# ── Decisions asked of an Incident: Impact, Urgency (#227), which team (#228) ─
+# ── A pass over one type's rows: Impact, Urgency, team (#227, #228), catalog item (#231) ─
 
 
 @dataclass(frozen=True)
-class IncidentLabelResult:
+class LabelPassResult:
     labelled: int
     total: int
     counts: dict[str, dict[str, int]]  # column → answer → rows labelled it
@@ -931,7 +931,7 @@ def _levels(question: Question) -> dict[str, str]:
     return {str(n): level for n, level in enumerate(question.answers, start=1)}
 
 
-def label_incidents(
+def label_pass(
     path: Path = OUT_PATH,
     *,
     by: str,
@@ -939,22 +939,23 @@ def label_incidents(
     show: Show,
     columns: dict[str, Question],
     stamp: str,
+    of: str = "incident",
     clock: Clock = _utc_now,
-) -> IncidentLabelResult:
-    """Label each Incident's ``columns``, blind, in one pass (e.g. impact then urgency).
+) -> LabelPassResult:
+    """Label each row of type ``of``, blind, in one pass over ``columns`` (e.g. impact then urgency).
 
-    Only the rows labelled ``incident`` are asked: ADR-0040 asks these
-    decisions of an Incident. Each row shows its subject, body and channel,
-    and no other label. A row's answers are saved as they are given, with
-    ``{stamp}_labelled_by`` and ``{stamp}_labelled_time``, so a rerun picks up
-    at the first open row.
+    Only the rows labelled ``of`` are asked: ADR-0040 asks these decisions of
+    an Incident, or on the request path of a service request (#231). Each row
+    shows its subject, body and channel, and no other label. A row's answers
+    are saved as they are given, with ``{stamp}_labelled_by`` and
+    ``{stamp}_labelled_time``, so a rerun picks up at the first open row.
     """
     if not path.is_file():
         raise LabelSetError(f"{path} not found: draft the set first")
     rows = _read_jsonl(path)
     if any(r["work_item_type"] is None for r in rows):
-        raise LabelSetError("label every row's type first; only Incidents are asked")
-    incidents = [r for r in rows if r["work_item_type"] == "incident"]
+        raise LabelSetError(f"label every row's type first; only {of} rows are asked")
+    asked = [r for r in rows if r["work_item_type"] == of]
     keys = {column: _levels(q) for column, q in columns.items()}
     first = next(iter(columns))
 
@@ -967,13 +968,13 @@ def label_incidents(
         return f"{column}? " + " · ".join(f"{k} {v}" for k, v in keys[column].items())
 
     def next_open(start: int) -> int:
-        open_ = (j for j in range(start, len(incidents)) if first not in incidents[j])
-        return next(open_, len(incidents))
+        open_ = (j for j in range(start, len(asked)) if first not in asked[j])
+        return next(open_, len(asked))
 
     i = next_open(0)
-    while i < len(incidents):
-        row = incidents[i]
-        show(f"\n── {row['id']} ({i + 1}/{len(incidents)}) · {row['channel']} ──")
+    while i < len(asked):
+        row = asked[i]
+        show(f"\n── {row['id']} ({i + 1}/{len(asked)}) · {row['channel']} ──")
         show(f"Subject: {row['subject'] or '(none)'}")
         show(row["body"] or "(no body)")
         answer = _ask_choice(ask, prompt(first) + "  (u back, q quit)", keys[first], nav=True)
@@ -999,10 +1000,10 @@ def label_incidents(
         _write_jsonl(path, rows)
         i = next_open(i + 1)
 
-    done = [r for r in incidents if first in r]
-    return IncidentLabelResult(
+    done = [r for r in asked if first in r]
+    return LabelPassResult(
         labelled=len(done),
-        total=len(incidents),
+        total=len(asked),
         counts={
             column: {a: sum(r[column] == a for r in done) for a in q.answers}
             for column, q in columns.items()

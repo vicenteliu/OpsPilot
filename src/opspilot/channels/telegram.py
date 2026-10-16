@@ -20,7 +20,7 @@ from typing import Any
 
 import httpx
 
-from ..intake import OpsPilotRunClient, render_comment, with_reply
+from ..intake import OpsPilotRunClient, render_automated_comment, render_comment, with_reply
 from .base import OpsPilotChatClient
 
 logger = logging.getLogger("opspilot.channels.telegram")
@@ -180,6 +180,9 @@ class TelegramChannel:
                 "suggestion. A person needs to handle it.",
             )
             return
+        if (res.get("catalog") or {}).get("automated"):
+            self._send(chat_id, render_automated_comment(res["catalog"]))
+            return
         if res.get("ask"):
             self._states.setdefault(chat_id, _ChatState()).awaiting = work_item
             self._send(
@@ -202,7 +205,12 @@ class TelegramChannel:
             )
             return
         self._send(
-            chat_id, render_comment(res["result"], session_id=str(res.get("session_id", "")))
+            chat_id,
+            render_comment(
+                res["result"],
+                session_id=str(res.get("session_id", "")),
+                catalog=res.get("catalog"),
+            ),
         )
 
     # ── Telegram Bot API plumbing ──────────────────────────────────────────

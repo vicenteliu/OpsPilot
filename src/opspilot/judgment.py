@@ -25,7 +25,7 @@ import re
 import time
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
-from typing import Any, Final, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Final, Literal, Protocol
 
 import httpx
 import yaml
@@ -38,6 +38,9 @@ from .providers.base import ProviderProtocol
 from .providers.pricing import estimate_cost_usd
 from .providers.types import Message, SamplingParams
 from .redaction import Redactor
+
+if TYPE_CHECKING:
+    from .catalog import CatalogDecision
 
 logger = logging.getLogger("opspilot.judgment")
 
@@ -535,6 +538,9 @@ class Stage:
     # Asked of an Incident a source offers open Work items for; a match that
     # stands is named for a person to link. None until measured (#230).
     already_open: Decision | None = None
+    # The request path: which catalog item, over the catalog its Lookups read;
+    # None until measured for its engine on this catalog (#231).
+    catalog: CatalogDecision | None = None
 
     def stops_for_security(self, judgment: Judgment) -> bool:
         """At or above decision 1's cut on P(yes), or answered by the fallback: stop.
@@ -646,6 +652,42 @@ def _already_open(
     return already_open
 
 
+def _catalog(
+    decisions_dir: Path, primary: JudgmentEngine, fallback: JudgmentEngine | None
+) -> CatalogDecision | None:
+    """Which catalog item at its engine's measured cut, or None, and the log says so (#231).
+
+    Unmeasured, or measured on another catalog, every request runs its Playbook
+    as before, and a person checks the item and its approval.
+    """
+    from .catalog import (
+        CATALOG_FILE,
+        CATALOG_ITEM_FILE,
+        CatalogDecision,
+        catalog_question,
+        load_catalog,
+    )
+
+    try:
+        catalog = load_catalog(decisions_dir / CATALOG_FILE)
+        question = catalog_question(decisions_dir / CATALOG_ITEM_FILE, catalog)
+    except JudgmentError as e:
+        logger.warning("The Judgments stage runs WITHOUT the catalog: %s (#231).", e)
+        return None
+    threshold = question.thresholds.get(primary.name)
+    if threshold is None:
+        logger.warning(
+            "The Judgments stage runs WITHOUT the catalog: %s has no threshold for %s, so a "
+            "person checks each request's item and approval (#231).",
+            decisions_dir / CATALOG_ITEM_FILE,
+            primary.name,
+        )
+        return None
+    return CatalogDecision(
+        Decision(question, threshold, primary=primary, fallback=fallback), catalog
+    )
+
+
 def _enough(
     decisions_dir: Path, primary: JudgmentEngine, fallback: JudgmentEngine | None
 ) -> Decision | None:
@@ -694,8 +736,9 @@ def build_stage(
     With a TypeSafe key, Jev decides both and the Playbook's model is its
     fallback: Classification for decision 2, the Question asked as written for
     decision 1. Without one, the Playbook's model decides alone, and the log
-    says so. Decision 1, already open, enough to act on, the team, and Impact
-    and Urgency run only once they are measured for their engine.
+    says so. Decision 1, already open, enough to act on, the team, Impact and
+    Urgency, and the catalog item run only once they are measured for their
+    engine.
     """
     asked = QuestionJudge(classify_playbook, provider)
     classified = ClassificationJudge(classify_playbook, provider)
@@ -713,6 +756,7 @@ def build_stage(
             team=_team(decisions_dir, jev, asked),
             enough=_enough(decisions_dir, jev, asked),
             already_open=_already_open(decisions_dir, jev, asked),
+            catalog=_catalog(decisions_dir, jev, asked),
         )
     stage = Stage(
         security=_security(decisions_dir, asked, None),
@@ -721,6 +765,7 @@ def build_stage(
         team=_team(decisions_dir, asked, None),
         enough=_enough(decisions_dir, asked, None),
         already_open=_already_open(decisions_dir, asked, None),
+        catalog=_catalog(decisions_dir, asked, None),
     )
     logger.warning(
         "The Judgments stage is on without TYPESAFE_API_KEY: %s decides alone.", classified.name

@@ -41,8 +41,8 @@ from opspilot.label_set import (
     check_row,
     draft_duplicates,
     label_already_open,
-    label_incidents,
     label_known_fix,
+    label_pass,
     label_rows,
     near_duplicates,
     plan_slots,
@@ -1020,7 +1020,7 @@ def _incidents_file(tmp_path: Path) -> Path:
 
 
 def _label_levels(path: Path, keys: Keys, shown: list[str] | None = None) -> Any:
-    return label_incidents(
+    return label_pass(
         path,
         by="vicenteliu",
         ask=keys,
@@ -1110,7 +1110,7 @@ D6 = load_question(REPO_ROOT / DECISIONS_DIR / "d6.yaml")
 def test_each_incident_is_asked_its_team_and_the_row_records_d6(tmp_path: Path) -> None:
     path = _incidents_file(tmp_path)
     keys = Keys("1", "2", "2")
-    res = label_incidents(
+    res = label_pass(
         path,
         by="vicenteliu",
         ask=keys,
@@ -1254,3 +1254,21 @@ class TestDecision3Sets:
         text = "\n".join(shown)
         assert D3.answers["none"] in text and "[5]" in text
         assert "LS1-" not in text and "duplicate" not in text  # no keys, no kinds
+
+
+def test_cli_label_catalog_item_asks_each_request_over_the_catalog(tmp_path: Path) -> None:
+    """r1 (#231): only the service requests are asked; the catalog's items are the keys."""
+    from opspilot import cli
+
+    path = _incidents_file(tmp_path)  # LS1-002 is the one request
+    result = CliRunner().invoke(
+        cli.app,
+        ["labelset", "label-catalog-item", "--by", "v", "--set", str(path)],
+        input="1\n",
+    )
+    assert result.exit_code == 0, result.output
+    assert "1 vpn_access · 2 new_account" in result.output and "17 none" in result.output
+    assert "labelled 1 service requests against r1-v1 · catalog item: vpn_access 1" in result.output
+    rows = _read(path)
+    assert [r.get("catalog_item") for r in rows] == [None, "vpn_access", None, None]
+    assert rows[1]["answer_space"] == {"r1": "r1-v1"}

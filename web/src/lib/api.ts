@@ -60,6 +60,18 @@ export interface AskJudgment {
   text: string;
 }
 
+// The request path (#231): the catalog item a request is for, or item null when
+// none stood, with what was looked up for it; never decided by a model.
+export interface CatalogMatch {
+  item: string | null;
+  name?: string;
+  approval?: 'none' | 'manager' | 'owner' | 'security';
+  entitled?: boolean | null;
+  automated?: boolean;
+  stock_category?: string | null;
+  in_stock?: number;
+}
+
 export interface RunResponse {
   session_id: string;
   artifact_id: string | null;
@@ -73,6 +85,7 @@ export interface RunResponse {
   needs_confirmation?: boolean;
   security?: SecurityJudgment | null;
   ask?: AskJudgment | null;
+  catalog?: CatalogMatch | null;
 }
 
 // A work-item artifact: incident_summary_v1 or request_fulfillment_v1.

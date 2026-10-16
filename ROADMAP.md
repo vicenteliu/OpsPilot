@@ -194,12 +194,21 @@ either claim.
   0.72, alike. On JSM the intake adapter sends the scope's open issues from
   the last hour, and a match that clears its cut is named in the comment for a
   person to link; OpsPilot links nothing.
+- The request path's first decision (#231): which item of a sample service
+  catalog (`judgments/decisions/catalog.yaml`, 16 items) a request is for. On
+  the 41 service requests, 16 for no item: Jev, at 0.96, names 57 of the 75
+  with an item rightly and 3 of the 48 without one; the Playbook's model, at
+  0.70, 47 and 1. With the stage on, an item that clears its cut is looked up
+  for approval, entitlement, stock and automation, and its approval replaces
+  the model's; an automated item runs no Playbook.
 
 *Not yet:*
 
 - Decision 1's automation (#281).
 - The handbook's pages shown to the person in Jev's order (#286).
 - Site-wide Incidents in the label set, to measure Impact's highest level (#288).
+- The request path's other two Judgments: really a request (#293), and enough
+  to fulfil (#294).
 - The rest of ADR-0040's order of work, #227–#231; filed and not scheduled,
   #232 and #233.
 

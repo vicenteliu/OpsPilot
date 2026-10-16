@@ -227,6 +227,11 @@ class ApiRunResponse(BaseModel):
     # Decision 3 named an open Work item as the same problem (#230): "key" is
     # it, beside the Judgment behind it. Advisory: a person links the two.
     already_open: dict[str, Any] | None = None
+    # The request path (#231): the catalog item a service request is for, or
+    # "item" None when none stood, with what was looked up for it: approval,
+    # entitlement, stock and whether it is automated. An automated item runs no
+    # Playbook, so it sets needs_confirmation, as an ask does.
+    catalog: dict[str, Any] | None = None
     # Asset ids drafted from this run's asset_draft block (ADR-0018).
     assets_drafted: list[str] = []
 

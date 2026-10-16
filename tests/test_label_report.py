@@ -733,3 +733,26 @@ def test_the_d3_report_finds_the_cut_at_which_the_matches_named_are_95_percent_r
     assert "| e | none (10) | – | 9 | 1 |" in md
     # At 0.9 nine matches are named, all right; at 0.7 the false one joins: 9/10.
     assert "| e | 0.900 | 9/20 | 100.0% | 9/10 | 0/10 |" in md
+
+
+def test_a_wide_choice_s_report_gives_right_none_or_another_per_label() -> None:
+    """r1 (#231): a column per catalog item would be unreadable."""
+    from opspilot.catalog import catalog_question, load_catalog
+
+    decisions = REPO_ROOT / DECISIONS_DIR
+    r1 = catalog_question(decisions / "r1.yaml", load_catalog(decisions / "catalog.yaml"))
+    space = {"d2": D2.version, "d1": D1.version, "r1": r1.version}
+    rows = [
+        _row(i, "service_request", catalog_item="loaner" if i <= 3 else "none", answer_space=space)
+        for i in range(1, 6)
+    ]
+    answers = {"LS1-001": ("loaner", 0.9), "LS1-002": ("none", 0.6), "LS1-003": ("reimage", 0.5)}
+    answers |= {"LS1-004": ("none", 0.8), "LS1-005": ("guest_wifi", 0.4)}
+    md = incident_report_markdown(rows, _records("e", answers), r1, rows_are="service requests")
+    assert md.startswith("# r1-v1 on the label set's service requests")
+    assert "| Engine | Labelled (answers) | Right | Said none | Another |" in md
+    assert "| e | loaner (3) | 1 | 1 | 1 |" in md
+    assert "| e | none (2) | 1 | – | 1 |" in md
+    # Named answers: loaner 0.9 (right), reimage 0.5, guest_wifi 0.4 (both wrong).
+    assert "## Named: the lowest probability at which the answers other than `none`" in md
+    assert "| e | 0.900 | 1/5 | 100.0% | 1/3 | 0/2 |" in md

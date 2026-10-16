@@ -302,6 +302,14 @@
       A person needs to handle it. OpsPilot made no suggestion, offered no knowledge-base fix and ran no Playbook.
     </p>
   </div>
+{:else if result?.catalog?.automated}
+  <div class="confirm-banner">
+    <p>
+      <strong>Fulfilled by automation.</strong>
+      The catalog says {result.catalog.name} is fulfilled automatically, so there is no Task for a
+      person. OpsPilot ran nothing.
+    </p>
+  </div>
 {:else if result?.ask}
   <div class="confirm-banner">
     <p>
@@ -324,6 +332,18 @@
     </div>
   </div>
 {:else if result?.classification}
+  {#if result.catalog}
+    <p class="classified-note">
+      {#if result.catalog.item}
+        Catalog item: <span class="wi-badge">{result.catalog.name}</span> · approval
+        {result.catalog.approval === 'none' ? 'none needed' : result.catalog.approval}
+        {#if result.catalog.stock_category} · {result.catalog.in_stock ?? 0} {result.catalog.stock_category} in stock{/if}
+        (looked up, not decided by a model)
+      {:else}
+        Not matched to the catalog: a person checks the item and its approval.
+      {/if}
+    </p>
+  {/if}
   <p class="classified-note">
     Classified as <span class="wi-badge">{result.classification.work_item_type}</span>
     ({(result.classification.confidence * 100).toFixed(0)}% confidence)

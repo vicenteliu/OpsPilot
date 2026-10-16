@@ -139,12 +139,58 @@ def _already_open_line(already_open: dict[str, Any] | None) -> list[str]:
     ]
 
 
+_ENTITLED = {
+    True: "yes",
+    False: "no, a person checks",
+    None: "not known (no submitter role), a person checks",
+}
+
+
+def _catalog_lines(catalog: dict[str, Any] | None) -> list[str]:
+    """The catalog item and what was looked up for it, never decided by a model (#231)."""
+    if not catalog:
+        return []
+    if not catalog.get("item"):
+        return ["**Catalog item:** not matched, so a person checks the item and its approval.", ""]
+    approval = catalog.get("approval", "none")
+    parts = [
+        f"**Catalog item:** {catalog.get('name', catalog['item'])}",
+        f"**Approval:** {'none needed' if approval == 'none' else approval}",
+        f"**Entitled:** {_ENTITLED[catalog.get('entitled')]}",
+    ]
+    if catalog.get("stock_category"):
+        parts.append(f"**In stock:** {catalog.get('in_stock', 0)} {catalog['stock_category']}")
+    lines = [" · ".join(parts)]
+    if catalog.get("fields"):
+        lines.append(f"**Needs:** {', '.join(catalog['fields'])}")
+    return [*lines, "_Looked up in the service catalog, not decided by a model._", ""]
+
+
+def render_automated_comment(catalog: dict[str, Any]) -> str:
+    """Render a catalog item the organisation's own automation fulfils (#231)."""
+    return "\n".join(
+        [
+            f"{OPSPILOT_HEADING}: fulfilled by automation",
+            "",
+            f"**Catalog item:** {catalog.get('name', catalog.get('item'))}. The catalog says it is "
+            "fulfilled automatically, so there is no Task for a person. OpsPilot ran nothing.",
+            "",
+            "_Looked up in the service catalog; the system of record owns the final values._",
+        ]
+    )
+
+
 def render_comment(
-    result: dict[str, Any], *, session_id: str, already_open: dict[str, Any] | None = None
+    result: dict[str, Any],
+    *,
+    session_id: str,
+    already_open: dict[str, Any] | None = None,
+    catalog: dict[str, Any] | None = None,
 ) -> str:
     """Render a run artifact as one structured, source-agnostic comment."""
     lines = [f"{OPSPILOT_HEADING} suggestion", ""]
     lines += _already_open_line(already_open)
+    lines += _catalog_lines(catalog)
     if result.get("summary"):
         lines += [str(result["summary"]), ""]
     if result.get("requested_item"):
@@ -427,6 +473,9 @@ class IntakeLoop:
         if security.get("stops"):
             self._deliver(key, render_security_comment(security), "", report)
             return
+        if (res.get("catalog") or {}).get("automated"):
+            self._deliver(key, render_automated_comment(res["catalog"]), "", report)
+            return
         if res.get("ask"):
             body = render_ask_comment(res["ask"], res.get("already_open"))
             self._deliver(key, body, "", report)
@@ -444,7 +493,10 @@ class IntakeLoop:
             return
         session_id = str(res.get("session_id", ""))
         body = render_comment(
-            res["result"], session_id=session_id, already_open=res.get("already_open")
+            res["result"],
+            session_id=session_id,
+            already_open=res.get("already_open"),
+            catalog=res.get("catalog"),
         )
         self._deliver(key, body, session_id, report)
 
