@@ -22,6 +22,7 @@ These columns now, the rest in their slices. Each is labelled against a versione
 | `team` | 6 · Which team? | `network` · `systems` | `d6-v1` | #228 |
 | `enough` | 4 · Enough to act on? | `yes` · `no` | `d4-v1` | #229 |
 | `same` (in `already_open_d3_v1.jsonl`) | 3 · Already open? | an open Work item's key, or `none` | `d3-v1` | #230 |
+| `catalog_item` | r1 · Which catalog item? | an item of `catalog.yaml`, or `none` | `r1-v1` | #231 |
 
 **`d2-v1`**, the definitions the Playbook's classifier already uses
 (`playbooks/pb_classify_work_item_en/prompt.md`):
@@ -69,6 +70,12 @@ labelled `incident` only. `yes` when the item says what is wrong, who or what is
 enough of where, since when, or what was seen (an error, a message) to start diagnosing; `no` when
 an engineer would have to ask the reporter first.
 
+**`r1-v1`** (2026-10-16, #231), as `judgments/decisions/r1.yaml` states it, over the sample
+catalog `judgments/decisions/catalog.yaml` (`catalog-v1`): the catalog item a service request is
+for, each meaning its name and description, or `none` when the catalog has no item for what is
+asked. Labelled on the rows labelled `service_request` only. A changed catalog is a new answer
+space, labelled and measured again.
+
 **`d3-v1`** (2026-10-16, #230), as `judgments/decisions/d3.yaml` states it: whether a Work item
 reports the same problem as one of the open Work items it is offered, or `none` when it is a
 different problem, even on the same subject. The set's rows were drafted as distinct problems, so
@@ -91,6 +98,7 @@ decision 3 is measured on items of its own (§5, §6), not on a column of `label
 | `impact` · `urgency` | **person** | `d7-v1` · `d8-v1`, Incidents only; with `impact_urgency_labelled_by` and `impact_urgency_labelled_time` |
 | `team` | **person** | `d6-v1`, Incidents only; with `team_labelled_by` and `team_labelled_time` |
 | `enough` | **person** | `d4-v1`, Incidents only; with `enough_labelled_by` and `enough_labelled_time` |
+| `catalog_item` | **person** | `r1-v1`, service requests only; with `catalog_item_labelled_by` and `catalog_item_labelled_time` |
 | `label_confidence` | **person** | `high` · `low`. Low = "I picked, but it could go the other way" |
 | `label_note` | person, optional | one line, only when the reason isn't obvious |
 | `answer_space` | script | `{"d2": "d2-v1", "d1": "d1-v1"}` at labelling time |
@@ -194,6 +202,9 @@ security.
   body and channel and its five open Work items by number, with their subject and body and not
   their keys; the labeller picks the one that is the same problem, or none (`opspilot labelset
   label-already-open`). What an item was drafted from stays hidden.
+- **Catalog item** (#231, `r1-v1`): the catalog is shown first, each item by number with its
+  description; then each row labelled `service_request`, shown as the Incidents are, and the
+  labeller picks its item, or `none` (`opspilot labelset label-catalog-item`).
 - **Enough to act on** (#229, `d4-v1`): each row labelled `incident` is shown the same way, and
   the labeller says whether an engineer could start on it without asking first (`opspilot
   labelset label-enough`).
@@ -238,6 +249,11 @@ five open Work items, each redacted and keyed by its row id, then `none`: the Ch
 builds from a source's open Work items. The calls go to `runs_d3_v1.jsonl`. The stage acts only on
 a match, so the report gives the cut at which the matches named are at least 95% right, with how
 many labelled matches are named rightly and how many items labelled `none` are named one.
+
+**The request path's r1** (#231): `--decision r1` asks each service request which catalog item it is
+for, over the catalog's items and `none`, into `runs_r1_v1.jsonl`, and reports it as the Incident
+decisions are; with many answers, each labelled item gets right, `none` or another instead of a
+column per item.
 
 **Decision 4** (#229): `--decision d4` reports whether each Incident has enough to act on, the same
 way, into `runs_d4_v1.jsonl`. The stage acts only on a `no` that clears its cut, so the report

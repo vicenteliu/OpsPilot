@@ -40,6 +40,7 @@ if TYPE_CHECKING:
     from .sandbox.types import ActionRequest
 
 from . import __version__
+from .catalog import CATALOG_FILE, catalog_question, load_catalog
 from .config import ensure_home, load_config
 from .errors import OpsPilotError, ProviderError, SchemaError
 from .harness import load_fixture, load_golden, run_harness
@@ -102,8 +103,8 @@ from .label_set import (
     build_candidates,
     draft_duplicates,
     label_already_open,
-    label_incidents,
     label_known_fix,
+    label_pass,
     label_rows,
     relabel_rows,
     relabel_security,
@@ -2143,7 +2144,7 @@ def labelset_label_impact_urgency(
     try:
         d7 = load_question(DECISIONS_DIR / "d7.yaml")
         d8 = load_question(DECISIONS_DIR / "d8.yaml")
-        res = label_incidents(
+        res = label_pass(
             path,
             by=by,
             ask=_ask_line,
@@ -2232,6 +2233,41 @@ def labelset_label_already_open(
     )
 
 
+@labelset_app.command("label-catalog-item")
+def labelset_label_catalog_item(
+    by: str = typer.Option(..., "--by", help="The labeller's handle, recorded on each row."),
+    path: Path = typer.Option(OUT_PATH, "--set", help="The labelled set."),  # noqa: B008
+) -> None:
+    """Label which catalog item each service request is for, blind (r1, #231).
+
+    Only the rows labelled service_request are asked. The catalog is shown
+    first, each item by number; answer each row with its item's number, or
+    the number of `none`. u goes back and q stops; every answer is saved.
+    """
+    try:
+        r1 = catalog_question(DECISIONS_DIR / "r1.yaml", load_catalog(DECISIONS_DIR / CATALOG_FILE))
+        res = label_pass(
+            path,
+            by=by,
+            ask=_ask_line,
+            show=typer.echo,
+            columns={"catalog_item": r1},
+            stamp="catalog_item",
+            of="service_request",
+        )
+    except OpsPilotError as e:
+        _console.print(f"Error: {e}", style="red", markup=False)
+        raise typer.Exit(1) from e
+    if not res.finished:
+        typer.echo(f"\nsaved · {res.labelled}/{res.total} labelled; rerun to continue")
+        return
+    picked = {k: n for k, n in res.counts["catalog_item"].items() if n}
+    typer.echo(
+        f"\nlabelled {res.labelled} service requests against {r1.version}"
+        f" · catalog item: {_counts(picked)}"
+    )
+
+
 @labelset_app.command("label-enough")
 def labelset_label_enough(
     by: str = typer.Option(..., "--by", help="The labeller's handle, recorded on each row."),
@@ -2245,7 +2281,7 @@ def labelset_label_enough(
     """
     try:
         d4 = load_question(DECISIONS_DIR / "d4.yaml")
-        res = label_incidents(
+        res = label_pass(
             path, by=by, ask=_ask_line, show=typer.echo, columns={"enough": d4}, stamp="enough"
         )
     except OpsPilotError as e:
@@ -2273,7 +2309,7 @@ def labelset_label_team(
     """
     try:
         d6 = load_question(DECISIONS_DIR / "d6.yaml")
-        res = label_incidents(
+        res = label_pass(
             path, by=by, ask=_ask_line, show=typer.echo, columns={"team": d6}, stamp="team"
         )
     except OpsPilotError as e:
@@ -2294,7 +2330,7 @@ def labelset_report(
         "d2",
         "--decision",
         help="d2 (incident or request), d1 (security), d3 (already open), d4 (enough to act"
-        " on), d6 (team), d7 (impact), d8 (urgency), d9 (known fix).",
+        " on), d6 (team), d7 (impact), d8 (urgency), d9 (known fix), r1 (catalog item).",
     ),
     path: Path = typer.Option(OUT_PATH, "--set", help="The labelled set."),  # noqa: B008
     runs_file: Path | None = typer.Option(  # noqa: B008
@@ -2322,8 +2358,10 @@ def labelset_report(
     report by a person.
     """
     try:
-        if decision not in ("d1", "d2", "d3", "d4", "d6", "d7", "d8", "d9"):
-            raise LabelSetError(f"--decision is d1, d2, d3, d4, d6, d7, d8 or d9, not {decision!r}")
+        if decision not in ("d1", "d2", "d3", "d4", "d6", "d7", "d8", "d9", "r1"):
+            raise LabelSetError(
+                f"--decision is d1, d2, d3, d4, d6, d7, d8, d9 or r1, not {decision!r}"
+            )
         if decision == "d3":
             # Decision 3 is measured on items of its own, not the set's rows (SPEC §5).
             path = ALREADY_OPEN_PATH
@@ -2333,8 +2371,15 @@ def labelset_report(
         if decision in ("d4", "d6", "d7", "d8"):
             # ADR-0040 asks these of an Incident, and only those are labelled.
             rows = [r for r in rows if r["work_item_type"] == "incident"]
+        if decision == "r1":
+            # The request path's first decision, asked of a service request (#231).
+            rows = [r for r in rows if r["work_item_type"] == "service_request"]
         name = {"d1": SECURITY_FILE, "d2": WORK_ITEM_TYPE_FILE}.get(decision, f"{decision}.yaml")
-        question = load_question(DECISIONS_DIR / name)
+        question = (
+            catalog_question(DECISIONS_DIR / name, load_catalog(DECISIONS_DIR / CATALOG_FILE))
+            if decision == "r1"
+            else load_question(DECISIONS_DIR / name)
+        )
         if whole_page and decision != "d9":
             raise LabelSetError("--whole-page is for d9 only")
         default_runs = runs_path(question)
@@ -2393,6 +2438,10 @@ def labelset_report(
             md = already_open_report_markdown(rows, _read_jsonl(runs_out), question)
         elif decision in ("d4", "d6", "d7", "d8"):
             md = incident_report_markdown(rows, _read_jsonl(runs_out), question)
+        elif decision == "r1":
+            md = incident_report_markdown(
+                rows, _read_jsonl(runs_out), question, rows_are="service requests"
+            )
         elif decision == "d9":
             md = known_fix_report_markdown(
                 rows, _read_jsonl(runs_out), question, whole_page=whole_page

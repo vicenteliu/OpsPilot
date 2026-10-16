@@ -1,0 +1,24 @@
+# The request path, first (ADR-0040, #231): which catalog item?
+#
+# Asked of a service request. A Choice whose answers are the catalog's items
+# (catalog.yaml), each meaning its name and description, and `none`, the
+# file's own. An item that clears its cut is looked up for its approval,
+# entitlement, stock and automation; below it, or `none`, the request
+# Playbook runs as before and a person checks the item. The answer space the
+# label set's `catalog_item` column is labelled against
+# (judgments/label_set/SPEC.md, r1-v1), over catalog_version below.
+id: r1
+version: r1-v1
+kind: choice
+catalog_version: catalog-v1
+question: >-
+  Which item of the service catalog is this request for?
+# What each catalog item means as an answer, {text} being its name and description.
+candidates: >-
+  {text}
+answers:
+  none: >-
+    None of them: the catalog has no item for what is asked.
+# Set from the label set, never guessed (ADR-0040), keyed by the engine it was
+# measured on; empty until that report has been run.
+thresholds: {}

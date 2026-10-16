@@ -72,6 +72,7 @@ _COLUMN: Final = {
     "d7": "impact",
     "d8": "urgency",
     "d9": "known_fix",
+    "r1": "catalog_item",
 }
 
 
@@ -556,9 +557,14 @@ def known_fix_report_markdown(
 
 
 def incident_report_markdown(
-    rows: list[dict[str, Any]], records: list[dict[str, Any]], question: Question
+    rows: list[dict[str, Any]],
+    records: list[dict[str, Any]],
+    question: Question,
+    *,
+    rows_are: str = "Incidents",
 ) -> str:
-    """Decision 6, 7 or 8 on the label set's Incidents: each engine's answer against the label.
+    """A decision asked of one type's rows (decisions 4, 6, 7, 8; r1 of requests): each
+    engine's answer against the label. ``rows_are`` names them in the report.
 
     The report gives what always answering the most common label would score:
     with few rows at some answers, that is the bar an engine has to clear. A
@@ -576,16 +582,19 @@ def incident_report_markdown(
     levels = list(question.answers)
     rank = {level: n for n, level in enumerate(levels)}
     ordered = question.kind == "score"
+    # Past a few answers a column per answer is unreadable (a catalog, #231):
+    # each labelled answer gets right, `none`, or another instead.
+    wide = len(levels) > 4
     labelled = {level: sum(v == level for v in labels.values()) for level in levels}
     common = max(levels, key=labelled.__getitem__)
     engines = list(dict.fromkeys(r["engine"] for r in records))
     runs = max((r["run"] for r in records), default=0)
     lines = [
-        f"# {question.version} on the label set's Incidents: the engines compared",
+        f"# {question.version} on the label set's {rows_are}: the engines compared",
         "",
-        f"{len(rows)} Incidents is not a benchmark: synthetic, English, labelled by one person, and"
+        f"{len(rows)} {rows_are} is not a benchmark: synthetic, English, labelled by one person, and"
         " the threshold is set on the same rows it is reported on; there is no held-out split at"
-        f" this size. Each engine answered every Incident {runs} times; the figures pool the runs.",
+        f" this size. Each engine answered every one {runs} times; the figures pool the runs.",
         "",
         "Labelled: "
         + ", ".join(f"{level} {n}" for level, n in labelled.items())
@@ -618,8 +627,16 @@ def incident_report_markdown(
             f" | {percentile(latencies, 0.5):.0f} ms | {percentile(latencies, 0.95):.0f} ms |"
         )
         for level in levels:
-            if labelled[level]:
-                said = [r["answer"] for r in ok if labels[r["id"]] == level]
+            if not labelled[level]:
+                continue
+            said = [r["answer"] for r in ok if labels[r["id"]] == level]
+            if wide:
+                nones = said.count("none") if level != "none" else 0
+                answered.append(
+                    f"| {engine} | {level} ({len(said)}) | {said.count(level)}"
+                    f" | {nones if level != 'none' else '–'} | {len(said) - said.count(level) - nones} |"
+                )
+            else:
                 answered.append(
                     f"| {engine} | {level} ({len(said)})"
                     + "".join(f" | {said.count(a)}" for a in levels)
@@ -638,8 +655,12 @@ def incident_report_markdown(
         "",
         "## What each engine answered, by label",
         "",
-        "| Engine | Labelled (answers) | " + " | ".join(levels) + " |",
-        "|---|---|" + "---|" * len(levels),
+        (
+            "| Engine | Labelled (answers) | Right | Said none | Another |"
+            if wide
+            else "| Engine | Labelled (answers) | " + " | ".join(levels) + " |"
+        ),
+        "|---|---|" + "---|" * (3 if wide else len(levels)),
         *answered,
         "",
         f"## Threshold: the lowest probability at which the answers decided are at least"

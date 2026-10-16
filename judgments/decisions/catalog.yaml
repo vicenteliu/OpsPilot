@@ -1,0 +1,101 @@
+# The sample service catalog (ADR-0040, #231). An organisation brings its own:
+# its items are the answer space of r1.yaml (which catalog item?), and what each
+# says is looked up, never decided by a model:
+#   approval   who signs off: none, manager, owner (of the group, app or
+#              resource), or security
+#   entitled   who may ask for it: all, or the submitter roles that may
+#   stock      the Asset category to count in stock: a category, or
+#              `requested` for the one the request asks for (ADR-0017)
+#   automated  fulfilled by the organisation's own automation (self-service,
+#              MDM): no Task for a person, and OpsPilot runs nothing
+# Changing the items changes r1's answer space: give it a new version, and
+# measure r1 again before its thresholds mean anything (catalog_version there).
+version: catalog-v1
+items:
+  vpn_access:
+    name: VPN access
+    description: Remote access through the VPN for someone who does not have it yet.
+    fields: [who needs it, why]
+    approval: manager
+  new_account:
+    name: New user account
+    description: Accounts for a new starter or contractor, before their first day.
+    fields: [name, start date, role, manager]
+    approval: manager
+    entitled: [manager]
+  mfa_reset:
+    name: MFA reset
+    description: Resetting or re-enrolling multi-factor sign-in, e.g. after a new phone.
+    fields: [who, how their identity was checked]
+    approval: none
+  password_reset:
+    name: Password reset or unlock
+    description: Resetting a forgotten password or unlocking an account.
+    fields: [who]
+    approval: none
+    automated: true
+  group_membership:
+    name: Group or shared mailbox membership
+    description: Adding or removing someone from a group, distribution list or shared mailbox.
+    fields: [who, which group]
+    approval: owner
+  shared_mailbox:
+    name: New shared mailbox or distribution list
+    description: Creating a shared mailbox or a distribution list.
+    fields: [name, owner, members]
+    approval: manager
+  saas_access:
+    name: SaaS application access
+    description: A seat, licence or role in a SaaS application.
+    fields: [who, which application, which role]
+    approval: owner
+  software_install:
+    name: Standard software install
+    description: Installing software that is on the approved list.
+    fields: [who, which software, which device]
+    approval: none
+    automated: true
+  new_hardware:
+    name: New hardware
+    description: A new laptop, monitor, phone or peripheral.
+    fields: [who, what, delivery site]
+    approval: manager
+    stock: requested
+  loaner:
+    name: Loaner device
+    description: A loaner laptop for a while, e.g. during a repair or for travel.
+    fields: [who, from when, until when]
+    approval: none
+    stock: laptop
+  hardware_return:
+    name: Hardware return
+    description: Returning a device, e.g. when someone leaves or gets a replacement.
+    fields: [who, which device]
+    approval: none
+  reimage:
+    name: Reimage a machine
+    description: Wiping and re-provisioning a machine, e.g. before it goes to someone else.
+    fields: [which device, for whom]
+    approval: none
+  certificate:
+    name: TLS certificate
+    description: A new or renewed TLS certificate for an internal site.
+    fields: [hostname, owner]
+    approval: security
+  recovery_key:
+    name: Disk encryption recovery key
+    description: Releasing a BitLocker or FileVault recovery key for a locked device.
+    fields: [which device, who, how their identity was checked]
+    approval: security
+  admin_rights:
+    name: Local admin rights
+    description: Administrator rights on a device, for a while or for good.
+    fields: [who, which device, why]
+    approval: security
+    entitled: [engineering]
+  guest_wifi:
+    name: Guest Wi-Fi access
+    description: Wi-Fi access for a visitor.
+    fields: [visitor, dates]
+    approval: none
+    automated: true
