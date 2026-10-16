@@ -166,6 +166,21 @@ def _catalog_lines(catalog: dict[str, Any] | None) -> list[str]:
     return [*lines, "_Looked up in the service catalog, not decided by a model._", ""]
 
 
+def render_change_comment(really: dict[str, Any]) -> str:
+    """Render a request r2 finds is a change: a person's, OpsPilot having no change path (#293)."""
+    p = float(really.get("probability") or 0.0)
+    return "\n".join(
+        [
+            f"{OPSPILOT_HEADING}: a person is needed, this looks like a change",
+            "",
+            f"Filed as a service request, this reads as a change to a shared service or its "
+            f"configuration (p={p:.2f}). OpsPilot has no change path, so it made no suggestion.",
+            "",
+            "_A person should handle it; the system of record owns the final values._",
+        ]
+    )
+
+
 def render_automated_comment(catalog: dict[str, Any]) -> str:
     """Render a catalog item the organisation's own automation fulfils (#231)."""
     return "\n".join(
@@ -186,9 +201,13 @@ def render_comment(
     session_id: str,
     already_open: dict[str, Any] | None = None,
     catalog: dict[str, Any] | None = None,
+    really: dict[str, Any] | None = None,
 ) -> str:
     """Render a run artifact as one structured, source-agnostic comment."""
     lines = [f"{OPSPILOT_HEADING} suggestion", ""]
+    if really and really.get("answer") == "incident":
+        p = float(really.get("probability") or 0.0)
+        lines += [f"**Filed as a request, handled as an Incident** (p={p:.2f}).", ""]
     lines += _already_open_line(already_open)
     lines += _catalog_lines(catalog)
     if result.get("summary"):
@@ -473,6 +492,9 @@ class IntakeLoop:
         if security.get("stops"):
             self._deliver(key, render_security_comment(security), "", report)
             return
+        if (res.get("really") or {}).get("answer") == "change":
+            self._deliver(key, render_change_comment(res["really"]), "", report)
+            return
         if (res.get("catalog") or {}).get("automated"):
             self._deliver(key, render_automated_comment(res["catalog"]), "", report)
             return
@@ -497,6 +519,7 @@ class IntakeLoop:
             session_id=session_id,
             already_open=res.get("already_open"),
             catalog=res.get("catalog"),
+            really=res.get("really"),
         )
         self._deliver(key, body, session_id, report)
 

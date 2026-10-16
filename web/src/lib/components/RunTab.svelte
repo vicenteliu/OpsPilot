@@ -302,6 +302,14 @@
       A person needs to handle it. OpsPilot made no suggestion, offered no knowledge-base fix and ran no Playbook.
     </p>
   </div>
+{:else if result?.really?.answer === 'change'}
+  <div class="confirm-banner">
+    <p>
+      <strong>This looks like a change, not a request.</strong>
+      ({(result.really.probability * 100).toFixed(0)}%) OpsPilot has no change path, so it made no
+      suggestion; a person should handle it.
+    </p>
+  </div>
 {:else if result?.catalog?.automated}
   <div class="confirm-banner">
     <p>
@@ -332,6 +340,12 @@
     </div>
   </div>
 {:else if result?.classification}
+  {#if result.really?.answer === 'incident'}
+    <p class="classified-note">
+      Filed as a request, handled as an <span class="wi-badge">incident</span>
+      ({(result.really.probability * 100).toFixed(0)}%)
+    </p>
+  {/if}
   {#if result.catalog}
     <p class="classified-note">
       {#if result.catalog.item}

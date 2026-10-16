@@ -232,6 +232,10 @@ class ApiRunResponse(BaseModel):
     # entitlement, stock and whether it is automated. An automated item runs no
     # Playbook, so it sets needs_confirmation, as an ask does.
     catalog: dict[str, Any] | None = None
+    # r2 found what was filed as a request is an "incident", which then took the
+    # incident path, or a "change", which stops for a person: OpsPilot has no
+    # change path (#293). The Judgment, with "answer" naming which.
+    really: dict[str, Any] | None = None
     # Asset ids drafted from this run's asset_draft block (ADR-0018).
     assets_drafted: list[str] = []
 

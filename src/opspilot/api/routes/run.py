@@ -358,6 +358,34 @@ def _judge_catalog(
     return {**trace, **looked_up}, trace
 
 
+def _judge_really(
+    state: Any, rendered: str | None, pb: Any
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """r2: is what was filed as a request really one, or an incident or a change (#293)?
+
+    Returns the Judgment when it clears its cut from the primary engine and is
+    not `request`: an `incident` takes the incident path, a `change` stops for a
+    person. Returns it for the trace otherwise, and the request path goes on.
+    """
+    stage = getattr(state, "judgments", None)
+    if (
+        stage is None
+        or stage.really is None
+        or rendered is None
+        or getattr(pb, "output_schema", None) != "request_fulfillment_v1"
+    ):
+        return None, None
+    try:
+        judgment = stage.really.decide(rendered)
+    except OpsPilotError as e:
+        logger.warning("no engine could answer r2; it stays a request: %s", e)
+        return None, None
+    trace = judgment.as_trace()
+    if judgment.answer == "request" or not stage.really.stands(judgment):
+        return None, trace
+    return trace, trace
+
+
 def _requested_stock(state: Any, catalog: dict[str, Any], result: dict[str, Any]) -> None:
     """Count the stock of the category a request asks for, once its artifact names it (#231)."""
     item = state.judgments.catalog.catalog.items.get(catalog.get("item") or "")
@@ -461,6 +489,16 @@ async def run_ticket(body: ApiRunRequest, request: Request) -> ApiRunResponse:
             if needs_conf:
                 return None, classification, True, security, {}
             catalog, catalog_trace = _judge_catalog(state, rendered, pb, body.input)
+            really, really_trace = _judge_really(state, rendered, pb)
+            if really is not None and really["answer"] == "change":
+                # OpsPilot has no change path: a person handles it (#293).
+                return None, classification, True, security, {"really": really}
+            if really is not None:
+                # Filed as a request, it is an Incident: the incident path instead (#293).
+                provider, pb = _apply_model_override(
+                    body, state, _select_playbook_for_type("incident", state)
+                )
+                catalog = None
             if catalog is not None and catalog.get("automated"):
                 # Fulfilled by the organisation's own automation: no Task, no Playbook.
                 return None, classification, True, security, {"catalog": catalog}
@@ -498,7 +536,7 @@ async def run_ticket(body: ApiRunRequest, request: Request) -> ApiRunResponse:
             )
             _trace_judgment(state, res.session_id, security)
             _trace_judgment(state, res.session_id, (classification or {}).get("judgment"))
-            for judgment in [catalog_trace, open_trace, enough, *incident_judgments]:
+            for judgment in [catalog_trace, really_trace, open_trace, enough, *incident_judgments]:
                 _trace_judgment(state, res.session_id, judgment)
             if catalog is not None and res.summary:
                 _requested_stock(state, catalog, res.summary)
@@ -507,7 +545,7 @@ async def run_ticket(body: ApiRunRequest, request: Request) -> ApiRunResponse:
                 classification,
                 False,
                 security,
-                {"already_open": already_open, "catalog": catalog},
+                {"already_open": already_open, "catalog": catalog, "really": really},
             )
 
         result, classification, needs_conf, security, judged = await loop.run_in_executor(
@@ -530,6 +568,7 @@ async def run_ticket(body: ApiRunRequest, request: Request) -> ApiRunResponse:
             ask=judged.get("ask"),
             already_open=judged.get("already_open"),
             catalog=judged.get("catalog"),
+            really=judged.get("really"),
         )
 
     return ApiRunResponse(
@@ -548,6 +587,7 @@ async def run_ticket(body: ApiRunRequest, request: Request) -> ApiRunResponse:
         security=security,
         already_open=judged.get("already_open"),
         catalog=judged.get("catalog"),
+        really=judged.get("really"),
         assets_drafted=_draft_assets(state, result),
     )
 
@@ -586,6 +626,16 @@ async def run_ticket_stream(body: ApiRunRequest, request: Request) -> StreamingR
         if needs_conf:
             return None, classification, True, security, {}
         catalog, catalog_trace = _judge_catalog(state, rendered, pb, body.input)
+        really, really_trace = _judge_really(state, rendered, pb)
+        if really is not None and really["answer"] == "change":
+            # OpsPilot has no change path: a person handles it (#293).
+            return None, classification, True, security, {"really": really}
+        if really is not None:
+            # Filed as a request, it is an Incident: the incident path instead (#293).
+            provider, pb = _apply_model_override(
+                body, state, _select_playbook_for_type("incident", state)
+            )
+            catalog = None
         if catalog is not None and catalog.get("automated"):
             # Fulfilled by the organisation's own automation: no Task, no Playbook.
             return None, classification, True, security, {"catalog": catalog}
@@ -618,7 +668,7 @@ async def run_ticket_stream(body: ApiRunRequest, request: Request) -> StreamingR
         )
         _trace_judgment(state, res.session_id, security)
         _trace_judgment(state, res.session_id, (classification or {}).get("judgment"))
-        for judgment in [catalog_trace, open_trace, enough, *incident_judgments]:
+        for judgment in [catalog_trace, really_trace, open_trace, enough, *incident_judgments]:
             _trace_judgment(state, res.session_id, judgment)
         if catalog is not None and res.summary:
             _requested_stock(state, catalog, res.summary)
@@ -627,7 +677,7 @@ async def run_ticket_stream(body: ApiRunRequest, request: Request) -> StreamingR
             classification,
             False,
             security,
-            {"already_open": already_open, "catalog": catalog},
+            {"already_open": already_open, "catalog": catalog, "really": really},
         )
 
     async def _run_in_thread() -> None:
@@ -649,6 +699,7 @@ async def run_ticket_stream(body: ApiRunRequest, request: Request) -> StreamingR
                     "ask": judged.get("ask"),
                     "already_open": judged.get("already_open"),
                     "catalog": judged.get("catalog"),
+                    "really": judged.get("really"),
                 }
             else:
                 payload = {
@@ -669,6 +720,7 @@ async def run_ticket_stream(body: ApiRunRequest, request: Request) -> StreamingR
                     "security": security,
                     "already_open": judged.get("already_open"),
                     "catalog": judged.get("catalog"),
+                    "really": judged.get("really"),
                     "assets_drafted": _draft_assets(state, result),
                 }
             await queue.put({"type": "result", "data": payload})

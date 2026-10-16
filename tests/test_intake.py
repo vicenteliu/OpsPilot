@@ -766,3 +766,21 @@ class TestCatalogComment:
         body = transport.comments[0][1]
         assert body.startswith("## OpsPilot: fulfilled by automation")
         assert "Password reset" in body and "OpsPilot ran nothing" in body
+
+
+# ── r2 in the comment (#293) ──────────────────────────────────────────────────
+
+
+class TestReallyComment:
+    def test_a_change_gets_a_person_comment(self) -> None:
+        transport = _AskedTransport()
+        change = {**_ASKED, "ask": None, "really": {"answer": "change", "probability": 0.88}}
+        IntakeLoop(transport, _SeqRunClient(change)).run_once()  # type: ignore[arg-type]
+        body = transport.comments[0][1]
+        assert body.startswith("## OpsPilot: a person is needed, this looks like a change")
+        assert "p=0.88" in body and "no change path" in body
+
+    def test_a_request_handled_as_an_incident_says_so(self) -> None:
+        really = {"answer": "incident", "probability": 0.91}
+        body = render_comment(_OK["result"], session_id="s", really=really)  # type: ignore[arg-type]
+        assert "**Filed as a request, handled as an Incident** (p=0.91)." in body
