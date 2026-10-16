@@ -1396,3 +1396,13 @@ class TestAlreadyOpen:
         run, response = _post(app, {"input": _INCIDENT, "open_items": _OPEN}, "/api/run/stream")
         run.assert_not_called()
         assert '"ask": {' in response.text and '"already_open": {' in response.text
+
+
+def test_an_open_work_item_is_offered_at_most_its_first_thousand_characters() -> None:
+    from opspilot.judgment import OPEN_ITEM_CHARS, open_items_question
+    from opspilot.redaction import Redactor
+
+    d3 = load_question(REPO_ROOT / DECISIONS_DIR / "d3.yaml")
+    long = [{"key": "IT-7", "subject": "log", "body": "x" * 5000}]
+    meaning = open_items_question(d3, long, Redactor.from_yaml()).answers["IT-7"]
+    assert len(meaning) == len(d3.candidates.format(text="")) + OPEN_ITEM_CHARS  # type: ignore[union-attr]

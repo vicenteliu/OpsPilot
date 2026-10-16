@@ -121,20 +121,24 @@ def with_candidates(question: Question, found: dict[str, str]) -> Question:
     )
 
 
+# What an open Work item says, at most, as an answer to decision 3: the label
+# set's items run to 150 words, and a pasted log should not cost a call more.
+OPEN_ITEM_CHARS: Final = 1000
+
+
 def open_items_question(
     question: Question, open_items: list[dict[str, Any]], redactor: Redactor
 ) -> Question:
     """Decision 3 asked of one Work item: its open Work items, redacted, then `none` (#230).
 
     Each open Work item is an answer keyed by its key, meaning its subject and
-    body; the label set and the run build it here, so both ask the same thing.
+    body, cut at ``OPEN_ITEM_CHARS``; the label set and the run build it here,
+    so both ask the same thing.
     """
-    found = {
-        str(o["key"]): redactor.redact(
-            f"{o.get('subject') or ''}\n{o.get('body') or ''}".strip()
-        ).text
-        for o in open_items
-    }
+    found = {}
+    for o in open_items:
+        text = f"{o.get('subject') or ''}\n{o.get('body') or ''}".strip()
+        found[str(o["key"])] = redactor.redact(text[:OPEN_ITEM_CHARS]).text
     return with_candidates(question, found)
 
 
