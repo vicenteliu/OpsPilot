@@ -20,6 +20,20 @@ candidates: >-
 answers:
   none: >-
     None of them: it is a different problem, even if on the same subject.
-# Set from the label set, never guessed (ADR-0040), keyed by the engine it was
-# measured on; empty until that report has been run.
-thresholds: {}
+# Set from the label set, never guessed (SPEC §7), keyed by the engine it was
+# measured on (#274). The stage acts only on a match, so each is the cut in
+# judgments/label_set/report_d3_v1.md, run on 2026-10-16 over the 78 items,
+# three passes each: the lowest probability at which the matches named are at
+# least 95% right.
+#
+# 0.79 on Jev's probability: 122 of 234 answers name a match, 95.1% rightly;
+#   116 of the 117 labelled matches, and 6 of the 117 labelled none.
+# 0.72 on the Playbook's model: 123 named, 95.1% rightly; all 117 labelled
+#   matches, and 6 of the 117 labelled none.
+#
+# The matches are duplicates drafted for this (SPEC §5), so they may be
+# plainer than real ones. Measure again when there are real duplicates to
+# label, or when either model changes.
+thresholds:
+  "typesafe:jev-1.13.0": 0.79
+  "playbook:anthropic/claude-haiku-5-5": 0.72
