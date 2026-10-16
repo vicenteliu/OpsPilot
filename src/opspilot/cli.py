@@ -2308,6 +2308,40 @@ def labelset_label_catalog_item(
     )
 
 
+@labelset_app.command("label-really")
+def labelset_label_really(
+    by: str = typer.Option(..., "--by", help="The labeller's handle, recorded on each row."),
+    path: Path = typer.Option(OUT_PATH, "--set", help="The labelled set."),  # noqa: B008
+) -> None:
+    """Label whether each service request is really one, blind (r2, #293).
+
+    Only the rows labelled service_request are asked: the set's Incidents count
+    as `incident`, by their type. Answer each with its number. u goes back and
+    q stops; every answer is saved as it is given.
+    """
+    try:
+        r2 = load_question(DECISIONS_DIR / "r2.yaml")
+        res = label_pass(
+            path,
+            by=by,
+            ask=_ask_line,
+            show=typer.echo,
+            columns={"really": r2},
+            stamp="really",
+            of="service_request",
+        )
+    except OpsPilotError as e:
+        _console.print(f"Error: {e}", style="red", markup=False)
+        raise typer.Exit(1) from e
+    if not res.finished:
+        typer.echo(f"\nsaved · {res.labelled}/{res.total} labelled; rerun to continue")
+        return
+    typer.echo(
+        f"\nlabelled {res.labelled} service requests against {r2.version}"
+        f" · really: {_counts(res.counts['really'])}"
+    )
+
+
 @labelset_app.command("label-enough")
 def labelset_label_enough(
     by: str = typer.Option(..., "--by", help="The labeller's handle, recorded on each row."),
@@ -2370,7 +2404,8 @@ def labelset_report(
         "d2",
         "--decision",
         help="d2 (incident or request), d1 (security), d3 (already open), d4 (enough to act"
-        " on), d6 (team), d7 (impact), d8 (urgency), d9 (known fix), r1 (catalog item).",
+        " on), d6 (team), d7 (impact), d8 (urgency), d9 (known fix), r1 (catalog item),"
+        " r2 (really a request).",
     ),
     path: Path = typer.Option(OUT_PATH, "--set", help="The labelled set."),  # noqa: B008
     runs_file: Path | None = typer.Option(  # noqa: B008
@@ -2398,9 +2433,9 @@ def labelset_report(
     report by a person.
     """
     try:
-        if decision not in ("d1", "d2", "d3", "d4", "d6", "d7", "d8", "d9", "r1"):
+        if decision not in ("d1", "d2", "d3", "d4", "d6", "d7", "d8", "d9", "r1", "r2"):
             raise LabelSetError(
-                f"--decision is d1, d2, d3, d4, d6, d7, d8, d9 or r1, not {decision!r}"
+                f"--decision is d1, d2, d3, d4, d6, d7, d8, d9, r1 or r2, not {decision!r}"
             )
         if decision == "d3":
             # Decision 3 is measured on items of its own, not the set's rows (SPEC §5).
@@ -2419,6 +2454,20 @@ def labelset_report(
         if decision == "r1":
             # The request path's first decision, asked of a service request (#231).
             rows = [r for r in rows if r["work_item_type"] == "service_request"]
+        if decision == "r2":
+            # Asked of every row as if filed as a request (#293): an Incident's answer
+            # is `incident`, by its type, the definition r2 shares with d2.
+            r2_version = load_question(DECISIONS_DIR / "r2.yaml").version
+            rows = [
+                r
+                if r["work_item_type"] == "service_request"
+                else {
+                    **r,
+                    "really": "incident",
+                    "answer_space": {**r["answer_space"], "r2": r2_version},
+                }
+                for r in rows
+            ]
         name = {"d1": SECURITY_FILE, "d2": WORK_ITEM_TYPE_FILE}.get(decision, f"{decision}.yaml")
         question = (
             catalog_question(DECISIONS_DIR / name, load_catalog(DECISIONS_DIR / CATALOG_FILE))
@@ -2486,6 +2535,14 @@ def labelset_report(
         elif decision == "r1":
             md = incident_report_markdown(
                 rows, _read_jsonl(runs_out), question, rows_are="service requests"
+            )
+        elif decision == "r2":
+            md = incident_report_markdown(
+                rows,
+                _read_jsonl(runs_out),
+                question,
+                rows_are="Work items, each as if filed as a request",
+                idle="request",
             )
         elif decision == "d9":
             md = known_fix_report_markdown(

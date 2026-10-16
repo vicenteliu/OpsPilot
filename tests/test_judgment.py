@@ -416,6 +416,7 @@ def _incident_decision_files(tmp_path: Path) -> None:
         "d8.yaml",
         "severity.yaml",
         "r1.yaml",
+        "r2.yaml",
         "catalog.yaml",
     ):
         (tmp_path / name).write_text((D2.parent / name).read_text(encoding="utf-8"))
@@ -622,6 +623,7 @@ def _app_with_stage(
     ask_provider: Any = None,
     already_open: Decision | None = None,
     catalog: Any = None,
+    really: Decision | None = None,
 ) -> Any:
     from collections.abc import AsyncIterator
     from contextlib import asynccontextmanager
@@ -654,6 +656,7 @@ def _app_with_stage(
             enough=enough,
             already_open=already_open,
             catalog=catalog,
+            really=really,
         )
         app.state.inventory = MagicMock()
         app.state.inventory.list.return_value = [
@@ -1503,3 +1506,54 @@ class TestCatalog:
     ) -> None:
         _, data, _ = _request_run(("admin_rights", 0.9), submitter_role=role)
         assert data["catalog"]["entitled"] is entitled
+
+
+# ── r2: is what was filed as a request really one? (#293) ────────────────────
+
+
+def _really(engine: Any, fallback: Any = None) -> Decision:
+    return Decision(load_question(REPO_ROOT / DECISIONS_DIR / "r2.yaml"), 0.8, engine, fallback)
+
+
+def _filed_as_request(answer: tuple[str, float], **stage: Any) -> tuple[Any, Any, Any]:
+    """Run a Work item declared a request, with r2 on; the run mock, the response, the app."""
+    from unittest.mock import patch
+
+    from fastapi.testclient import TestClient
+
+    app = _app_with_stage(
+        _Engine("service_request", 0.99), really=_really(_Picks(*answer)), **stage
+    )
+    request = {**_UNTYPED, "work_item_type": "service_request"}
+    with (
+        patch("opspilot.api.routes.run.run_ticket_summary", return_value=_run_result()) as run,
+        TestClient(app) as client,
+    ):
+        app.state.request_fulfillment_pb.output_schema = "request_fulfillment_v1"
+        app.state.playbook.output_schema = "incident_summary_v1"
+        response = client.post("/api/run", json={"input": request})
+    return run, response.json(), app
+
+
+class TestReally:
+    def test_a_change_stops_for_a_person(self) -> None:
+        run, data, _ = _filed_as_request(("change", 0.9))
+        run.assert_not_called()
+        assert data["needs_confirmation"] is True
+        assert (data["really"]["answer"], data["really"]["probability"]) == ("change", 0.9)
+
+    def test_an_incident_takes_the_incident_path(self) -> None:
+        severity = _severity(_Says(_SURE))
+        run, data, app = _filed_as_request(("incident", 0.9), severity=severity)
+        assert run.call_args.args[0].playbook is app.state.playbook  # the incident summary
+        assert run.call_args.kwargs["decided"] == {"severity_suggested": "P1"}
+        assert data["really"]["answer"] == "incident"
+        assert [e["details"]["question"] for e in _events(app)] == ["d1", "r2", "d7", "d8"]
+
+    @pytest.mark.parametrize(
+        "answer", [("request", 0.95), ("incident", 0.6)], ids=["request", "below its cut"]
+    )
+    def test_otherwise_it_stays_on_the_request_path(self, answer: tuple[str, float]) -> None:
+        run, data, app = _filed_as_request(answer)
+        assert run.call_args.args[0].playbook is app.state.request_fulfillment_pb
+        assert data["really"] is None

@@ -10,6 +10,7 @@ from .base import (
     SourceTransport,
     render_ask_comment,
     render_automated_comment,
+    render_change_comment,
     render_comment,
     with_reply,
 )
@@ -28,6 +29,7 @@ __all__ = [
     "normalize_issue",
     "render_ask_comment",
     "render_automated_comment",
+    "render_change_comment",
     "render_comment",
     "with_reply",
 ]

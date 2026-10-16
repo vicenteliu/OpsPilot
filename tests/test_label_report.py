@@ -756,3 +756,20 @@ def test_a_wide_choice_s_report_gives_right_none_or_another_per_label() -> None:
     # Named answers: loaner 0.9 (right), reimage 0.5, guest_wifi 0.4 (both wrong).
     assert "## Named: the lowest probability at which the answers other than `none`" in md
     assert "| e | 0.900 | 1/5 | 100.0% | 1/3 | 0/2 |" in md
+
+
+def test_r2_s_cut_is_on_the_answers_that_are_not_request() -> None:
+    """r2 (#293): `request`, like an answer below the cut, leaves the request path as it is."""
+    r2 = load_question(REPO_ROOT / DECISIONS_DIR / "r2.yaml")
+    space = {"d2": D2.version, "d1": D1.version, "r2": r2.version}
+    labels = ["request", "request", "change", "incident"]
+    rows = [
+        _row(i, "service_request", really=lab, answer_space=space)
+        for i, lab in enumerate(labels, 1)
+    ]
+    answers = {"LS1-001": ("request", 0.9), "LS1-002": ("change", 0.6)}
+    answers |= {"LS1-003": ("change", 0.9), "LS1-004": ("incident", 0.8)}
+    md = incident_report_markdown(rows, _records("e", answers), r2, idle="request")
+    assert "answers other than `request`" in md
+    # Named: change 0.9 (right), incident 0.8 (right), change 0.6 (wrong, a request).
+    assert "| e | 0.800 | 2/4 | 100.0% | 2/2 | 0/2 |" in md

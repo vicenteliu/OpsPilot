@@ -37,6 +37,10 @@ async def _process(body: ApiIntakeRequest, request: Request) -> None:
     catalog = res.catalog or {}
     if (res.security or {}).get("stops"):
         logger.warning("webhook intake %s stopped: possible security issue", body.key)
+    elif (res.really or {}).get("answer") == "change":
+        logger.warning(
+            "webhook intake %s is a change, not a request: a person handles it", body.key
+        )
     elif catalog.get("automated"):
         logger.info("webhook intake %s: %s is fulfilled by automation", body.key, catalog["item"])
     elif res.ask:

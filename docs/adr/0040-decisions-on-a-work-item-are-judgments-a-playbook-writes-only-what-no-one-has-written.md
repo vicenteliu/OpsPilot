@@ -58,6 +58,14 @@ Status: accepted (2026-09-23)
 > the model's. An automated item runs no Playbook. Below the cut, or no item, the request
 > Playbook runs as before and a person checks the item. Whether it is really a request (#293) and
 > whether it gives enough to fulfil (#294) are filed. A changed catalog is a new answer space.
+>
+> **Revised 2026-10-17** (#293): r2 asks whatever is filed as a request, declared or decided,
+> whether it is a request, an incident or a change. Measured on all 80 rows as if filed as
+> requests, at its cut Jev names 132 of 141 incident answers and 15 of 33 change answers, 95.5%
+> rightly. An incident that clears its cut takes the incident path; a change stops for a person,
+> OpsPilot having no change path; anything else stays a request. The labeller, labelling r2, called
+> 8 of the 41 requests incidents: a disagreement with their own type labels, which d2's report
+> still uses.
 
 A Work item reaches a suggestion through a string of decisions, and today a
 language model makes every one of them in prose. Classification is one call

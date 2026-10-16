@@ -86,6 +86,9 @@ export interface RunResponse {
   security?: SecurityJudgment | null;
   ask?: AskJudgment | null;
   catalog?: CatalogMatch | null;
+  // r2 (#293): filed as a request, it is an incident (handled as one) or a
+  // change (stopped for a person).
+  really?: { answer: 'incident' | 'change'; probability: number; engine: string } | null;
 }
 
 // A work-item artifact: incident_summary_v1 or request_fulfillment_v1.

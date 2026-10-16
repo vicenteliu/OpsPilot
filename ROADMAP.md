@@ -202,13 +202,17 @@ either claim.
   0.70, 47 and 1. With the stage on, an item that clears its cut is looked up
   for approval, entitlement, stock and automation, and its approval replaces
   the model's; an automated item runs no Playbook.
+- Really a request, r2 (#293): asked of whatever is filed as a request,
+  measured on all 80 rows as if filed as one. Jev, at 0.71, names 132 of 141
+  incident answers and 15 of 33 change answers, 95.5% rightly; the Playbook's
+  model, at 0.75, 111 and 15. An incident that clears its cut takes the
+  incident path, and a change stops for a person.
 
 *Not yet:*
 
 - Decision 1's automation (#281).
 - The handbook's pages shown to the person in Jev's order (#286).
-- The request path's other two Judgments: really a request (#293), and enough
-  to fulfil (#294).
+- The request path's enough to fulfil (#294).
 - The rest of ADR-0040's order of work, #227–#231; filed and not scheduled,
   #232 and #233.
 
