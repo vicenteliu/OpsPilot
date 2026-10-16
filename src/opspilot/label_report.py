@@ -73,6 +73,7 @@ _COLUMN: Final = {
     "d8": "urgency",
     "d9": "known_fix",
     "r1": "catalog_item",
+    "r2": "really",
 }
 
 
@@ -562,9 +563,12 @@ def incident_report_markdown(
     question: Question,
     *,
     rows_are: str = "Incidents",
+    idle: str | None = None,
 ) -> str:
     """A decision asked of one type's rows (decisions 4, 6, 7, 8; r1 of requests): each
-    engine's answer against the label. ``rows_are`` names them in the report.
+    engine's answer against the label. ``rows_are`` names them in the report;
+    ``idle`` is the answer that, like one below the cut, changes nothing (r1's
+    `none`, r2's `request`), so the report also gives the cut on the others.
 
     The report gives what always answering the most common label would score:
     with few rows at some answers, that is the bar an engine has to clear. A
@@ -652,8 +656,8 @@ def incident_report_markdown(
         )
         if question.kind == "noul":
             asks.append(_asks_row(engine, ok, labels))
-        elif "none" in question.answers:
-            named.append(_named_row(engine, ok, labels))
+        elif idle is not None or "none" in question.answers:
+            named.append(_named_row(engine, ok, labels, idle or "none"))
     lines += [
         "",
         "## What each engine answered, by label",
@@ -679,14 +683,14 @@ def incident_report_markdown(
     if named:
         lines += [
             "",
-            f"## Named: the lowest probability at which the answers other than `none` are at"
-            f" least {_pct(TARGET)} right",
+            f"## Named: the lowest probability at which the answers other than `{idle or 'none'}`"
+            f" are at least {_pct(TARGET)} right",
             "",
-            "`none`, and an answer below the cut, take the same way (a person checks), so only a"
-            " named answer acts; this is its cut (#231).",
+            f"`{idle or 'none'}`, and an answer below the cut, take the same way, so only another"
+            " answer acts; this is its cut (#231, #293).",
             "",
             "| Engine | Threshold | Named | Right among them | Labelled named, named rightly"
-            " | Labelled none, named |",
+            f" | Labelled {idle or 'none'}, named |",
             "|---|---|---|---|---|---|",
             *named,
         ]
@@ -707,12 +711,14 @@ def incident_report_markdown(
     return "\n".join(lines) + "\n"
 
 
-def _named_row(engine: str, ok: list[dict[str, Any]], labels: dict[str, str]) -> str:
-    """One engine's named answers at the lowest cut that keeps them 95% right."""
-    labelled_none = sum(labels[r["id"]] == "none" for r in ok)
+def _named_row(
+    engine: str, ok: list[dict[str, Any]], labels: dict[str, str], idle: str = "none"
+) -> str:
+    """One engine's answers other than ``idle`` at the lowest cut that keeps them 95% right."""
+    labelled_none = sum(labels[r["id"]] == idle for r in ok)
     labelled_named = len(ok) - labelled_none
     answers = [
-        (r["probability"], r["answer"] == labels[r["id"]], r) for r in ok if r["answer"] != "none"
+        (r["probability"], r["answer"] == labels[r["id"]], r) for r in ok if r["answer"] != idle
     ]
     cut = threshold([(p, hit) for p, hit, _ in answers])
     if cut is None:
@@ -721,7 +727,7 @@ def _named_row(engine: str, ok: list[dict[str, Any]], labels: dict[str, str]) ->
         )
     sent = [(hit, r) for p, hit, r in answers if p >= cut[0]]
     hits = sum(hit for hit, _ in sent)
-    false = sum(labels[r["id"]] == "none" for _, r in sent)
+    false = sum(labels[r["id"]] == idle for _, r in sent)
     return (
         f"| {engine} | {cut[0]:.3f} | {len(sent)}/{len(ok)} | {_pct(hits / len(sent))}"
         f" | {hits}/{labelled_named} | {false}/{labelled_none} |"

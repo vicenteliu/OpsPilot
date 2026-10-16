@@ -280,6 +280,11 @@ column per item. `none` and an answer below the cut both go to a person, so only
 acts, and the report also gives that cut: the lowest probability at which the items named are
 at least 95% right.
 
+**The request path's r2** (#293): `--decision r2` asks every row whether, filed as a service
+request, it really is one, into `runs_r2_v1.jsonl`: the 41 requests against their `really` label,
+the 39 Incidents against `incident`, by their type. `request`, and an answer below the cut, leave
+the request path as it is, so the report gives the cut on the other answers.
+
 **Decision 4** (#229): `--decision d4` reports whether each Incident has enough to act on, the same
 way, into `runs_d4_v1.jsonl`. The stage acts only on a `no` that clears its cut, so the report
 also gives that cut: the lowest P(no) at which the Work items asked about are at least 95%
