@@ -96,12 +96,15 @@ from .label_set import (
     RELABEL_PATH,
     REVIEW_PATH,
     SECURITY_RELABEL_PATH,
+    SITE_WIDE_PATH,
+    SITE_WIDE_PROMPT_PATH,
     LabelSetError,
     _read_jsonl,
     _write_jsonl,
     build_already_open,
     build_candidates,
     draft_duplicates,
+    draft_site_wide,
     label_already_open,
     label_known_fix,
     label_pass,
@@ -2164,6 +2167,43 @@ def labelset_label_impact_urgency(
     )
 
 
+@labelset_app.command("draft-site-wide")
+def labelset_draft_site_wide(
+    model: str | None = typer.Option(
+        None, "--model", "-m", help="OpenRouter id. Default: the model that drafted the set."
+    ),
+    path: Path = typer.Option(OUT_PATH, "--set", help="The labelled set."),  # noqa: B008
+    budget_usd: float = typer.Option(BUDGET_USD, "--budget-usd", help=_BUDGET_HELP),
+) -> None:
+    """Draft the site-wide Incidents decisions 7 and 8 are measured on as well (#288).
+
+    Writes them, unlabelled, beside the set; label them with
+    `labelset label-impact-urgency --set` that file. Only the count is
+    printed: the labeller must not read them first.
+    """
+    try:
+        if SITE_WIDE_PATH.exists():
+            raise LabelSetError(f"{SITE_WIDE_PATH} already exists and may hold labels")
+        if not SITE_WIDE_PROMPT_PATH.is_file():
+            raise LabelSetError(f"{SITE_WIDE_PROMPT_PATH} not found; run from the repo root")
+        rows = _read_jsonl(path)
+        # "openrouter:<model> <date>", as the set's drafter recorded it.
+        drafter = model or rows[0]["drafted_by"].split(" ")[0].removeprefix("openrouter:")
+        drafted = draft_site_wide(
+            make_provider("openrouter"),
+            drafter,
+            system_prompt=SITE_WIDE_PROMPT_PATH.read_text(encoding="utf-8"),
+            redactor=Redactor.from_yaml(),
+            ledger=load_config().home / "label_set_v1" / "ledger.jsonl",
+            budget_usd=budget_usd,
+        )
+        _write_jsonl(SITE_WIDE_PATH, drafted)
+    except OpsPilotError as e:
+        _console.print(f"Error: {e}", style="red", markup=False)
+        raise typer.Exit(1) from e
+    typer.echo(f"drafted {len(drafted)} site-wide Incidents with {drafter} into {SITE_WIDE_PATH}")
+
+
 @labelset_app.command("draft-duplicates")
 def labelset_draft_duplicates(
     model: str | None = typer.Option(
@@ -2371,6 +2411,9 @@ def labelset_report(
         if decision in ("d4", "d6", "d7", "d8"):
             # ADR-0040 asks these of an Incident, and only those are labelled.
             rows = [r for r in rows if r["work_item_type"] == "incident"]
+        if decision in ("d7", "d8") and SITE_WIDE_PATH.is_file():
+            # The site-wide Incidents drafted so Impact's highest level is measured (#288).
+            rows += _read_jsonl(SITE_WIDE_PATH)
         if decision == "r1":
             # The request path's first decision, asked of a service request (#231).
             rows = [r for r in rows if r["work_item_type"] == "service_request"]

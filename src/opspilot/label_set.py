@@ -1227,3 +1227,101 @@ def label_already_open(
     return AlreadyOpenResult(
         labelled=len(done), total=len(items), matched=sum(it["same"] != "none" for it in done)
     )
+
+
+# ── Site-wide Incidents, so Impact's highest level is measured (#288) ────────
+
+SITE_WIDE_PROMPT_PATH: Final = LABEL_SET_DIR / "SITE_WIDE_PROMPT.md"
+SITE_WIDE_PATH: Final = LABEL_SET_DIR / "site_wide_d7_v1.jsonl"
+# Where a site-wide outage reads naturally, and how hard each stops work.
+SITE_WIDE_SLOTS: Final[tuple[tuple[str, str], ...]] = (
+    ("VPN and remote access", "stopped"),
+    ("VPN and remote access", "slowed"),
+    ("site network (Wi-Fi, DNS, printers on the network)", "stopped"),
+    ("site network (Wi-Fi, DNS, printers on the network)", "slowed"),
+    ("site network (Wi-Fi, DNS, printers on the network)", "worked_around"),
+    ("Microsoft 365", "stopped"),
+    ("Microsoft 365", "worked_around"),
+    ("identity and access (accounts, MFA, SSO)", "stopped"),
+    ("identity and access (accounts, MFA, SSO)", "slowed"),
+    ("other SaaS admin", "worked_around"),
+    ("web and TLS (expired certificates, internal sites)", "slowed"),
+    ("endpoint management (enrolment, policies, patching)", "stopped"),
+)
+
+
+def draft_site_wide(
+    provider: ProviderProtocol,
+    model: str,
+    *,
+    system_prompt: str,
+    redactor: Redactor,
+    ledger: Path,
+    budget_usd: float = BUDGET_USD,
+) -> list[dict[str, Any]]:
+    """One site-wide Incident per slot, checked as the set's rows were (#288).
+
+    Each is drafted as an Incident, so it carries that type without being
+    labelled for it; its impact and urgency are labelled blind afterwards. A
+    slot whose row fails is drafted again, up to ``MAX_ROUNDS`` times, and no
+    call starts once ``ledger`` reaches ``budget_usd``.
+    """
+    slots = {f"SW-{n:03d}": slot for n, slot in enumerate(SITE_WIDE_SLOTS, start=1)}
+    kept: dict[str, dict[str, Any]] = {}
+    failed: dict[str, list[str]] = {}
+    drafted_by = f"openrouter:{model} {datetime.now(UTC).date().isoformat()}"
+    for _ in range(MAX_ROUNDS + 1):
+        todo = {s: v for s, v in slots.items() if s not in kept}
+        if not todo:
+            break
+        spent = _spent(ledger)
+        if spent >= budget_usd:
+            raise LabelSetError(f"budget reached: ${spent:.4f} of ${budget_usd:.2f} spent")
+        table = [{"slot": s, "topic": t, "urgency": u} for s, (t, u) in todo.items()]
+        resp = provider.chat(
+            [
+                Message(role="system", content=system_prompt),
+                Message(
+                    role="user",
+                    content="Write one Work item per slot:\n```json\n"
+                    + json.dumps(table, indent=1)
+                    + "\n```",
+                ),
+            ],
+            model=model,
+            params=SamplingParams(temperature=0.9, max_tokens=8_000),
+            timeout_ms=300_000,
+        )
+        ledger.parent.mkdir(parents=True, exist_ok=True)
+        with ledger.open("a", encoding="utf-8") as f:
+            entry = {"phase": "site-wide", "model": model, "cost_usd": resp.usage.cost_usd}
+            f.write(json.dumps(entry) + "\n")
+        parsed, err = _parse_summary_json(resp.content)
+        by_slot = {r.get("slot"): r for r in (parsed.get("rows") if err is None else None) or []}
+        for slot, (topic, _) in todo.items():
+            row = by_slot.get(slot)
+            if not isinstance(row, dict):
+                failed[slot] = [err or "missing from the response"]
+                continue
+            subject, body = row.get("subject"), row.get("body")
+            if not isinstance(subject, str) or not isinstance(body, str):
+                failed[slot] = ["subject and body must be strings"]
+                continue
+            problems = _text_problems(subject, body, row.get("channel"), redactor)
+            if problems:
+                failed[slot] = problems
+                continue
+            kept[slot] = {
+                "id": slot,
+                "subject": subject.strip(),
+                "body": body.strip(),
+                "channel": row["channel"],
+                "topic": topic,
+                "work_item_type": "incident",  # drafted as one, not labelled for it
+                "drafted_by": drafted_by,
+            }
+            failed.pop(slot, None)
+    if missing := [s for s in slots if s not in kept]:
+        detail = "; ".join(f"{s}: {', '.join(failed.get(s, ['?']))}" for s in missing)
+        raise LabelSetError(f"{len(missing)} slots still fail after {MAX_ROUNDS} rounds: {detail}")
+    return [kept[s] for s in slots]

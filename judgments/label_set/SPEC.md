@@ -159,6 +159,13 @@ security.
   the gap, shuffle, assign ids.
 - **Cost cap**: $1 for drafting; about $0.50 expected.
 
+**Site-wide Incidents for decisions 7 and 8** (#288): the set has no site-wide Incident, so
+`opspilot labelset draft-site-wide` asks the model that drafted the set (`SITE_WIDE_PROMPT.md`)
+for twelve, one per slot of a topic where an outage for everyone reads naturally and how hard it
+stops work, checked as the set's rows are. They go to `site_wide_d7_v1.jsonl`, apart from the set:
+drafted as Incidents, they carry that type unlabelled, and only their impact and urgency are
+labelled.
+
 ## 6. Labelling
 
 - **Blind**: the labeller sees `subject`, `body`, `channel` only. `draft_intent`, `draft_security`
@@ -196,6 +203,8 @@ security.
 - **Impact and urgency** (#227, `d7-v1`, `d8-v1`): each row labelled `incident` is shown again,
   its subject, body and channel and no other label, and the labeller gives its impact and then
   its urgency in one pass (`opspilot labelset label-impact-urgency`), each a level's number.
+- **Site-wide Incidents** (#288): `site_wide_d7_v1.jsonl` is labelled for impact and urgency with
+  the same pass, `opspilot labelset label-impact-urgency --set` that file.
 - **Team** (#228, `d6-v1`): each row labelled `incident` is shown the same way, and the labeller
   picks the team that would fix it (`opspilot labelset label-team`).
 - **Already open** (#230, `d3-v1`): each item of `already_open_d3_v1.jsonl` shows its subject,
@@ -233,7 +242,8 @@ with its recall, the share of all calls it stops, and its false alarms among the
 
 **Decisions 7 and 8** (#227): `opspilot labelset report --decision d7` (and `d8`) asks Jev and
 the Playbook's model `d7-v1` (`d8-v1`) of every Incident three times, keeping the calls in
-`runs_d7_v1.jsonl` (`runs_d8_v1.jsonl`). A Score's levels are ordered, so beside exact accuracy
+`runs_d7_v1.jsonl` (`runs_d8_v1.jsonl`), together with the site-wide Incidents of
+`site_wide_d7_v1.jsonl` once that file exists (#288). A Score's levels are ordered, so beside exact accuracy
 the report gives how often an answer is within one level of the label, what each engine answered
 for each labelled level, and what always answering the most common label would score. Its Brier
 score is on the answer: each answer's probability against whether it was right. The
