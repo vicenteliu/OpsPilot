@@ -1272,3 +1272,77 @@ def test_cli_label_catalog_item_asks_each_request_over_the_catalog(tmp_path: Pat
     rows = _read(path)
     assert [r.get("catalog_item") for r in rows] == [None, "vpn_access", None, None]
     assert rows[1]["answer_space"] == {"r1": "r1-v1"}
+
+
+# ── Site-wide Incidents for decisions 7 and 8 (#288) ─────────────────────────
+
+
+class SiteWideDrafter:
+    """Writes one Work item per slot; ``spoil`` makes a slot's first try fail its checks."""
+
+    def __init__(self, *, spoil: frozenset[str] = frozenset()) -> None:
+        self.spoil, self.calls = set(spoil), 0
+
+    def chat(self, messages: list[Message], **kw: Any) -> ChatResponse:
+        self.calls += 1
+        match = re.search(r"```json\n(.*?)\n```", messages[1].content, re.S)
+        assert match is not None
+        rows = []
+        for slot in json.loads(match.group(1)):
+            body = f"Nobody here can work, {slot['urgency']}, case {slot['slot'][-3:]}"
+            if slot["slot"] in self.spoil:
+                self.spoil.discard(slot["slot"])
+                body = "mail me at someone@realcorp.com"
+            rows.append(
+                {"slot": slot["slot"], "subject": "all down", "body": body, "channel": "chat"}
+            )
+        return ChatResponse(
+            content=json.dumps({"rows": rows}),
+            finish_reason="stop",
+            usage=Usage(input_tokens=100, output_tokens=200, cost_usd=0.01),
+        )
+
+
+def test_site_wide_incidents_are_drafted_one_per_slot_and_a_failure_again(tmp_path: Path) -> None:
+    from opspilot.label_set import SITE_WIDE_SLOTS, draft_site_wide
+
+    drafter = SiteWideDrafter(spoil=frozenset({"SW-003"}))
+    rows = draft_site_wide(
+        drafter,  # type: ignore[arg-type]
+        MODEL,
+        system_prompt=PROMPT,
+        redactor=Redactor.from_yaml(),
+        ledger=tmp_path / "work" / "ledger.jsonl",
+    )
+    assert [r["id"] for r in rows] == [f"SW-{n:03d}" for n in range(1, len(SITE_WIDE_SLOTS) + 1)]
+    assert drafter.calls == 2  # the spoiled slot was drafted again, alone
+    assert {r["work_item_type"] for r in rows} == {"incident"}
+    assert rows[2]["topic"] == SITE_WIDE_SLOTS[2][0] and "realcorp" not in rows[2]["body"]
+
+
+def test_the_site_wide_file_is_labelled_like_the_incidents(tmp_path: Path) -> None:
+    """`label-impact-urgency --set` the drafted file: the same pass, over its rows."""
+    from opspilot import cli
+
+    path = tmp_path / "site_wide_d7_v1.jsonl"
+    rows = [
+        {
+            "id": f"SW-00{i}",
+            "subject": "s",
+            "body": "b",
+            "channel": "chat",
+            "work_item_type": "incident",
+        }
+        for i in (1, 2)
+    ]
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    result = CliRunner().invoke(
+        cli.app,
+        ["labelset", "label-impact-urgency", "--by", "v", "--set", str(path)],
+        input="3\n3\n2\n1\n",
+    )
+    assert result.exit_code == 0, result.output
+    assert [(r["impact"], r["urgency"]) for r in _read(path)] == [
+        ("site_wide", "stopped"),
+        ("multiple_users", "worked_around"),
+    ]

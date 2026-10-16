@@ -21,14 +21,15 @@ answers:
 # Set from the label set, never guessed (SPEC §7): the lowest probability at
 # which the levels decided without a person are at least 95% right, keyed by
 # the engine it was measured on (#274). From judgments/label_set/report_d8_v1.md,
-# run on 2026-10-15 over the 39 Incidents, three passes each:
+# run on 2026-10-16 over 51 Incidents, three passes each: the set's 39 and the
+# 12 site-wide ones drafted for decision 7 (site_wide_d7_v1.jsonl, #288).
 #
-# 0.93 on Jev's probability: 46 of 117 answers decided, 95.7% of them right.
-# 0.70 on the Playbook's model: 35 of 117 decided, 97.1% right.
+# 0.86 on Jev's probability: 83 of 153 answers decided, 95.2% of them right.
+# 0.70 on the Playbook's model: 70 of 153 decided, 98.6% right.
 #
 # Both engines get `stopped` right and confuse `worked_around` with `slowed`.
 # Measure again when the label set grows, or when JEV_MODEL or the
 # classification Playbook's model changes.
 thresholds:
-  "typesafe:jev-1.13.0": 0.93
+  "typesafe:jev-1.13.0": 0.86
   "playbook:anthropic/claude-haiku-5-5": 0.70
