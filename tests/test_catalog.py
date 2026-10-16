@@ -67,3 +67,13 @@ def test_entitlement_is_looked_up_from_the_submitter_s_role(
 ) -> None:
     catalog = load_catalog(DECISIONS / "catalog.yaml")
     assert entitled(catalog.items[item], role) is expected
+
+
+def test_one_entitled_role_may_be_written_without_a_list(tmp_path: Path) -> None:
+    path = tmp_path / "catalog.yaml"
+    path.write_text(
+        "version: x\nitems:\n  a:\n    name: A\n    description: d\n    entitled: Engineering\n",
+        encoding="utf-8",
+    )
+    item = load_catalog(path).items["a"]
+    assert item.entitled == ("engineering",) and entitled(item, "engineering") is True

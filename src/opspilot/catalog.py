@@ -55,6 +55,8 @@ def load_catalog(path: Path) -> Catalog:
                 f"{path}: {item_id}'s approval is one of {APPROVERS}, not {approval!r}"
             )
         entitled = spec.get("entitled", "all")
+        if isinstance(entitled, str) and entitled != "all":
+            entitled = [entitled]  # one role, written without a list
         items[str(item_id)] = CatalogItem(
             id=str(item_id),
             name=str(spec["name"]),
