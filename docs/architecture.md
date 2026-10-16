@@ -18,7 +18,8 @@ FastAPI  (opspilot.api)
   │  then the provider from model_id; for an Incident with the stage on,
   │    Severity from Impact × Urgency (judgments/decisions/severity.yaml)
   │    and the escalation team (judgments/decisions/d6.yaml); first, an
-  │    Incident too thin to act on (d4.yaml) gets one ask (pb_ask_en) instead
+  │    Incident too thin to act on (d4.yaml) gets one ask (pb_ask_en) instead,
+  │    and one a source lists open Work items for is matched to them (d3.yaml)
   ▼
 Orchestrator  (opspilot.orchestrator)
   ├─▶ Redactor ──────────────── strips PII from work-item text

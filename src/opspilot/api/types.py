@@ -18,6 +18,9 @@ class ApiRunRequest(BaseModel):
     # The reporter was already asked once about this Work item, and this run
     # carries their reply (#229): decision 4 is not asked again.
     asked: bool = False
+    # Open Work items the source filed in the last hour, each {"key", "subject",
+    # "body"}: decision 3 asks whether this one is the same problem (#230).
+    open_items: list[dict[str, Any]] | None = None
 
 
 class ApiIntakeRequest(BaseModel):
@@ -221,6 +224,9 @@ class ApiRunResponse(BaseModel):
     # beside the Judgment behind it. No summary ran, so needs_confirmation is
     # set too, and a reader that knows nothing of it still sees that.
     ask: dict[str, Any] | None = None
+    # Decision 3 named an open Work item as the same problem (#230): "key" is
+    # it, beside the Judgment behind it. Advisory: a person links the two.
+    already_open: dict[str, Any] | None = None
     # Asset ids drafted from this run's asset_draft block (ADR-0018).
     assets_drafted: list[str] = []
 

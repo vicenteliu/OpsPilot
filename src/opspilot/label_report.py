@@ -65,6 +65,7 @@ def row_state(row: dict[str, Any], redactor: Redactor) -> str:
 # The label column each decision is measured against (SPEC §1).
 _COLUMN: Final = {
     "d1": "security",
+    "d3": "same",
     "d2": "work_item_type",
     "d4": "enough",
     "d6": "team",
@@ -76,7 +77,7 @@ _COLUMN: Final = {
 
 def _check_set(rows: list[dict[str, Any]], question: Question) -> None:
     column = _COLUMN.get(question.id, "work_item_type")
-    if any(r["work_item_type"] is None or r.get(column) is None for r in rows):
+    if any(r.get(column) is None for r in rows):
         raise LabelSetError("label every row first; the report measures the finished set")
     for r in rows:
         version = (r.get("answer_space") or {}).get(question.id)
@@ -98,12 +99,14 @@ def run_engines(
     timeout_s: float,
     show: Show = lambda _: None,
     candidates: dict[str, list[dict[str, Any]]] | None = None,
+    ask_with: Callable[[dict[str, Any]], Question] | None = None,
 ) -> int:
     """Ask every engine every row, ``runs`` times; return how many calls this made.
 
     With ``candidates`` (decision 9), each row is asked once per candidate
     page, shown the Work item and the page as the labeller saw it, and each
-    record names its ``page``.
+    record names its ``page``. With ``ask_with`` (decision 3), each row is
+    asked the question it builds, e.g. over the row's own open Work items.
     """
     _check_set(rows, question)
     items: list[tuple[dict[str, Any], str | None, str]] = []
@@ -141,7 +144,8 @@ def run_engines(
                     record["page"] = page
                 started = time.monotonic()
                 try:
-                    j = engine.judge(question, state, timeout_s=timeout_s)
+                    asked = ask_with(row) if ask_with is not None else question
+                    j = engine.judge(asked, state, timeout_s=timeout_s)
                     record |= {
                         "answer": j.answer,
                         "probability": j.probability,
@@ -684,3 +688,103 @@ def _asks_row(engine: str, ok: list[dict[str, Any]], labels: dict[str, str]) -> 
         f"| {engine} | {cut[0]:.3f} | {len(sent)}/{len(ok)} | {_pct(hits / len(sent))}"
         f" | {hits}/{labelled_no} | {len(sent) - hits}/{labelled_yes} |"
     )
+
+
+def already_open_report_markdown(
+    items: list[dict[str, Any]], records: list[dict[str, Any]], question: Question
+) -> str:
+    """Decision 3 on its items: the open Work item each engine names, against the label (#230).
+
+    The stage acts only on a match: one that clears its cut is named in the
+    write-back comment. So beside accuracy the report gives that cut, the
+    lowest probability at which the matches named are at least 95% right, with
+    how many labelled matches it names rightly and how many items labelled
+    `none` it names a match for.
+    """
+    labels = {i["id"]: i["same"] for i in items}
+    if any(v is None for v in labels.values()):
+        raise LabelSetError("label every item first; the report reads them all")
+    if stray := sorted({r["id"] for r in records} - labels.keys()):
+        raise LabelSetError(
+            f"the runs file answers items the set does not have: {', '.join(stray)}"
+        )
+    matches = sum(v != "none" for v in labels.values())
+    engines = list(dict.fromkeys(r["engine"] for r in records))
+    runs = max((r["run"] for r in records), default=0)
+    lines = [
+        f"# {question.version} on its items: the engines compared",
+        "",
+        f"{len(items)} items is not a benchmark: synthetic, English, labelled by one person, and"
+        " the threshold is set on the same items it is reported on. Each engine answered every"
+        f" item {runs} times; the figures pool the runs. {matches} items repeat one of their five"
+        " open Work items, the duplicates drafted for this (SPEC §5); the rest repeat none.",
+        "",
+        "| Engine | Calls ok/failed | Accuracy | Brier on the answer | Cost/call | p50 | p95 |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    answered: list[str] = []
+    cuts: list[str] = []
+    for engine in engines:
+        mine = [r for r in records if r["engine"] == engine]
+        ok = [r for r in mine if r["error"] is None]
+        if not ok:
+            lines.append(f"| {engine} | 0/{len(mine)} | – | – | – | – | – |")
+            cuts.append(f"| {engine} | – | 0/0 | – | – | – |")
+            continue
+        judged = [(r["probability"], r["answer"] == labels[r["id"]]) for r in ok]
+        latencies = [r["latency_ms"] for r in ok]
+        lines.append(
+            f"| {engine} | {len(ok)}/{len(mine) - len(ok)}"
+            f" | {_pct(sum(hit for _, hit in judged) / len(ok))}"
+            f" | {sum((p - hit) ** 2 for p, hit in judged) / len(ok):.3f}"
+            f" | ${sum(r['cost_usd'] for r in ok) / len(ok):.6f}"
+            f" | {percentile(latencies, 0.5):.0f} ms | {percentile(latencies, 0.95):.0f} ms |"
+        )
+        on_match = [r for r in ok if labels[r["id"]] != "none"]
+        on_none = [r for r in ok if labels[r["id"]] == "none"]
+        answered.append(
+            f"| {engine} | a match ({len(on_match)})"
+            f" | {sum(r['answer'] == labels[r['id']] for r in on_match)}"
+            f" | {sum(r['answer'] == 'none' for r in on_match)}"
+            f" | {sum(r['answer'] not in ('none', labels[r['id']]) for r in on_match)} |"
+        )
+        answered.append(
+            f"| {engine} | none ({len(on_none)}) | – | {sum(r['answer'] == 'none' for r in on_none)}"
+            f" | {sum(r['answer'] != 'none' for r in on_none)} |"
+        )
+        named = [
+            (r["probability"], r["answer"] == labels[r["id"]], r)
+            for r in ok
+            if r["answer"] != "none"
+        ]
+        cut = threshold([(p, hit) for p, hit, _ in named])
+        if cut is None:
+            cuts.append(f"| {engine} | none reaches {_pct(TARGET)} | 0/{len(ok)} | – | – | – |")
+            continue
+        sent = [(hit, r) for p, hit, r in named if p >= cut[0]]
+        right = sum(hit for hit, _ in sent)
+        false = sum(labels[r["id"]] == "none" for _, r in sent)
+        cuts.append(
+            f"| {engine} | {cut[0]:.3f} | {len(sent)}/{len(ok)} | {_pct(right / len(sent))}"
+            f" | {right}/{len(on_match)} | {false}/{len(on_none)} |"
+        )
+    lines += [
+        "",
+        "## What each engine answered, by label",
+        "",
+        "| Engine | Labelled | Named the match | Said none | Named another |",
+        "|---|---|---|---|---|",
+        *answered,
+        "",
+        f"## Threshold: the lowest probability at which the matches named are at least"
+        f" {_pct(TARGET)} right",
+        "",
+        "A match that clears it is named in the comment, for a person to link; anything else"
+        " says nothing.",
+        "",
+        "| Engine | Threshold | Matches named | Right among them | Labelled matches, named"
+        " | Labelled none, named a match |",
+        "|---|---|---|---|---|---|",
+        *cuts,
+    ]
+    return "\n".join(lines) + "\n"

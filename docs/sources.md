@@ -101,6 +101,11 @@ full JQL scope — there is deliberately no time cursor to miss things).
   comments posted since OpsPilot's last one on it; a reply runs the Work item
   again with the reply appended, and the suggestion is posted as usual. It is
   asked once: a reply that is still thin gets a suggestion, not a second ask.
+- Each run is sent the scope's **open issues created in the last hour**
+  (the JQL, narrowed to the last hour and to issues not done, newest 20).
+  When the Judgments stage's decision 3 (#230) finds the issue is the same
+  problem as one of them, the comment says so, with its probability, for a
+  person to link. OpsPilot links, merges and closes nothing.
 - `--rerun IT-123` forces a fresh run for one key (the key must still
   match the JQL scope). The new suggestion is posted as a new comment.
 

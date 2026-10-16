@@ -37,6 +37,7 @@ from .orchestrator.types import PlaybookSpec
 from .providers.base import ProviderProtocol
 from .providers.pricing import estimate_cost_usd
 from .providers.types import Message, SamplingParams
+from .redaction import Redactor
 
 logger = logging.getLogger("opspilot.judgment")
 
@@ -62,6 +63,10 @@ class Question:
     # Engine name → its cut, set from the label set. A probability is on its
     # engine's own scale, so a cut means nothing for any other engine (#274).
     thresholds: dict[str, float]
+    # A Choice whose answers are found per Work item (decision 3, #230): what
+    # each found answer means, "{text}" standing for what it says. The file's
+    # own answers, such as "none", follow them.
+    candidates: str | None = None
 
 
 def load_question(path: Path) -> Question:
@@ -80,7 +85,11 @@ def load_question(path: Path) -> Question:
         raise JudgmentError(f"{path}: kind must be one of {', '.join(_KINDS)}, not {kind!r}")
     if kind == "noul" and set(answers) != {"yes", "no"}:
         raise JudgmentError(f"{path}: a noul question answers yes or no")
-    if len(answers) < 2:
+    candidates = data.get("candidates")
+    if candidates is not None and (kind != "choice" or "{text}" not in str(candidates)):
+        raise JudgmentError(f"{path}: only a choice has candidates, and their meaning has {{text}}")
+    # A Choice over candidates has its own answers as well, found per Work item.
+    if len(answers) < (1 if candidates else 2):
         raise JudgmentError(f"{path}: a question needs at least two answers")
     for engine, cut in thresholds.items():
         if not 0 <= float(cut) <= 1:
@@ -92,7 +101,45 @@ def load_question(path: Path) -> Question:
         text=str(data["question"]),
         answers={str(k): str(v) for k, v in answers.items()},
         thresholds={str(k): float(v) for k, v in thresholds.items()},
+        candidates=str(candidates) if candidates is not None else None,
     )
+
+
+def with_candidates(question: Question, found: dict[str, str]) -> Question:
+    """A Choice over the answers found for one Work item, then the file's own (#230).
+
+    ``found`` maps each answer, e.g. an open Work item's key, to what it says.
+    """
+    if question.candidates is None:
+        raise JudgmentError(f"{question.version} takes no candidates")
+    if clash := sorted(found.keys() & question.answers.keys()):
+        raise JudgmentError(f"a candidate is named like an answer of its own: {', '.join(clash)}")
+    meaning = question.candidates
+    return replace(
+        question,
+        answers={**{k: meaning.format(text=t) for k, t in found.items()}, **question.answers},
+    )
+
+
+# What an open Work item says, at most, as an answer to decision 3: the label
+# set's items run to 150 words, and a pasted log should not cost a call more.
+OPEN_ITEM_CHARS: Final = 1000
+
+
+def open_items_question(
+    question: Question, open_items: list[dict[str, Any]], redactor: Redactor
+) -> Question:
+    """Decision 3 asked of one Work item: its open Work items, redacted, then `none` (#230).
+
+    Each open Work item is an answer keyed by its key, meaning its subject and
+    body, cut at ``OPEN_ITEM_CHARS``; the label set and the run build it here,
+    so both ask the same thing.
+    """
+    found = {}
+    for o in open_items:
+        text = f"{o.get('subject') or ''}\n{o.get('body') or ''}".strip()
+        found[str(o["key"])] = redactor.redact(text[:OPEN_ITEM_CHARS]).text
+    return with_candidates(question, found)
 
 
 @dataclass(frozen=True)
@@ -355,6 +402,7 @@ def judge_with_fallback(
 JUDGMENT_TIMEOUT_S: Final = 20.0
 SECURITY_FILE: Final = "d1.yaml"
 WORK_ITEM_TYPE_FILE: Final = "d2.yaml"
+ALREADY_OPEN_FILE: Final = "d3.yaml"
 ENOUGH_FILE: Final = "d4.yaml"
 TEAM_FILE: Final = "d6.yaml"
 IMPACT_FILE: Final = "d7.yaml"
@@ -377,11 +425,13 @@ class Decision:
     fallback: JudgmentEngine | None = None
     timeout_s: float = JUDGMENT_TIMEOUT_S
 
-    def decide(self, state: str) -> Judgment:
+    def decide(self, state: str, question: Question | None = None) -> Judgment:
+        """Ask the decision's question, or ``question``: the same one over found answers (#230)."""
+        asked = question or self.question
         if self.fallback is None:
-            return self.primary.judge(self.question, state, timeout_s=self.timeout_s)
+            return self.primary.judge(asked, state, timeout_s=self.timeout_s)
         return judge_with_fallback(
-            self.primary, self.fallback, self.question, state, timeout_s=self.timeout_s
+            self.primary, self.fallback, asked, state, timeout_s=self.timeout_s
         )
 
     def stands(self, judgment: Judgment) -> bool:
@@ -482,6 +532,9 @@ class Stage:
     # Asked of an Incident first, once: a `no` that stands means the reporter
     # is asked before any summary (decision 5); None until measured (#229).
     enough: Decision | None = None
+    # Asked of an Incident a source offers open Work items for; a match that
+    # stands is named for a person to link. None until measured (#230).
+    already_open: Decision | None = None
 
     def stops_for_security(self, judgment: Judgment) -> bool:
         """At or above decision 1's cut on P(yes), or answered by the fallback: stop.
@@ -575,6 +628,24 @@ def _severity(
     return Severity(impact, urgency, table)
 
 
+def _already_open(
+    decisions_dir: Path, primary: JudgmentEngine, fallback: JudgmentEngine | None
+) -> Decision | None:
+    """Decision 3 at its engine's measured cut, or None while it has none, and the log says so.
+
+    Unmeasured, no Work item is named as already open.
+    """
+    already_open = _measured(decisions_dir, ALREADY_OPEN_FILE, primary, fallback)
+    if already_open is None:
+        logger.warning(
+            "The Judgments stage runs WITHOUT decision 3: %s has no threshold for %s, so no "
+            "open Work item is named as the same problem (#230).",
+            decisions_dir / ALREADY_OPEN_FILE,
+            primary.name,
+        )
+    return already_open
+
+
 def _enough(
     decisions_dir: Path, primary: JudgmentEngine, fallback: JudgmentEngine | None
 ) -> Decision | None:
@@ -623,8 +694,8 @@ def build_stage(
     With a TypeSafe key, Jev decides both and the Playbook's model is its
     fallback: Classification for decision 2, the Question asked as written for
     decision 1. Without one, the Playbook's model decides alone, and the log
-    says so. Decision 1, enough to act on, the team, and Impact and Urgency
-    run only once they are measured for their engine.
+    says so. Decision 1, already open, enough to act on, the team, and Impact
+    and Urgency run only once they are measured for their engine.
     """
     asked = QuestionJudge(classify_playbook, provider)
     classified = ClassificationJudge(classify_playbook, provider)
@@ -641,6 +712,7 @@ def build_stage(
             severity=_severity(decisions_dir, jev, asked),
             team=_team(decisions_dir, jev, asked),
             enough=_enough(decisions_dir, jev, asked),
+            already_open=_already_open(decisions_dir, jev, asked),
         )
     stage = Stage(
         security=_security(decisions_dir, asked, None),
@@ -648,6 +720,7 @@ def build_stage(
         severity=_severity(decisions_dir, asked, None),
         team=_team(decisions_dir, asked, None),
         enough=_enough(decisions_dir, asked, None),
+        already_open=_already_open(decisions_dir, asked, None),
     )
     logger.warning(
         "The Judgments stage is on without TYPESAFE_API_KEY: %s decides alone.", classified.name
