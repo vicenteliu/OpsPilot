@@ -110,6 +110,9 @@ full JQL scope — there is deliberately no time cursor to miss things).
   with the item, its approver, whether the submitter is entitled to it and
   its stock, all looked up in the catalog. An item the catalog marks
   automated gets a comment saying so instead of a suggestion.
+- A **request that reads as a change** (#293) gets a comment saying a person
+  should handle it, OpsPilot having no change path; one that reads as an
+  incident is handled as one, and the suggestion says so.
 - `--rerun IT-123` forces a fresh run for one key (the key must still
   match the JQL scope). The new suggestion is posted as a new comment.
 

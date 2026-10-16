@@ -22,6 +22,21 @@ answers:
     A change to a shared service or its configuration, not a standard ask for
     a person: a DNS record, a firewall rule, a server or network setting, a new
     integration.
-# Set from the label set, never guessed (ADR-0040), keyed by the engine it was
-# measured on; empty until that report has been run.
-thresholds: {}
+# Set from the label set, never guessed (SPEC §7), keyed by the engine it was
+# measured on (#274). `request` and an answer below the cut take the same way,
+# so each is the cut on the other answers in judgments/label_set/report_r2_v1.md,
+# run on 2026-10-17 over all 80 rows as if filed as requests, three passes each:
+# the lowest probability at which the incidents and changes named are at least
+# 95% right.
+#
+# 0.71 on Jev's probability: 154 of 240 answers name one, 95.5% rightly; 132 of
+#   the 141 incident answers and 15 of the 33 change answers, and 4 of the 66
+#   request answers named an incident.
+# 0.75 on the Playbook's model: 131 named, 96.2% rightly; 111 of 141 and 15 of
+#   33, and 2 of 66.
+#
+# Both engines miss most changes, calling them requests. Measure again when the
+# label set grows, or when either model changes.
+thresholds:
+  "typesafe:jev-1.13.0": 0.71
+  "playbook:anthropic/claude-haiku-5-5": 0.75
