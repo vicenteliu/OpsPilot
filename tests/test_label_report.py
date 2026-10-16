@@ -677,3 +677,59 @@ def test_a_noul_s_report_finds_the_cut_at_which_its_asks_are_95_percent_right() 
     assert "## Asks: the lowest P(no)" in md
     # At 0.8 two asks go out, both right; at 0.7 the wrong one joins: 2/3.
     assert "| e | 0.800 | 2/10 | 100.0% | 2/3 | 0/7 |" in md
+
+
+# ── Decision 3: already open, over its own items (#230) ──────────────────────
+
+D3 = load_question(REPO_ROOT / DECISIONS_DIR / "d3.yaml")
+
+
+def _ao_item(n: int, same: str) -> dict[str, Any]:
+    keys = [f"LS1-{n:03d}", f"LS1-{n + 100:03d}"]
+    return {
+        "id": f"AO-{n:03d}",
+        "subject": f"subject {n}",
+        "body": f"body {n}",
+        "channel": "chat",
+        "candidates": [{"key": k, "subject": f"about {k}", "body": "it broke"} for k in keys],
+        "same": same,
+        "answer_space": {"d3": D3.version},
+    }
+
+
+def test_d3_asks_each_item_over_its_own_open_work_items(tmp_path: Path) -> None:
+    from opspilot.judgment import open_items_question
+
+    items = [_ao_item(1, "LS1-001"), _ao_item(2, "none")]
+    asked: list[list[str]] = []
+
+    class Picks:
+        name = "e"
+
+        def judge(self, question: Question, state: str, *, timeout_s: float) -> Judgment:
+            asked.append(list(question.answers))
+            return Judgment("d3", "d3-v1", next(iter(question.answers)), 0.9, "e", 5, 0.00001)
+
+    redactor = Redactor.from_yaml()
+    made = run_engines(
+        items, D3, [Picks()], runs=1, out=tmp_path / "runs_d3.jsonl", redactor=redactor,
+        timeout_s=1, ask_with=lambda i: open_items_question(D3, i["candidates"], redactor),
+    )  # fmt: skip
+    assert made == 2
+    assert asked == [["LS1-001", "LS1-101", "none"], ["LS1-002", "LS1-102", "none"]]
+
+
+def test_the_d3_report_finds_the_cut_at_which_the_matches_named_are_95_percent_right() -> None:
+    from opspilot.label_report import already_open_report_markdown
+
+    items = [_ao_item(n, f"LS1-{n:03d}" if n <= 10 else "none") for n in range(1, 21)]
+    answers = {f"AO-{n:03d}": (f"LS1-{n:03d}", 0.9) for n in range(1, 10)}
+    answers["AO-010"] = ("none", 0.6)  # a match missed
+    answers |= {f"AO-{n:03d}": ("none", 0.8) for n in range(11, 20)}
+    answers["AO-020"] = ("LS1-020", 0.7)  # a match named where there is none
+    md = already_open_report_markdown(items, _records("e", answers), D3)
+    assert "10 items repeat one of their five open Work items" in md
+    assert "| e | a match (10) | 9 | 1 | 0 |" in md
+    assert "| e | none (10) | – | 9 | 1 |" in md
+    # At 0.9 nine matches are named, all right; at 0.7 the false one joins: 9/10.
+    assert "| e | 0.900 | 9/20 | 100.0% | 9/10 | 0/10 |" in md

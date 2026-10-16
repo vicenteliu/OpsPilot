@@ -37,6 +37,7 @@ from .orchestrator.types import PlaybookSpec
 from .providers.base import ProviderProtocol
 from .providers.pricing import estimate_cost_usd
 from .providers.types import Message, SamplingParams
+from .redaction import Redactor
 
 logger = logging.getLogger("opspilot.judgment")
 
@@ -118,6 +119,23 @@ def with_candidates(question: Question, found: dict[str, str]) -> Question:
         question,
         answers={**{k: meaning.format(text=t) for k, t in found.items()}, **question.answers},
     )
+
+
+def open_items_question(
+    question: Question, open_items: list[dict[str, Any]], redactor: Redactor
+) -> Question:
+    """Decision 3 asked of one Work item: its open Work items, redacted, then `none` (#230).
+
+    Each open Work item is an answer keyed by its key, meaning its subject and
+    body; the label set and the run build it here, so both ask the same thing.
+    """
+    found = {
+        str(o["key"]): redactor.redact(
+            f"{o.get('subject') or ''}\n{o.get('body') or ''}".strip()
+        ).text
+        for o in open_items
+    }
+    return with_candidates(question, found)
 
 
 @dataclass(frozen=True)

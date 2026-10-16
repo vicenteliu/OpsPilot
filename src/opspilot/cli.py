@@ -55,6 +55,7 @@ from .judgment import (
     QuestionJudge,
     TypeSafeJudge,
     load_question,
+    open_items_question,
 )
 from .kb.conflict import resolve_conflict
 from .kb.ingestion import (
@@ -73,6 +74,7 @@ from .kb.ssc import ssc_pages
 from .kb.storage_init import init_sqlite
 from .label_report import (
     RUNS,
+    already_open_report_markdown,
     incident_report_markdown,
     known_fix_report_markdown,
     report_markdown,
@@ -2291,8 +2293,8 @@ def labelset_report(
     decision: str = typer.Option(
         "d2",
         "--decision",
-        help="d2 (incident or request), d1 (security), d4 (enough to act on), d6 (team),"
-        " d7 (impact), d8 (urgency), d9 (known fix).",
+        help="d2 (incident or request), d1 (security), d3 (already open), d4 (enough to act"
+        " on), d6 (team), d7 (impact), d8 (urgency), d9 (known fix).",
     ),
     path: Path = typer.Option(OUT_PATH, "--set", help="The labelled set."),  # noqa: B008
     runs_file: Path | None = typer.Option(  # noqa: B008
@@ -2320,8 +2322,11 @@ def labelset_report(
     report by a person.
     """
     try:
-        if decision not in ("d1", "d2", "d4", "d6", "d7", "d8", "d9"):
-            raise LabelSetError(f"--decision is d1, d2, d4, d6, d7, d8 or d9, not {decision!r}")
+        if decision not in ("d1", "d2", "d3", "d4", "d6", "d7", "d8", "d9"):
+            raise LabelSetError(f"--decision is d1, d2, d3, d4, d6, d7, d8 or d9, not {decision!r}")
+        if decision == "d3":
+            # Decision 3 is measured on items of its own, not the set's rows (SPEC §5).
+            path = ALREADY_OPEN_PATH
         if not path.is_file():
             raise LabelSetError(f"{path} not found; run from the repo root")
         rows = _read_jsonl(path)
@@ -2374,12 +2379,19 @@ def labelset_report(
                 timeout_s=JUDGMENT_TIMEOUT_S,
                 show=typer.echo,
                 candidates=offered,
+                ask_with=(
+                    (lambda item: open_items_question(question, item["candidates"], redactor))
+                    if decision == "d3"
+                    else None
+                ),
             )
             typer.echo(f"{made} calls made; every call is in {runs_out}\n")
         if not runs_out.is_file():
             raise LabelSetError(f"{runs_out} not found; run without --no-call first")
         reviews = _read_jsonl(review) if review.is_file() else None
-        if decision in ("d4", "d6", "d7", "d8"):
+        if decision == "d3":
+            md = already_open_report_markdown(rows, _read_jsonl(runs_out), question)
+        elif decision in ("d4", "d6", "d7", "d8"):
             md = incident_report_markdown(rows, _read_jsonl(runs_out), question)
         elif decision == "d9":
             md = known_fix_report_markdown(

@@ -233,6 +233,12 @@ person are at least 95% right. A person sets each file's threshold from it.
 the same Incidents, into `runs_d6_v1.jsonl`; a Choice's answers are not ordered, so it has no
 within-one figure.
 
+**Decision 3** (#230): `--decision d3` asks each item of `already_open_d3_v1.jsonl` over its own
+five open Work items, each redacted and keyed by its row id, then `none`: the Choice the stage
+builds from a source's open Work items. The calls go to `runs_d3_v1.jsonl`. The stage acts only on
+a match, so the report gives the cut at which the matches named are at least 95% right, with how
+many labelled matches are named rightly and how many items labelled `none` are named one.
+
 **Decision 4** (#229): `--decision d4` reports whether each Incident has enough to act on, the same
 way, into `runs_d4_v1.jsonl`. The stage acts only on a `no` that clears its cut, so the report
 also gives that cut: the lowest P(no) at which the Work items asked about are at least 95%
