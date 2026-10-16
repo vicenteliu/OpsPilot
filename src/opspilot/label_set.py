@@ -1297,7 +1297,8 @@ def draft_site_wide(
             entry = {"phase": "site-wide", "model": model, "cost_usd": resp.usage.cost_usd}
             f.write(json.dumps(entry) + "\n")
         parsed, err = _parse_summary_json(resp.content)
-        by_slot = {r.get("slot"): r for r in (parsed.get("rows") if err is None else None) or []}
+        drafted = parsed.get("rows") if err is None else None
+        by_slot = {r.get("slot"): r for r in drafted or [] if isinstance(r, dict)}
         for slot, (topic, _) in todo.items():
             row = by_slot.get(slot)
             if not isinstance(row, dict):

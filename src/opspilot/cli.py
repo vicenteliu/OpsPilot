@@ -2411,9 +2411,11 @@ def labelset_report(
         if decision in ("d4", "d6", "d7", "d8"):
             # ADR-0040 asks these of an Incident, and only those are labelled.
             rows = [r for r in rows if r["work_item_type"] == "incident"]
-        if decision in ("d7", "d8") and SITE_WIDE_PATH.is_file():
-            # The site-wide Incidents drafted so Impact's highest level is measured (#288).
-            rows += _read_jsonl(SITE_WIDE_PATH)
+        site_wide = path.with_name(SITE_WIDE_PATH.name)
+        if decision in ("d7", "d8") and site_wide.is_file():
+            # The site-wide Incidents drafted, beside the set, so Impact's highest
+            # level is measured (#288).
+            rows += _read_jsonl(site_wide)
         if decision == "r1":
             # The request path's first decision, asked of a service request (#231).
             rows = [r for r in rows if r["work_item_type"] == "service_request"]
