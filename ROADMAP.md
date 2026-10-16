@@ -163,12 +163,13 @@ either claim.
   fixes about nine in ten rows that have a fix, retrieval's first hit seven in
   ten.
 - Impact and Urgency, decisions 7 and 8 (#227): Jev asks a Score, and the 39
-  Incidents are labelled for both, blind (#287). Measured on them, at the
-  lowest cut that keeps the levels it decides 95% right, Jev decides 91% of
-  impacts (at 0.70) and 39% of urgencies (at 0.93); the Playbook's model, all
-  impacts (at 0.45) and 30% of urgencies (at 0.70). Both get `stopped` right
-  and confuse `worked_around` with `slowed`. No Incident is site-wide, so
-  Impact's highest level is not measured (#288). With the stage on, an
+  Incidents are labelled for both, blind (#287), with 12 site-wide Incidents
+  drafted and labelled apart from the set (#288). Measured on all 51, at the
+  lowest cut that keeps the levels it decides 95% right, Jev decides 96% of
+  impacts (at 0.66) and 54% of urgencies (at 0.86); the Playbook's model, all
+  impacts (at 0.45) and 46% of urgencies (at 0.70). Both answer `site_wide`
+  for every site-wide Incident, get `stopped` right, and confuse
+  `worked_around` with `slowed`. With the stage on, an
   Incident's Severity is read off `judgments/decisions/severity.yaml` when both
   clear their cuts, and the summary Playbook is given it; below either, it
   suggests one as before.
@@ -206,7 +207,6 @@ either claim.
 
 - Decision 1's automation (#281).
 - The handbook's pages shown to the person in Jev's order (#286).
-- Site-wide Incidents in the label set, to measure Impact's highest level (#288).
 - The request path's other two Judgments: really a request (#293), and enough
   to fulfil (#294).
 - The rest of ADR-0040's order of work, #227–#231; filed and not scheduled,

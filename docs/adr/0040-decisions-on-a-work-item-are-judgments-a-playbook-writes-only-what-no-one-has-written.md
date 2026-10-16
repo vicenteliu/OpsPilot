@@ -24,6 +24,11 @@ Status: accepted (2026-09-23)
 > The table is `judgments/decisions/severity.yaml`. No Incident in the set is site-wide, so
 > Impact's highest level is not yet measured (#288).
 >
+> **Revised 2026-10-16** (#288): twelve site-wide Incidents were drafted and labelled for impact and
+> urgency apart from the set, and decisions 7 and 8 measured again on all 51. Both engines answer
+> `site_wide` for every one labelled so; Jev's cuts move to 0.66 (Impact) and 0.86 (Urgency), the
+> Playbook model's stay at 0.45 and 0.70.
+>
 > **Revised 2026-10-16** (#228): the team list is decision 6's answer space, `d6.yaml`, so a
 > changed list is a new version measured again. On the label set's Incidents both engines picked
 > the labelled team every time. A team that clears its cut from the primary engine replaces the
