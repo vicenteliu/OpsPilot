@@ -1346,3 +1346,20 @@ def test_the_site_wide_file_is_labelled_like_the_incidents(tmp_path: Path) -> No
         ("site_wide", "stopped"),
         ("multiple_users", "worked_around"),
     ]
+
+
+def test_cli_label_really_asks_each_request_request_incident_or_change(tmp_path: Path) -> None:
+    """r2 (#293): only the service requests are asked; the Incidents count by their type."""
+    from opspilot import cli
+
+    path = _incidents_file(tmp_path)  # LS1-002 is the one request
+    result = CliRunner().invoke(
+        cli.app, ["labelset", "label-really", "--by", "v", "--set", str(path)], input="3\n"
+    )
+    assert result.exit_code == 0, result.output
+    assert "really? 1 request · 2 incident · 3 change" in result.output
+    assert (
+        "labelled 1 service requests against r2-v1 · really: request 0, incident 0, change 1"
+        in result.output
+    )
+    assert [r.get("really") for r in _read(path)] == [None, "change", None, None]

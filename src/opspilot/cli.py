@@ -2308,6 +2308,40 @@ def labelset_label_catalog_item(
     )
 
 
+@labelset_app.command("label-really")
+def labelset_label_really(
+    by: str = typer.Option(..., "--by", help="The labeller's handle, recorded on each row."),
+    path: Path = typer.Option(OUT_PATH, "--set", help="The labelled set."),  # noqa: B008
+) -> None:
+    """Label whether each service request is really one, blind (r2, #293).
+
+    Only the rows labelled service_request are asked: the set's Incidents count
+    as `incident`, by their type. Answer each with its number. u goes back and
+    q stops; every answer is saved as it is given.
+    """
+    try:
+        r2 = load_question(DECISIONS_DIR / "r2.yaml")
+        res = label_pass(
+            path,
+            by=by,
+            ask=_ask_line,
+            show=typer.echo,
+            columns={"really": r2},
+            stamp="really",
+            of="service_request",
+        )
+    except OpsPilotError as e:
+        _console.print(f"Error: {e}", style="red", markup=False)
+        raise typer.Exit(1) from e
+    if not res.finished:
+        typer.echo(f"\nsaved · {res.labelled}/{res.total} labelled; rerun to continue")
+        return
+    typer.echo(
+        f"\nlabelled {res.labelled} service requests against {r2.version}"
+        f" · really: {_counts(res.counts['really'])}"
+    )
+
+
 @labelset_app.command("label-enough")
 def labelset_label_enough(
     by: str = typer.Option(..., "--by", help="The labeller's handle, recorded on each row."),

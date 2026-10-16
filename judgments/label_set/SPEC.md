@@ -23,6 +23,7 @@ These columns now, the rest in their slices. Each is labelled against a versione
 | `enough` | 4 · Enough to act on? | `yes` · `no` | `d4-v1` | #229 |
 | `same` (in `already_open_d3_v1.jsonl`) | 3 · Already open? | an open Work item's key, or `none` | `d3-v1` | #230 |
 | `catalog_item` | r1 · Which catalog item? | an item of `catalog.yaml`, or `none` | `r1-v1` | #231 |
+| `really` | r2 · Really a request? | `request` · `incident` · `change` | `r2-v1` | #293 |
 
 **`d2-v1`**, the definitions the Playbook's classifier already uses
 (`playbooks/pb_classify_work_item_en/prompt.md`):
@@ -76,6 +77,14 @@ for, each meaning its name and description, or `none` when the catalog has no it
 asked. Labelled on the rows labelled `service_request` only. A changed catalog is a new answer
 space, labelled and measured again.
 
+**`r2-v1`** (2026-10-17, #293), as `judgments/decisions/r2.yaml` states it: whether a Work item
+filed as a service request is really one. `request` is an ask for something standard for a
+person; `incident`, something broken or degraded; `change`, a change to a shared service or its
+configuration (a DNS record, a firewall rule, a server or network setting, a new integration).
+Labelled on the rows labelled `service_request`; the rows labelled `incident` count as
+`incident`, by their type, since the stage asks it of anything filed as a request, declared
+wrongly or not.
+
 **`d3-v1`** (2026-10-16, #230), as `judgments/decisions/d3.yaml` states it: whether a Work item
 reports the same problem as one of the open Work items it is offered, or `none` when it is a
 different problem, even on the same subject. The set's rows were drafted as distinct problems, so
@@ -99,6 +108,7 @@ decision 3 is measured on items of its own (§5, §6), not on a column of `label
 | `team` | **person** | `d6-v1`, Incidents only; with `team_labelled_by` and `team_labelled_time` |
 | `enough` | **person** | `d4-v1`, Incidents only; with `enough_labelled_by` and `enough_labelled_time` |
 | `catalog_item` | **person** | `r1-v1`, service requests only; with `catalog_item_labelled_by` and `catalog_item_labelled_time` |
+| `really` | **person** | `r2-v1`, service requests only; with `really_labelled_by` and `really_labelled_time` |
 | `label_confidence` | **person** | `high` · `low`. Low = "I picked, but it could go the other way" |
 | `label_note` | person, optional | one line, only when the reason isn't obvious |
 | `answer_space` | script | `{"d2": "d2-v1", "d1": "d1-v1"}` at labelling time |
@@ -214,6 +224,9 @@ labelled.
 - **Catalog item** (#231, `r1-v1`): the catalog is shown first, each item by number with its
   description; then each row labelled `service_request`, shown as the Incidents are, and the
   labeller picks its item, or `none` (`opspilot labelset label-catalog-item`).
+- **Really a request** (#293, `r2-v1`): each row labelled `service_request` is shown the same way,
+  and the labeller says whether it is a request, an incident or a change (`opspilot labelset
+  label-really`).
 - **Enough to act on** (#229, `d4-v1`): each row labelled `incident` is shown the same way, and
   the labeller says whether an engineer could start on it without asking first (`opspilot
   labelset label-enough`).
