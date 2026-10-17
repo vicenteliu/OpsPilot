@@ -94,7 +94,11 @@ class TestDecisionFile:
         assert set(q.answers) == {"yes", "no"}  # quoted in the file, not YAML booleans
         assert "When in doubt about compromise or exposure, yes." in q.answers["yes"]
         assert "routine request" in q.answers["no"]  # d1-v2: routine asks are not security
-        assert q.thresholds == {}  # measured from the label set, never guessed
+        # Measured on the label set (judgments/label_set/report_d1_v2.md, #281), never guessed.
+        assert q.thresholds == {
+            "typesafe:jev-1.13.0": 0.10,
+            "playbook:anthropic/claude-haiku-5-5": 0.30,
+        }
 
     @pytest.mark.parametrize(
         ("body", "message"),
@@ -442,16 +446,17 @@ class TestBuildStage:
         ):
             build_stage(_decisions(tmp_path, {}), playbook, _Classifier(""))  # type: ignore[arg-type]
 
-    def test_the_committed_files_run_decision_2_without_decision_1_and_say_so(
+    def test_the_committed_files_run_decision_1_first_at_its_own_cut(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """#225: d1 has no cut yet, being not ready to be automated; d2 runs at its own."""
+        """#281: d1 is measured for the Playbook's model, which decides without a Jev key."""
         playbook = load_playbook(REPO_ROOT / "playbooks" / "pb_classify_work_item_en")
         with caplog.at_level(logging.WARNING, logger="opspilot.judgment"):
             stage = build_stage(REPO_ROOT / DECISIONS_DIR, playbook, _Classifier(_REQUEST))  # type: ignore[arg-type]
-        assert stage.security is None
+        assert stage.security is not None
+        assert (stage.security.primary.name, stage.security.threshold) == (PLAYBOOK, 0.30)
         assert stage.work_item_type.threshold == 0.70
-        assert "runs WITHOUT decision 1" in caplog.text and PLAYBOOK in caplog.text
+        assert "runs WITHOUT decision 1" not in caplog.text
 
     def test_with_decision_1_measured_the_committed_d2_runs_the_playbook_model_at_its_cut(
         self, tmp_path: Path

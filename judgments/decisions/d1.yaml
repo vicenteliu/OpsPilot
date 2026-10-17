@@ -27,7 +27,26 @@ answers:
 # rows labelled no for both engines, so a cut that stopped them all stopped
 # nearly every Work item (report_d1_v1.md). d1-v2 keeps the signs of compromise
 # and makes routine asks no.
-# Set from the label set, never guessed (ADR-0040): the value at which every
-# labelled security item reaches a person. Keyed by the engine it was measured
-# on (#274), and empty until that report has been run.
-thresholds: {}
+#
+# The blind d1-v2 relabel still labelled 29 such rows yes, and both engines
+# still scored them like the no rows (#281). Asked which of the signs above
+# each shows (judgments/label_set/signs_d1_v2.yaml), the labeller named none in
+# 27, routine requests and faults about encryption, certificates, VPN, sign-in
+# and access, and doubt in 2; the 27 are labelled no, the 2 stay yes. A Lookup
+# of the signs written as patterns had found 2 of the 41 then labelled yes, so
+# the Judgment alone decides.
+#
+# Set from the label set, never guessed (ADR-0040): the highest P(yes) at which
+# every labelled security item reaches a person, keyed by the engine it was
+# measured on (#274). From judgments/label_set/report_d1_v2.md, recomputed on
+# 2026-10-17 from its saved runs over the 80 rows, three passes each, with 14
+# labelled yes:
+#
+# 0.10 on Jev's P(yes): stops 55 of 240 answers, 13 of the 198 labelled no.
+# 0.30 on the Playbook's model: stops 45 of 240, 3 of the 198 labelled no.
+#
+# 14 security items is few: measure again when the label set grows, or when
+# JEV_MODEL or the classification Playbook's model changes.
+thresholds:
+  "typesafe:jev-1.13.0": 0.10
+  "playbook:anthropic/claude-haiku-5-5": 0.30

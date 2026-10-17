@@ -554,8 +554,8 @@ class Stage:
     decision 2 runs only when nothing declared the type.
     """
 
-    # None until decision 1 is measured for the engine that would decide it:
-    # measured on the label set, it is not ready to be automated (#225).
+    # None until decision 1 is measured for the engine that would decide it
+    # (#225); measured on the label set for Jev and the Playbook's model (#281).
     security: Decision | None
     work_item_type: Decision
     # Asked of an Incident before its summary; None until Impact and Urgency
@@ -622,10 +622,10 @@ def _security(
 ) -> Decision | None:
     """Decision 1 at its engine's measured cut, or None while it has none, and the log says so.
 
-    Unlike decision 2, an unmeasured decision 1 does not stop the stage: on the
-    label set no cut stopped the labelled security items without stopping
-    nearly every Work item, so it is not ready to be automated (#225). Running
-    without it is said loudly, because a security issue then goes unstopped.
+    Unlike decision 2, an unmeasured decision 1 does not stop the stage: it
+    went unmeasured while no cut stopped the labelled security items without
+    stopping nearly every Work item (#225, until #281). Running without it is
+    said loudly, because a security issue then goes unstopped.
     """
     path = decisions_dir / SECURITY_FILE
     question = load_question(path)
