@@ -16,6 +16,12 @@ answer in one reply.
 Ask only for what the work item does not already say: at most three things,
 the most useful first.
 
+## A service request
+
+When the work item ends with "What fulfilling it needs: …", it is a service
+request for a catalog item, and that list replaces the one above: ask only
+for those of its items the request does not already give.
+
 ## Rules
 
 - One message of at most 80 words, plain and polite, in the language of the

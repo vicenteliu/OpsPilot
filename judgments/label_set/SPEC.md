@@ -296,6 +296,11 @@ request, it really is one, into `runs_r2_v1.jsonl`: the 41 requests against thei
 the 39 Incidents against `incident`, by their type. `request`, and an answer below the cut, leave
 the request path as it is, so the report gives the cut on the other answers.
 
+**The request path's r3** (#294): `--decision r3` asks each request with a catalog item whether
+it gives what that item needs, its question filled in with the item's name and fields, into
+`runs_r3_v1.jsonl`. Only a `no` that clears its cut acts, so the report gives the asks' cut, as
+for decision 4.
+
 **Decision 4** (#229): `--decision d4` reports whether each Incident has enough to act on, the same
 way, into `runs_d4_v1.jsonl`. The stage acts only on a `no` that clears its cut, so the report
 also gives that cut: the lowest P(no) at which the Work items asked about are at least 95%

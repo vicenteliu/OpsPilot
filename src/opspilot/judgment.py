@@ -406,6 +406,7 @@ JUDGMENT_TIMEOUT_S: Final = 20.0
 SECURITY_FILE: Final = "d1.yaml"
 WORK_ITEM_TYPE_FILE: Final = "d2.yaml"
 REALLY_FILE: Final = "r2.yaml"
+FULFIL_FILE: Final = "r3.yaml"
 ALREADY_OPEN_FILE: Final = "d3.yaml"
 ENOUGH_FILE: Final = "d4.yaml"
 TEAM_FILE: Final = "d6.yaml"
@@ -545,6 +546,9 @@ class Stage:
     # The request path, then: is it really a request, or an incident or a
     # change filed as one? None until measured (#293).
     really: Decision | None = None
+    # The request path, last: does a request give what its item needs? A `no`
+    # that stands asks the reporter once. None until measured (#294).
+    fulfil: Decision | None = None
 
     def stops_for_security(self, judgment: Judgment) -> bool:
         """At or above decision 1's cut on P(yes), or answered by the fallback: stop.
@@ -710,6 +714,24 @@ def _really(
     return really
 
 
+def _fulfil(
+    decisions_dir: Path, primary: JudgmentEngine, fallback: JudgmentEngine | None
+) -> Decision | None:
+    """r3 at its engine's measured cut, or None while it has none, and the log says so (#294).
+
+    Unmeasured, no requester is asked for what their catalog item needs.
+    """
+    fulfil = _measured(decisions_dir, FULFIL_FILE, primary, fallback)
+    if fulfil is None:
+        logger.warning(
+            "The Judgments stage runs WITHOUT r3: %s has no threshold for %s, so no requester "
+            "is asked for what their catalog item needs (#294).",
+            decisions_dir / FULFIL_FILE,
+            primary.name,
+        )
+    return fulfil
+
+
 def _enough(
     decisions_dir: Path, primary: JudgmentEngine, fallback: JudgmentEngine | None
 ) -> Decision | None:
@@ -759,8 +781,8 @@ def build_stage(
     fallback: Classification for decision 2, the Question asked as written for
     decision 1. Without one, the Playbook's model decides alone, and the log
     says so. Decision 1, already open, enough to act on, the team, Impact and
-    Urgency, the catalog item and really a request run only once they are
-    measured for their engine.
+    Urgency, the catalog item, really a request and enough to fulfil run only
+    once they are measured for their engine.
     """
     asked = QuestionJudge(classify_playbook, provider)
     classified = ClassificationJudge(classify_playbook, provider)
@@ -780,6 +802,7 @@ def build_stage(
             already_open=_already_open(decisions_dir, jev, asked),
             catalog=_catalog(decisions_dir, jev, asked),
             really=_really(decisions_dir, jev, asked),
+            fulfil=_fulfil(decisions_dir, jev, asked),
         )
     stage = Stage(
         security=_security(decisions_dir, asked, None),
@@ -790,6 +813,7 @@ def build_stage(
         already_open=_already_open(decisions_dir, asked, None),
         catalog=_catalog(decisions_dir, asked, None),
         really=_really(decisions_dir, asked, None),
+        fulfil=_fulfil(decisions_dir, asked, None),
     )
     logger.warning(
         "The Judgments stage is on without TYPESAFE_API_KEY: %s decides alone.", classified.name

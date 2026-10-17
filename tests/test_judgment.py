@@ -417,6 +417,7 @@ def _incident_decision_files(tmp_path: Path) -> None:
         "severity.yaml",
         "r1.yaml",
         "r2.yaml",
+        "r3.yaml",
         "catalog.yaml",
     ):
         (tmp_path / name).write_text((D2.parent / name).read_text(encoding="utf-8"))
@@ -624,6 +625,7 @@ def _app_with_stage(
     already_open: Decision | None = None,
     catalog: Any = None,
     really: Decision | None = None,
+    fulfil: Decision | None = None,
 ) -> Any:
     from collections.abc import AsyncIterator
     from contextlib import asynccontextmanager
@@ -657,6 +659,7 @@ def _app_with_stage(
             already_open=already_open,
             catalog=catalog,
             really=really,
+            fulfil=fulfil,
         )
         app.state.inventory = MagicMock()
         app.state.inventory.list.return_value = [
@@ -1557,3 +1560,91 @@ class TestReally:
         run, data, app = _filed_as_request(answer)
         assert run.call_args.args[0].playbook is app.state.request_fulfillment_pb
         assert data["really"] is None
+
+
+# ── r3: enough to fulfil, and the ask for what the item needs (#294) ─────────
+
+
+def _fulfil(engine: Any) -> Decision:
+    return Decision(load_question(REPO_ROOT / DECISIONS_DIR / "r3.yaml"), 0.51, primary=engine)
+
+
+def _request_with_item(
+    item: tuple[str, float], enough: tuple[str, float], **body: Any
+) -> tuple[Any, Any, Any, Any]:
+    """A request whose item stands, with r3 on: the run mock, the response, the app, the asker."""
+    from unittest.mock import patch
+
+    from fastapi.testclient import TestClient
+
+    says = _Says({"r3": enough})
+    asker = _Classifier(_ASK)
+    app = _app_with_stage(
+        _Engine("service_request", 0.99),
+        catalog=_catalog(_Picks(*item)),
+        fulfil=_fulfil(says),
+        ask_provider=asker,
+    )
+    request = {**_UNTYPED, "work_item_type": "service_request"}
+    with (
+        patch("opspilot.api.routes.run.run_ticket_summary", return_value=_run_result()) as run,
+        TestClient(app) as client,
+    ):
+        app.state.request_fulfillment_pb.output_schema = "request_fulfillment_v1"
+        response = client.post("/api/run", json={"input": request, **body})
+    return run, response.json(), app, (says, asker)
+
+
+class TestEnoughToFulfil:
+    def test_a_request_missing_what_its_item_needs_is_asked_for_it(self) -> None:
+        run, data, _, (says, asker) = _request_with_item(("vpn_access", 0.9), ("no", 0.8))
+        run.assert_not_called()
+        assert data["needs_confirmation"] is True and data["catalog"]["item"] == "vpn_access"
+        assert data["ask"]["work_item_type"] == "service_request"
+        [call] = asker.calls
+        assert call["messages"][1].content.endswith("What fulfilling it needs: who needs it, why")
+
+    def test_it_is_asked_against_the_item_s_fields(self) -> None:
+        offered: list[str] = []
+
+        class Reads(_Says):
+            def judge(self, question: Question, state: str, *, timeout_s: float) -> Judgment:
+                offered.append(question.text)
+                return super().judge(question, state, timeout_s=timeout_s)
+
+        from unittest.mock import patch
+
+        from fastapi.testclient import TestClient
+
+        app = _app_with_stage(
+            _Engine("service_request", 0.99),
+            catalog=_catalog(_Picks("loaner", 0.9)),
+            fulfil=_fulfil(Reads({"r3": ("yes", 0.9)})),
+        )
+        with (
+            patch("opspilot.api.routes.run.run_ticket_summary", return_value=_run_result()),
+            TestClient(app) as client,
+        ):
+            app.state.request_fulfillment_pb.output_schema = "request_fulfillment_v1"
+            client.post(
+                "/api/run", json={"input": {**_UNTYPED, "work_item_type": "service_request"}}
+            )
+        assert offered == [
+            "Does this request give what fulfilling a Loaner device needs: who, from when, until when?"
+        ]
+
+    @pytest.mark.parametrize(
+        ("enough", "body"),
+        [(("yes", 0.9), {}), (("no", 0.4), {}), (("no", 0.9), {"asked": True})],
+        ids=["yes", "below its cut", "already asked"],
+    )
+    def test_otherwise_it_is_fulfilled_as_before(
+        self, enough: tuple[str, float], body: dict[str, Any]
+    ) -> None:
+        run, data, _, _ = _request_with_item(("vpn_access", 0.9), enough, **body)
+        run.assert_called_once()
+        assert data["ask"] is None
+
+    def test_an_automated_item_is_not_asked(self) -> None:
+        run, data, _, (says, _) = _request_with_item(("password_reset", 0.9), ("no", 0.9))
+        assert says.asked == [] and data["catalog"]["automated"] is True

@@ -66,6 +66,13 @@ Status: accepted (2026-09-23)
 > OpsPilot having no change path; anything else stays a request. The labeller, labelling r2, called
 > 8 of the 41 requests incidents: a disagreement with their own type labels, which d2's report
 > still uses.
+>
+> **Revised 2026-10-17** (#294): r3 asks a request whose catalog item stood, and is not automated,
+> whether it gives what the item's `fields` say fulfilling it needs. Measured on the 25 requests
+> with an item, at a P(no) of 0.51 Jev asks about 41 of the 48 answers labelled `no` and none of the
+> 27 labelled `yes`. A `no` that clears its cut holds the request back for one ask, written by
+> `pb_ask_en` for the missing fields, through the reply loop of #229; the reply runs it again as a
+> request. The request path's three Judgments are now built.
 
 A Work item reaches a suggestion through a string of decisions, and today a
 language model makes every one of them in prose. Classification is one call

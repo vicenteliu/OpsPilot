@@ -4,12 +4,14 @@
 # for an engineer to start, so the reporter is asked once before any summary.
 
 id: "pb_ask_en"
-version: "1.0.0"
+version: "1.1.0"
 
 description: |
   Write the one message OpsPilot sends the reporter of a redacted IT work item
   that does not yet say enough to act on (#229). Single-shot, no KB retrieval,
   no tools. Output conforms to work_item_ask_v1 {ask}.
+
+  v1.1.0: also asks a service request for what its catalog item needs (#294).
 
 system_prompt: "prompt.md"
 output_schema: "work_item_ask_v1"

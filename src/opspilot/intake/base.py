@@ -278,14 +278,14 @@ def with_reply(work_item: dict[str, Any], reply: str) -> dict[str, Any]:
     On Telegram that is the reporter's next message; on JSM, every comment
     since OpsPilot's, whoever wrote it, so it is not called the reporter's.
 
-    It was asked about as an Incident, so it says so: decision 2 is not asked
-    again, and the stage re-enters at decision 1, then 4.
+    It keeps the type it was asked about as, an Incident (decision 4) unless it
+    says a request (r3, #294), so decision 2 is not asked again.
     """
     body = str(work_item.get("body") or "")
     return {
         **work_item,
         "body": f"{body}\n\nAdded after OpsPilot asked for more information:\n{reply}".strip(),
-        "work_item_type": "incident",
+        "work_item_type": work_item.get("work_item_type") or "incident",
     }
 
 
@@ -456,8 +456,10 @@ class IntakeLoop:
                 continue
             self._state.mark(item.key)
             if res.get("ask"):
-                # The reporter is asked once; their reply runs it again (#229).
-                self._state.await_reply(item.key, item.work_item)
+                # The reporter is asked once; their reply runs it again, as the
+                # type it was asked about as (#229, #294).
+                asked_as = res["ask"].get("work_item_type") or "incident"
+                self._state.await_reply(item.key, {**item.work_item, "work_item_type": asked_as})
             self._respond(item.key, res, report)
         return report
 

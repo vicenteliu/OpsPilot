@@ -370,3 +370,14 @@ class TestTelegramAsk:
         ch.handle_update(_update(42, "/reset", update_id=2))
         ch.handle_update(_update(42, "since Monday", update_id=3))
         assert len(run.calls) == 1 and chat.calls
+
+
+def test_a_request_asked_on_telegram_is_run_again_as_a_request() -> None:
+    """#294: the chat's reply keeps the type the ask was made for."""
+    asked = {**_ASKED, "ask": {**_ASKED["ask"], "work_item_type": "service_request"}}
+    run = _SeqRun(asked, TestTelegramIntake._OK_RUN)
+    ch = _ask_channel(run, [])
+    ch.handle_update(_update(42, "/request VPN please"))
+    ch.handle_update(_update(42, "for me, to reach the build servers", update_id=2))
+    work_item, was_asked = run.calls[1]
+    assert was_asked is True and work_item["work_item_type"] == "service_request"
