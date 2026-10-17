@@ -165,7 +165,7 @@ security.
 - Public product names are fine (Microsoft 365, Okta, Jamf, GlobalProtect, Zoom): tickets name
   products.
 - No PII that the redactor would have to catch. The set should pass through redaction unchanged.
-- English only. A Chinese set is #233.
+- English only. A Chinese set is #233, specified in `SPEC_zh.md`.
 
 ## 5. Drafting
 
