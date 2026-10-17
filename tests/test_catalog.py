@@ -77,3 +77,17 @@ def test_one_entitled_role_may_be_written_without_a_list(tmp_path: Path) -> None
     )
     item = load_catalog(path).items["a"]
     assert item.entitled == ("engineering",) and entitled(item, "engineering") is True
+
+
+def test_r3_is_asked_against_the_item_s_own_fields() -> None:
+    from opspilot.catalog import fields_question
+    from opspilot.judgment import load_question
+
+    catalog = load_catalog(DECISIONS / "catalog.yaml")
+    r3 = load_question(DECISIONS / "r3.yaml")
+    asked = fields_question(r3, catalog.items["vpn_access"])
+    assert (
+        asked.text
+        == "Does this request give what fulfilling a VPN access needs: who needs it, why?"
+    )
+    assert (asked.kind, asked.version, asked.answers) == ("noul", r3.version, r3.answers)

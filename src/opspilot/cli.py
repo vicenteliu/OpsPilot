@@ -2342,6 +2342,48 @@ def labelset_label_really(
     )
 
 
+@labelset_app.command("label-fulfil")
+def labelset_label_fulfil(
+    by: str = typer.Option(..., "--by", help="The labeller's handle, recorded on each row."),
+    path: Path = typer.Option(OUT_PATH, "--set", help="The labelled set."),  # noqa: B008
+) -> None:
+    """Label whether each request gives what its catalog item needs, blind (r3, #294).
+
+    Only the service requests labelled with a catalog item are asked, each
+    shown with its item and the fields fulfilling it needs; answer 1 for yes or
+    2 for no. u goes back and q stops; every answer is saved as it is given.
+    """
+    try:
+        r3 = load_question(DECISIONS_DIR / "r3.yaml")
+        catalog = load_catalog(DECISIONS_DIR / CATALOG_FILE)
+
+        def needs(row: dict[str, Any]) -> str:
+            item = catalog.items[row["catalog_item"]]
+            return f"Catalog item: {item.name}. Fulfilling it needs: {', '.join(item.fields)}."
+
+        res = label_pass(
+            path,
+            by=by,
+            ask=_ask_line,
+            show=typer.echo,
+            columns={"enough_to_fulfil": r3},
+            stamp="enough_to_fulfil",
+            of="service_request",
+            where=lambda r: r.get("catalog_item") not in (None, "none"),
+            context=needs,
+        )
+    except OpsPilotError as e:
+        _console.print(f"Error: {e}", style="red", markup=False)
+        raise typer.Exit(1) from e
+    if not res.finished:
+        typer.echo(f"\nsaved · {res.labelled}/{res.total} labelled; rerun to continue")
+        return
+    typer.echo(
+        f"\nlabelled {res.labelled} requests against {r3.version}"
+        f" · enough to fulfil: {_counts(res.counts['enough_to_fulfil'])}"
+    )
+
+
 @labelset_app.command("label-enough")
 def labelset_label_enough(
     by: str = typer.Option(..., "--by", help="The labeller's handle, recorded on each row."),

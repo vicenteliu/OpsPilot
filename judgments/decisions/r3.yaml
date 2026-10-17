@@ -1,0 +1,24 @@
+# The request path, third (ADR-0040, #294): enough to fulfil?
+#
+# Asked of a request whose catalog item stands (r1.yaml), against that item's
+# fields in catalog.yaml: {item} and {fields} are filled in from it. A Noul:
+# a `no` that clears its cut means the reporter is asked once for what is
+# missing (the ask and reply loop of #229), and their reply runs it again.
+# Anything else fulfils it as before. The answer space the label set's
+# `enough_to_fulfil` column is labelled against (judgments/label_set/SPEC.md,
+# r3-v1).
+id: r3
+version: r3-v1
+kind: noul
+question: >-
+  Does this request give what fulfilling a {item} needs: {fields}?
+answers:
+  # Quoted: unquoted, YAML reads yes and no as true and false.
+  "yes": >-
+    It gives each of them, or each can be taken as read from it ("who" is the
+    reporter when they ask for themselves).
+  "no": >-
+    At least one is missing: someone would have to ask before fulfilling it.
+# Set from the label set, never guessed (ADR-0040), keyed by the engine it was
+# measured on; empty until that report has been run.
+thresholds: {}
