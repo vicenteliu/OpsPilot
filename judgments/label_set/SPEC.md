@@ -110,6 +110,7 @@ decision 3 is measured on items of its own (§5, §6), not on a column of `label
 | `draft_security` | drafter | `yes` · `no`; hidden, never ground truth |
 | `work_item_type` | **person** | `d2-v1` |
 | `security` | **person** | `d1-v2`; the `d1-v1` label it replaced is kept as `security_d1_v1` |
+| `security_sign` | **person** | `d1-signs-v1`, the 29 rows of the sign review (§6); with `security_sign_note`, `security_sign_labelled_by` and `security_sign_labelled_time` |
 | `known_fix` | **person** | `d9-v1`: the `source_path` of each candidate page that fixes the row, `[]` for none; with `known_fix_labelled_by` and `known_fix_labelled_time` |
 | `impact` · `urgency` | **person** | `d7-v1` · `d8-v1`, Incidents only; with `impact_urgency_labelled_by` and `impact_urgency_labelled_time` |
 | `team` | **person** | `d6-v1`, Incidents only; with `team_labelled_by` and `team_labelled_time` |
@@ -208,6 +209,12 @@ labelled.
   label given before and to the drafter's intent, but by the labeller who had seen these rows
   twice. Each answer goes to `security_d1_v2.jsonl`, and the set changes only once every row has
   one. The d1-v1 relabel and review are not read against `d1-v2` labels.
+- **Security sign review** (#281, `d1-signs-v1`): the 29 rows the relabel kept `yes` that were not
+  drafted as security items, which both engines scored like the rows labelled `no`, were asked
+  which of `d1-v2`'s signs each shows, a sign the list does not name, doubt, or none
+  (`signs_d1_v2.yaml`, `opspilot labelset label-security-signs`), with a note. It is not blind to
+  the `yes` given before. Once every row had an answer, the 27 with none were labelled `no`; the
+  blind `d1-v2` label each replaced stays in `security_d1_v2.jsonl`. The 2 in doubt stay `yes`.
 
 - **Known fix** (#226, `d9-v1`): each row's candidate pages are its `kb_search` hits over the
   SSC-built KB (`opspilot kb ingest --profile ssc`), grouped by page in rank order, searched on

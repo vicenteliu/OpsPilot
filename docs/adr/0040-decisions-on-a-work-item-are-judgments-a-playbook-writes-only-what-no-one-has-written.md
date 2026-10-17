@@ -78,6 +78,15 @@ Status: accepted (2026-09-23)
 > anything; see "Ordering is not deciding" below. Decision 9 now orders each Work item's handbook
 > pages, likeliest fix first: on the rows with a fix the first page is one for 89% of Jev's orders,
 > against 70% of retrieval's.
+>
+> **Revised 2026-10-17** (#281): decision 1 is measured, and "Security runs first" holds. The 29
+> rows labelled security that both engines scored like the rows labelled no were asked once more,
+> which of d1-v2's signs each shows: the labeller named none in 27, routine requests and faults
+> about encryption, certificates, VPN, sign-in and access, and doubt in 2. The 27 are labelled no.
+> With 14 security items, every one stops at a P(yes) of 0.10 on Jev, which stops 23% of Work items
+> and 7% of those labelled no, and at 0.30 on the Playbook's model, 19% and 2%. A Lookup of the
+> signs written as patterns found 2 of the 41 rows labelled yes before, so the Judgment decides
+> alone.
 
 A Work item reaches a suggestion through a string of decisions, and today a
 language model makes every one of them in prose. Classification is one call

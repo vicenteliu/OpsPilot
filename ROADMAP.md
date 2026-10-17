@@ -149,9 +149,13 @@ either claim.
   Measured against d1-v1 and a narrower d1-v2, relabelled blind (#279, #280),
   no cut stopped every labelled security item without stopping nearly every
   Work item: both engines find the 12 rows written as security items and score
-  the other 29 labelled yes like the rows labelled no. So it is not ready to be
-  automated, and the stage runs decision 2 without it, saying so at startup
-  (#282).
+  the other 29 labelled yes like the rows labelled no, so the stage ran
+  without it (#282). Asked which of d1-v2's signs each of the 29 shows, the
+  labeller named none in 27 and doubt in 2 (#281); with the 27 labelled no,
+  every one of the 14 security items stops at a P(yes) of 0.10 on Jev (23% of
+  Work items stopped, 7% of the labelled no) and 0.30 on the Playbook's model
+  (19%, 2%). A Lookup of the signs as patterns found 2 of the 41 then
+  labelled yes, so the Judgment decides alone.
 - Decision 9, seen before (#226): the KB is built from the SSC handbook, each
   page keyed by its path in it (`opspilot kb ingest --profile ssc`, #283), and
   each label set row has its candidate pages and the ones that fix it, labelled
@@ -218,7 +222,6 @@ either claim.
 
 *Not yet:*
 
-- Decision 1's automation (#281).
 - The rest of ADR-0040's order of work, #227–#231; filed and not scheduled,
   #232 and #233.
 

@@ -840,6 +840,74 @@ def test_cli_relabel_security_shows_d1_s_definitions_and_prints_counts(tmp_path:
     )
 
 
+def test_cli_label_security_signs_asks_the_security_rows_not_drafted_as_security(
+    tmp_path: Path,
+) -> None:
+    """#281: of either type, each answered with a sign and a note, enter skipping it.
+
+    Once every row has an answer, a row with no sign is labelled security no;
+    a rerun asks nothing and changes nothing.
+    """
+    from opspilot import cli
+
+    path = _set_file(tmp_path, 4, labelled=True)  # LS1-001 is drafted as a security item
+    rows = _read(path)
+    for row, security in zip(rows, ["yes", "yes", "yes", "no"], strict=True):
+        row["security"] = security
+    rows[1]["work_item_type"] = "service_request"
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    args = ["labelset", "label-security-signs", "--by", "v", "--set", str(path)]
+
+    result = CliRunner().invoke(cli.app, args, input="7\nscreen shared on a call\n9\n\n")
+    assert result.exit_code == 0, result.output
+    assert "subject 1" not in result.output and "subject 4" not in result.output
+    assert "draft" not in result.output
+    counts = (
+        "labelled 2 security rows against d1-signs-v1 · sign: suspicious_message 0,"
+        " unexpected_sign_in 0, lost_device 0, malware 0, credential_exposure 0,"
+        " data_exposure 0, another_sign 1, in_doubt 0, no_sign 1"
+    )
+    assert counts in result.output
+    assert "labelled no: 1 · security yes on 2 of 4 rows" in result.output
+    rows = _read(path)
+    assert [(r["security"], r.get("security_sign"), r.get("security_sign_note")) for r in rows] == [
+        ("yes", None, None),
+        ("yes", "another_sign", "screen shared on a call"),
+        ("no", "no_sign", None),
+        ("no", None, None),
+    ]
+    assert rows[1]["answer_space"] == {"d1_signs": "d1-signs-v1"}
+    assert rows[1]["security_sign_labelled_by"] == "v"
+
+    again = CliRunner().invoke(cli.app, args, input="")
+    assert again.exit_code == 0, again.output
+    assert counts in again.output and "labelled no: 0 · security yes on 2" in again.output
+    assert _read(path) == rows
+
+
+def test_settling_the_signs_waits_for_every_answer(tmp_path: Path) -> None:
+    """A pass cut short leaves the set's security labels as they were."""
+    from opspilot import cli
+
+    path = _set_file(tmp_path, 3, labelled=True)
+    rows = _read(path)
+    for row in rows:
+        row["security"] = "yes"
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    result = CliRunner().invoke(
+        cli.app,
+        ["labelset", "label-security-signs", "--by", "v", "--set", str(path)],
+        input="9\n\nq\n",
+    )
+    assert result.exit_code == 0, result.output
+    assert "saved · 1/2 labelled" in result.output
+    assert [(r["security"], r.get("security_sign")) for r in _read(path)] == [
+        ("yes", None),
+        ("yes", "no_sign"),
+        ("yes", None),
+    ]
+
+
 # ── Decision 9: which handbook page, if any, is a known fix (#226) ──────────
 
 
