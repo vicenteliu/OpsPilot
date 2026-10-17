@@ -82,8 +82,70 @@ BATCHES: Final = 8
 BATCH_SIZE: Final = 10
 TOTAL: Final = BATCHES * BATCH_SIZE
 
+
+@dataclass(frozen=True)
+class Language:
+    """What a set's language changes in drafting it: its prompt, files, forms and lengths."""
+
+    code: str
+    prompt: Path
+    out: Path
+    relabel: Path
+    work_dir: str  # under OpsPilot's home: the trials, the progress and the ledger
+    id_prefix: str
+    forms: dict[str, int]
+    by_characters: bool  # Chinese has no spaces to count words by (SPEC_zh.md §3)
+    one_liner_under: int
+    long_from: int
+    long_to: int
+    # A `security: yes` is asked which of d1-v2's signs it shows (SPEC_zh.md §6, #281).
+    asks_sign: bool = False
+
+    @property
+    def unit(self) -> str:
+        return "characters" if self.by_characters else "words"
+
+    def length(self, text: str) -> int:
+        """Words, or characters with whitespace left out."""
+        return len("".join(text.split())) if self.by_characters else len(text.split())
+
+
+EN: Final = Language(
+    "en",
+    DRAFT_PROMPT_PATH,
+    OUT_PATH,
+    LABEL_SET_DIR / "relabel_v1.jsonl",
+    "label_set_v1",
+    "LS1",
+    FORMS,
+    False,
+    12,
+    100,
+    150,
+)
+# The English mix with `mixed` in `non_native`'s place, so the seed deals the
+# same slots; lengths at about 1.7 characters a word (SPEC_zh.md §3).
+ZH: Final = Language(
+    "zh",
+    LABEL_SET_DIR / "DRAFT_PROMPT_zh.md",
+    LABEL_SET_DIR / "label_set_zh_v1.jsonl",
+    LABEL_SET_DIR / "relabel_zh_v1.jsonl",
+    "label_set_zh_v1",
+    "LZ1",
+    {("mixed" if form == "non_native" else form): n for form, n in FORMS.items()},
+    True,
+    20,
+    180,
+    300,
+    asks_sign=True,
+)
+LANGUAGES: Final = {lang.code: lang for lang in (EN, ZH)}
+
+# Bounded by what cannot sit in a hostname rather than by \b, which finds no
+# boundary between a Chinese character and a Latin one.
 _DOMAIN_RE = re.compile(
-    r"\b(?:[a-z0-9-]+\.)+(?:com|org|net|io|co|uk|de|cn|info|biz|edu|gov|app|dev|ai|cloud)\b",
+    r"(?<![a-z0-9-])(?:[a-z0-9-]+\.)+"
+    r"(?:com|org|net|io|co|uk|de|cn|info|biz|edu|gov|app|dev|ai|cloud)(?![a-z0-9-])",
     re.IGNORECASE,
 )
 _ALLOWED_DOMAIN_RE = re.compile(r"(?:^|\.)example\.(?:com|org)$", re.IGNORECASE)
@@ -106,7 +168,7 @@ class Slot:
     form: str
 
 
-def plan_slots(seed: int = SEED) -> list[Slot]:
+def plan_slots(seed: int = SEED, lang: Language = EN) -> list[Slot]:
     """The 80 slots, dealt so each batch carries its share of every quota."""
     rng = random.Random(seed)
     intents = [intent for intent, n in INTENTS.items() for _ in range(n)]
@@ -116,7 +178,7 @@ def plan_slots(seed: int = SEED) -> list[Slot]:
         for flag in ["yes"] * SECURITY_BY_INTENT[intent] + ["no"] * (n - SECURITY_BY_INTENT[intent])
     ]
     topics = [TOPICS[i % len(TOPICS)] for i in range(TOTAL)]
-    forms = [form for form, n in FORMS.items() for _ in range(n)]
+    forms = [form for form, n in lang.forms.items() for _ in range(n)]
     forms += ["ordinary"] * (TOTAL - len(forms))
     rng.shuffle(topics)
     rng.shuffle(forms)
@@ -133,7 +195,9 @@ def plan_slots(seed: int = SEED) -> list[Slot]:
     return slots
 
 
-def check_row(row: dict[str, Any], slot: Slot, redactor: Redactor) -> list[str]:
+def check_row(
+    row: dict[str, Any], slot: Slot, redactor: Redactor, lang: Language = EN
+) -> list[str]:
     """What keeps this row from its slot; empty when it may be kept."""
     problems = [
         f"{key} is {row.get(key)!r}, the slot says {want!r}"
@@ -147,27 +211,29 @@ def check_row(row: dict[str, Any], slot: Slot, redactor: Redactor) -> list[str]:
     subject, body, channel = row.get("subject"), row.get("body"), row.get("channel")
     if not isinstance(subject, str) or not isinstance(body, str):
         return [*problems, "subject and body must be strings"]
-    problems += _text_problems(subject, body, channel, redactor)
-    words = len(body.split())
-    if slot.form == "one_liner" and words >= 12:
-        problems.append(f"a one-liner's body is {words} words, not under 12")
-    if slot.form == "long_rambling" and not 100 <= words <= 150:
-        problems.append(f"a long item's body is {words} words, not 100 to 150")
+    problems += _text_problems(subject, body, channel, redactor, lang)
+    n, unit = lang.length(body), lang.unit
+    if slot.form == "one_liner" and n >= lang.one_liner_under:
+        problems.append(f"a one-liner's body is {n} {unit}, not under {lang.one_liner_under}")
+    if slot.form == "long_rambling" and not lang.long_from <= n <= lang.long_to:
+        problems.append(f"a long item's body is {n} {unit}, not {lang.long_from} to {lang.long_to}")
     if slot.form == "forwarded_email" and channel != "email":
         problems.append(f"a forwarded email came in by {channel!r}")
     return problems
 
 
-def _text_problems(subject: str, body: str, channel: Any, redactor: Redactor) -> list[str]:
+def _text_problems(
+    subject: str, body: str, channel: Any, redactor: Redactor, lang: Language = EN
+) -> list[str]:
     """What keeps a drafted Work item's text out of the set, whatever its slot."""
     problems = []
     if not (subject.strip() or body.strip()):
         problems.append("the item is empty")
     if channel not in CHANNELS:
         problems.append(f"channel {channel!r} is not one of {', '.join(CHANNELS)}")
-    words = len(body.split())
-    if words > 150:
-        problems.append(f"the body is {words} words, over 150")
+    n = lang.length(body)
+    if n > lang.long_to:
+        problems.append(f"the body is {n} {lang.unit}, over {lang.long_to}")
     text = f"{subject}\n{body}"
     foreign = sorted(
         {m.group(0) for m in _DOMAIN_RE.finditer(text) if not _ALLOWED_DOMAIN_RE.search(m.group(0))}
@@ -243,6 +309,7 @@ def _draft(
     ledger: Path,
     budget_usd: float,
     phase: str,
+    lang: Language = EN,
 ) -> BatchOutcome:
     """One call for up to one batch of slots, checked row by row."""
     spent = _spent(ledger)
@@ -292,7 +359,7 @@ def _draft(
         if row is None:
             failed[s.slot] = ["missing from the response"]
             continue
-        problems = check_row(row, s, redactor)
+        problems = check_row(row, s, redactor, lang)
         if problems:
             failed[s.slot] = problems
             continue
@@ -341,9 +408,10 @@ def run_trial(
     redactor: Redactor,
     budget_usd: float = BUDGET_USD,
     seed: int = SEED,
+    lang: Language = EN,
 ) -> TrialResult:
     """Draft batch 1 with one candidate; its kept rows become batch 1 if it wins."""
-    slots = [s for s in plan_slots(seed) if s.batch == 1]
+    slots = [s for s in plan_slots(seed, lang) if s.batch == 1]
     outcome = _draft(
         provider,
         model,
@@ -354,6 +422,7 @@ def run_trial(
         ledger=work_dir / "ledger.jsonl",
         budget_usd=budget_usd,
         phase="trial",
+        lang=lang,
     )
     path = work_dir / f"trial-{_slug(model)}.jsonl"
     _write_jsonl(path, [outcome.kept[s.slot] for s in slots if s.slot in outcome.kept])
@@ -379,6 +448,7 @@ def run_draft(
     out: Path = OUT_PATH,
     budget_usd: float = BUDGET_USD,
     seed: int = SEED,
+    lang: Language = EN,
 ) -> DraftResult:
     """Draft every slot the trial did not keep, then write the unlabelled set.
 
@@ -391,7 +461,7 @@ def run_draft(
     if not trial.is_file():
         raise LabelSetError(f"no trial for {model}: run the trial with this model first")
     progress = work_dir / f"draft-{_slug(model)}.jsonl"
-    slots = plan_slots(seed)
+    slots = plan_slots(seed, lang)
     kept = {r["slot"]: r for r in _read_jsonl(progress if progress.is_file() else trial)}
     ledger = work_dir / "ledger.jsonl"
     calls, cost = 0, 0.0
@@ -428,6 +498,7 @@ def run_draft(
                 ledger=ledger,
                 budget_usd=budget_usd,
                 phase="draft" if round_no == 0 else f"redraft-{round_no}",
+                lang=lang,
             )
             calls, cost = calls + 1, cost + outcome.cost_usd
             kept.update(outcome.kept)
@@ -442,7 +513,7 @@ def run_draft(
         out,
         [
             {
-                "id": f"LS1-{i:03d}",
+                "id": f"{lang.id_prefix}-{i:03d}",
                 "subject": r["subject"],
                 "body": r["body"],
                 "channel": r["channel"],
@@ -468,7 +539,7 @@ def run_draft(
 # ── Labelling (SPEC §6) ─────────────────────────────────────────────────────
 
 ANSWER_SPACE: Final[dict[str, str]] = {"d2": "d2-v1", "d1": "d1-v2"}
-RELABEL_PATH: Final = LABEL_SET_DIR / "relabel_v1.jsonl"
+RELABEL_PATH: Final = EN.relabel
 RELABEL_ROWS: Final = 10
 # "A day later" (SPEC §6), measured from the first pass's last label, with
 # room to start the relabel a few hours earlier in the day than the sitting ended.
@@ -526,8 +597,32 @@ def _ask_choice(ask: Ask, prompt: str, keys: dict[str, str], *, nav: bool) -> st
             return answer
 
 
+# The signs a note explains: which one the list does not name, or what raises the doubt.
+_NOTED_SIGNS: Final = ("another_sign", "in_doubt")
+
+
+def _ask_sign(ask: Ask, signs: Question) -> dict[str, Any]:
+    """Which sign a `yes` shows, asked at once; `no_sign` makes it a `no` (SPEC_zh.md §6)."""
+    keys = _levels(signs)
+    prompt = "sign? " + " · ".join(f"{k} {answer}" for k, answer in keys.items())
+    sign = _ask_choice(ask, prompt, keys, nav=False)
+    labels: dict[str, Any] = {"security_sign": sign, "security_sign_note": None}
+    if sign == "no_sign":
+        labels["security"] = "no"
+    if sign in _NOTED_SIGNS:
+        labels["security_sign_note"] = ask("which sign, or what raises the doubt?").strip() or None
+    return labels
+
+
 def _ask_labels(
-    row: dict[str, Any], n: int, total: int, ask: Ask, show: Show, *, note: bool
+    row: dict[str, Any],
+    n: int,
+    total: int,
+    ask: Ask,
+    show: Show,
+    *,
+    note: bool,
+    signs: Question | None = None,
 ) -> dict[str, Any] | str:
     """Show what the labeller may see, and nothing else; return the labels or u / q."""
     show(f"\n── {row['id']} ({n}/{total}) · {row['channel']} ──")
@@ -536,13 +631,17 @@ def _ask_labels(
     kind = _ask_choice(ask, "type? [i]ncident / [r]equest  (u back, q quit)", _TYPE_KEYS, nav=True)
     if kind in ("u", "q"):
         return kind
-    labels: dict[str, Any] = {
-        "work_item_type": kind,
-        "security": _ask_choice(ask, "security? [y]es / [n]o", _SECURITY_KEYS, nav=False),
-        "label_confidence": _ask_choice(
-            ask, "confidence? [h]igh / [l]ow", _CONFIDENCE_KEYS, nav=False
-        ),
-    }
+    security = _ask_choice(ask, "security? [y]es / [n]o", _SECURITY_KEYS, nav=False)
+    labels: dict[str, Any] = {"work_item_type": kind, "security": security}
+    if signs is not None:
+        labels.update(
+            _ask_sign(ask, signs)
+            if security == "yes"
+            else {"security_sign": None, "security_sign_note": None}
+        )
+    labels["label_confidence"] = _ask_choice(
+        ask, "confidence? [h]igh / [l]ow", _CONFIDENCE_KEYS, nav=False
+    )
     if note:
         labels["label_note"] = ask("note (enter to skip)").strip() or None
     return labels
@@ -557,6 +656,7 @@ def _label_loop(
     stamp: Callable[[], dict[str, Any]],
     save: Callable[[], None],
     note: bool,
+    signs: Question | None = None,
 ) -> None:
     """Fill each target's labels in order, stamping and saving each one, until done or q."""
 
@@ -566,7 +666,9 @@ def _label_loop(
 
     i = next_open(0)
     while i < len(targets):
-        answer = _ask_labels(source(targets[i]), i + 1, len(targets), ask, show, note=note)
+        answer = _ask_labels(
+            source(targets[i]), i + 1, len(targets), ask, show, note=note, signs=signs
+        )
         if isinstance(answer, str):
             if answer == "q":
                 return
@@ -591,27 +693,45 @@ class LabelResult:
         return self.labelled == self.total
 
 
+def _show_signs(show: Show, signs: Question) -> None:
+    """The signs a `yes` is asked to name, with what each means, before the first row."""
+    show(f"{signs.version}: after a security yes, which sign does it show?")
+    for key, answer in _levels(signs).items():
+        show(f"  {key} {answer}: {signs.answers[answer]}")
+
+
 def label_rows(
-    path: Path = OUT_PATH, *, by: str, ask: Ask, show: Show, clock: Clock = _utc_now
+    path: Path = OUT_PATH,
+    *,
+    by: str,
+    ask: Ask,
+    show: Show,
+    clock: Clock = _utc_now,
+    signs: Question | None = None,
 ) -> LabelResult:
     """Label the drafted set blind: each row shows its subject, body and channel only.
 
     What the drafter intended, and the topic, stay hidden; afterwards only
     counts are reported, never which rows, so tomorrow's relabel stays blind.
     Each row is stamped with the moment it is labelled, which the relabel's
-    wait is measured from.
+    wait is measured from. With ``signs``, a `yes` is asked its sign at once
+    (SPEC_zh.md §6).
     """
     if not path.is_file():
         raise LabelSetError(f"{path} not found: draft the set first")
     rows = _read_jsonl(path)
+    space = dict(ANSWER_SPACE) | ({signs.id: signs.version} if signs is not None else {})
+    if signs is not None:
+        _show_signs(show, signs)
     _label_loop(
         rows,
         lambda r: r,
         ask=ask,
         show=show,
-        stamp=lambda: {"answer_space": dict(ANSWER_SPACE), **_labelled(by, clock())},
+        stamp=lambda: {"answer_space": dict(space), **_labelled(by, clock())},
         save=lambda: _write_jsonl(path, rows),
         note=True,
+        signs=signs,
     )
     done = [r for r in rows if r["work_item_type"] is not None]
     return LabelResult(
@@ -632,6 +752,9 @@ class RelabelResult:
     total: int
     type_agree: int
     security_agree: int
+    # With signs: of the rows relabelled with a sign, how many named the first pass's.
+    sign_agree: int = 0
+    signed: int = 0
 
     @property
     def finished(self) -> bool:
@@ -647,13 +770,15 @@ def relabel_rows(
     out: Path = RELABEL_PATH,
     clock: Clock = _utc_now,
     rng: random.Random | None = None,
+    signs: Question | None = None,
 ) -> RelabelResult:
     """Relabel 10 random rows blind, a day after the first pass (SPEC §6).
 
     Until ``RELABEL_AFTER`` has passed since the first pass's last label it
     refuses, before a sample is drawn or a row shown. The sample is written to
     ``out`` before the first question, so a run cut short resumes on the same
-    rows. The first-pass labels are never shown.
+    rows. The first-pass labels are never shown. With ``signs``, a `yes` is
+    asked its sign, as in the first pass.
     """
     if not path.is_file():
         raise LabelSetError(f"{path} not found: draft the set first")
@@ -679,6 +804,8 @@ def relabel_rows(
         ]
         _write_jsonl(out, picks)
     by_id = {r["id"]: r for r in rows}
+    if signs is not None:
+        _show_signs(show, signs)
     _label_loop(
         picks,
         lambda p: by_id[p["id"]],
@@ -687,13 +814,17 @@ def relabel_rows(
         stamp=lambda: _labelled(by, clock()),
         save=lambda: _write_jsonl(out, picks),
         note=False,
+        signs=signs,
     )
     done = [p for p in picks if p["work_item_type"] is not None]
+    signed = [p for p in done if p.get("security_sign") is not None]
     return RelabelResult(
         relabelled=len(done),
         total=len(picks),
         type_agree=sum(p["work_item_type"] == by_id[p["id"]]["work_item_type"] for p in done),
         security_agree=sum(p["security"] == by_id[p["id"]]["security"] for p in done),
+        sign_agree=sum(p["security_sign"] == by_id[p["id"]].get("security_sign") for p in signed),
+        signed=len(signed),
     )
 
 

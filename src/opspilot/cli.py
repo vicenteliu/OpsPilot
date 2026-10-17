@@ -89,9 +89,10 @@ from .label_set import (
     ALREADY_OPEN_PATH,
     BUDGET_USD,
     CANDIDATES_PATH,
-    DRAFT_PROMPT_PATH,
     DUPLICATE_PROMPT_PATH,
     DUPLICATES_PATH,
+    EN,
+    LANGUAGES,
     OUT_PATH,
     RELABEL_AFTER,
     RELABEL_PATH,
@@ -101,6 +102,7 @@ from .label_set import (
     SITE_WIDE_PATH,
     SITE_WIDE_PROMPT_PATH,
     LabelSetError,
+    Language,
     _read_jsonl,
     _write_jsonl,
     build_already_open,
@@ -1875,17 +1877,34 @@ app.add_typer(labelset_app)
 _BUDGET_HELP = "Cap on every drafting call, trials included (SPEC §5)."
 
 
-def _labelset_setup() -> tuple[Path, str]:
-    """The work directory and the committed drafting prompt."""
-    if not DRAFT_PROMPT_PATH.is_file():
-        raise typer.BadParameter(f"{DRAFT_PROMPT_PATH} not found; run from the repo root")
-    return load_config().home / "label_set_v1", DRAFT_PROMPT_PATH.read_text(encoding="utf-8")
+_LANG_HELP = "The set's language: en (SPEC.md) or zh (SPEC_zh.md)."
+
+
+def _language(code: str) -> Language:
+    lang = LANGUAGES.get(code)
+    if lang is None:
+        raise typer.BadParameter(f"--lang must be one of {', '.join(LANGUAGES)}, not {code!r}")
+    return lang
+
+
+def _signs(lang: Language) -> Question | None:
+    """The sign question a `yes` is asked, for a language whose spec says so (SPEC_zh.md §6)."""
+    return load_question(SIGNS_QUESTION_PATH) if lang.asks_sign else None
+
+
+def _labelset_setup(code: str) -> tuple[Language, Path, str]:
+    """The set's language, its work directory and its committed drafting prompt."""
+    lang = _language(code)
+    if not lang.prompt.is_file():
+        raise typer.BadParameter(f"{lang.prompt} not found; run from the repo root")
+    return lang, load_config().home / lang.work_dir, lang.prompt.read_text(encoding="utf-8")
 
 
 @labelset_app.command("trial")
 def labelset_trial(
     model: str = typer.Option(..., "--model", "-m", help="OpenRouter id of a GPT or Gemini model."),
     budget_usd: float = typer.Option(BUDGET_USD, "--budget-usd", help=_BUDGET_HELP),
+    lang_code: str = typer.Option("en", "--lang", help=_LANG_HELP),
 ) -> None:
     """Draft batch 1 with one candidate model and count the rows that kept to their slot.
 
@@ -1893,7 +1912,7 @@ def labelset_trial(
     to its slots drafts the rest, the cheaper if both do (SPEC §8). Only counts
     and problems are printed, because the labeller must not read the rows first.
     """
-    work_dir, prompt = _labelset_setup()
+    lang, work_dir, prompt = _labelset_setup(lang_code)
     try:
         res = run_trial(
             make_provider("openrouter"),
@@ -1902,6 +1921,7 @@ def labelset_trial(
             system_prompt=prompt,
             redactor=Redactor.from_yaml(),
             budget_usd=budget_usd,
+            lang=lang,
         )
     except OpsPilotError as e:
         _console.print(f"Error: {e}", style="red", markup=False)
@@ -1919,8 +1939,11 @@ def labelset_trial(
 @labelset_app.command("draft")
 def labelset_draft(
     model: str = typer.Option(..., "--model", "-m", help="OpenRouter id of the trial's winner."),
-    out: Path = typer.Option(OUT_PATH, "--out", "-o", help="Where the unlabelled set goes."),  # noqa: B008
+    out: Path | None = typer.Option(  # noqa: B008
+        None, "--out", "-o", help="Where the unlabelled set goes. Default: the language's own."
+    ),
     budget_usd: float = typer.Option(BUDGET_USD, "--budget-usd", help=_BUDGET_HELP),
+    lang_code: str = typer.Option("en", "--lang", help=_LANG_HELP),
 ) -> None:
     """Keep the winner's trial as batch 1, draft the other rows, write the set unlabelled.
 
@@ -1928,7 +1951,7 @@ def labelset_draft(
     redrafted. Progress is saved after every call, so a rerun resumes. Do not
     open the output before labelling: it carries what the drafter intended.
     """
-    work_dir, prompt = _labelset_setup()
+    lang, work_dir, prompt = _labelset_setup(lang_code)
     try:
         res = run_draft(
             make_provider("openrouter"),
@@ -1936,8 +1959,9 @@ def labelset_draft(
             work_dir=work_dir,
             system_prompt=prompt,
             redactor=Redactor.from_yaml(),
-            out=out,
+            out=out or lang.out,
             budget_usd=budget_usd,
+            lang=lang,
         )
     except OpsPilotError as e:
         _console.print(f"Error: {e}", style="red", markup=False)
@@ -1955,16 +1979,23 @@ def _ask_line(text: str) -> str:
 @labelset_app.command("label")
 def labelset_label(
     by: str = typer.Option(..., "--by", help="The labeller's handle, recorded on each row."),
-    path: Path = typer.Option(OUT_PATH, "--set", help="The drafted set to label."),  # noqa: B008
+    path: Path | None = typer.Option(  # noqa: B008
+        None, "--set", help="The drafted set to label. Default: the language's own."
+    ),
+    lang_code: str = typer.Option("en", "--lang", help=_LANG_HELP),
 ) -> None:
     """Label the set blind: each row shows its subject, body and channel, nothing else.
 
     i / r for the type, y / n for security, h / l for your confidence, then an
     optional one-line note. u goes back a row and q stops. Progress is saved
-    after every row, so a rerun picks up where you stopped (SPEC §6).
+    after every row, so a rerun picks up where you stopped (SPEC §6). In zh, a
+    security yes is asked its sign next, by number (SPEC_zh.md §6).
     """
+    lang = _language(lang_code)
     try:
-        res = label_rows(path, by=by, ask=_ask_line, show=typer.echo)
+        res = label_rows(
+            path or lang.out, by=by, ask=_ask_line, show=typer.echo, signs=_signs(lang)
+        )
     except OpsPilotError as e:
         _console.print(f"Error: {e}", style="red", markup=False)
         raise typer.Exit(1) from e
@@ -1977,31 +2008,46 @@ def labelset_label(
         f" and on security for {res.security_splits}"
     )
     hours = int(RELABEL_AFTER.total_seconds() // 3600)
-    typer.echo(f"In {hours} hours or later: opspilot labelset relabel --by <you>")
+    again = "" if lang is EN else f" --lang {lang.code}"
+    typer.echo(f"In {hours} hours or later: opspilot labelset relabel --by <you>{again}")
 
 
 @labelset_app.command("relabel")
 def labelset_relabel(
     by: str = typer.Option(..., "--by", help="The labeller's handle."),
-    path: Path = typer.Option(OUT_PATH, "--set", help="The labelled set."),  # noqa: B008
-    out: Path = typer.Option(RELABEL_PATH, "--out", "-o", help="Where the relabels go."),  # noqa: B008
+    path: Path | None = typer.Option(  # noqa: B008
+        None, "--set", help="The labelled set. Default: the language's own."
+    ),
+    out: Path | None = typer.Option(  # noqa: B008
+        None, "--out", "-o", help="Where the relabels go. Default: the language's own."
+    ),
+    lang_code: str = typer.Option("en", "--lang", help=_LANG_HELP),
 ) -> None:
     """A day after labelling, relabel 10 random rows blind and report the agreement.
 
     The first-pass labels are never shown. Under 9 of 10 says as much about
     the answer space as about the engines (SPEC §6).
     """
+    lang = _language(lang_code)
     try:
-        res = relabel_rows(path, by=by, ask=_ask_line, show=typer.echo, out=out)
+        res = relabel_rows(
+            path or lang.out,
+            by=by,
+            ask=_ask_line,
+            show=typer.echo,
+            out=out or lang.relabel,
+            signs=_signs(lang),
+        )
     except OpsPilotError as e:
         _console.print(f"Error: {e}", style="red", markup=False)
         raise typer.Exit(1) from e
     if not res.finished:
         typer.echo(f"\nsaved · {res.relabelled}/{res.total} relabelled; rerun to continue")
         return
+    signs = f", the same sign {res.sign_agree}/{res.signed}" if lang.asks_sign else ""
     typer.echo(
         f"\nagreement with the first pass: type {res.type_agree}/{res.total},"
-        f" security {res.security_agree}/{res.total}"
+        f" security {res.security_agree}/{res.total}{signs}"
     )
 
 
