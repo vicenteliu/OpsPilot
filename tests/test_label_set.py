@@ -14,6 +14,7 @@ import random
 import re
 from collections import Counter
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -32,7 +33,9 @@ from opspilot.label_set import (
     INTENTS,
     MAX_PER_TOPIC,
     SECURITY_BY_INTENT,
+    SIGNS_QUESTION_PATH,
     TOPICS,
+    ZH,
     LabelSetError,
     RelabelResult,
     Slot,
@@ -65,12 +68,12 @@ def _subject(slot_id: str, attempt: int = 0) -> str:
     return "".join(chr(97 + int(c, 16)) for c in digest)
 
 
-def _good_row(slot: dict[str, Any], attempt: int = 0) -> dict[str, Any]:
-    words = {"one_liner": 5, "long_rambling": 120}.get(slot["form"], 30)
+def _good_row(slot: dict[str, Any], attempt: int = 0, chinese: bool = False) -> dict[str, Any]:
+    n = {"one_liner": 5, "long_rambling": 200 if chinese else 120}.get(slot["form"], 30)
     return {
         "slot": slot["slot"],
         "subject": _subject(slot["slot"], attempt),
-        "body": " ".join(["printer"] * words),
+        "body": "打印机" * (n // 3) if chinese else " ".join(["printer"] * n),
         "channel": "email" if slot["form"] == "forwarded_email" else "portal",
         "topic": slot["topic"],
         "draft_intent": slot["intent"],
@@ -88,8 +91,10 @@ class FakeDrafter:
         cost: float = 0.01,
         finish: str = "stop",
         fail_on_call: int | None = None,
+        chinese: bool = False,
     ) -> None:
         self.spoil = spoil or {}
+        self.chinese = chinese
         self.cost = cost
         self.finish = finish
         self.fail_on_call = fail_on_call
@@ -112,7 +117,7 @@ class FakeDrafter:
         assert match is not None
         rows = []
         for slot in json.loads(match.group(1)):
-            row = _good_row(slot, self.attempts[slot["slot"]])
+            row = _good_row(slot, self.attempts[slot["slot"]], self.chinese)
             self.attempts[slot["slot"]] += 1
             patches = self.spoil.get(slot["slot"])
             if patches:
@@ -183,6 +188,12 @@ class TestPlan:
         assert plan_slots(224) == plan_slots(224)
         assert plan_slots(224) != plan_slots(225)
 
+    def test_the_chinese_plan_is_the_english_one_with_mixed_for_non_native(self) -> None:
+        """SPEC_zh.md §3: the same mix, so the two reports compare."""
+        english = [replace(s, form="mixed") if s.form == "non_native" else s for s in plan_slots()]
+        assert plan_slots(lang=ZH) == english
+        assert sum(s.form == "mixed" for s in english) == FORMS["non_native"]
+
 
 # ── One row against its slot (SPEC §2, §3, §4) ──────────────────────────────
 
@@ -241,6 +252,29 @@ class TestCheckRow:
         problems = check_row(_row(body=text), _SLOT, redactor)
         assert len(problems) == 1
         assert problems[0].startswith("the redactor would change it")
+
+    def test_chinese_lengths_count_characters_without_whitespace(self, redactor: Redactor) -> None:
+        """SPEC_zh.md §3: Chinese has no spaces to count words by."""
+
+        def problems(body: str, form: str = "ordinary") -> list[str]:
+            slot = Slot("S01", 1, "incident", "no", TOPICS[0], form)
+            return check_row(_row(body=body), slot, redactor, ZH)
+
+        assert problems("打" * 300) == []
+        assert problems("打" * 301) == ["the body is 301 characters, over 300"]
+        assert problems("打" * 19, "one_liner") == []
+        assert problems("打 " * 20, "one_liner") == [
+            "a one-liner's body is 20 characters, not under 20"
+        ]
+        assert problems("打" * 180, "long_rambling") == []
+        assert problems("打" * 179, "long_rambling") == [
+            "a long item's body is 179 characters, not 180 to 300"
+        ]
+
+    def test_a_domain_against_chinese_text_is_still_found(self, redactor: Redactor) -> None:
+        assert check_row(_row(body="打开vpn.example.com看看"), _SLOT, redactor, ZH) == []
+        problems = check_row(_row(body="打开portal.acme-corp.com看看"), _SLOT, redactor, ZH)
+        assert problems == ["names domains outside example.com/.org: portal.acme-corp.com"]
 
     def test_only_example_domains_may_appear(self, redactor: Redactor) -> None:
         assert check_row(_row(body="see wiki.example.org/vpn"), _SLOT, redactor) == []
@@ -360,6 +394,17 @@ class TestDraft:
         redraft = drafter.calls[-1][1].content
         assert f'"slot": "{later}"' in redraft and '"slot": "S47"' in redraft
         assert _subject(earlier) in redraft  # told what was already written on the topic
+
+    def test_a_chinese_set_is_drafted_from_its_own_plan_and_ided_lz1(self, tmp_path: Path) -> None:
+        _trial(tmp_path, FakeDrafter(chinese=True), lang=ZH)
+        drafter = FakeDrafter(chinese=True)
+        res = _draft(tmp_path, drafter, lang=ZH)
+        rows = [json.loads(line) for line in res.out.read_text(encoding="utf-8").splitlines()]
+        assert [r["id"] for r in rows] == [f"LZ1-{n:03d}" for n in range(1, 81)]
+        assert all("打印机" in r["body"] for r in rows)  # kept as Chinese, not escaped
+        assert "打印机" in res.out.read_text(encoding="utf-8")
+        asked = " ".join(m[1].content for m in drafter.calls)
+        assert '"form": "mixed"' in asked and "non_native" not in asked
 
     def test_refuses_to_overwrite_a_set_that_may_hold_labels(self, tmp_path: Path) -> None:
         _trial(tmp_path, FakeDrafter())
@@ -611,6 +656,81 @@ class TestRelabel:
         )
         assert res.finished
         assert [p["id"] for p in _read(out)] == sample
+
+
+# ── A security yes asked its sign as it is labelled (SPEC_zh.md §6) ────────
+
+SIGNS = load_question(REPO_ROOT / SIGNS_QUESTION_PATH)
+
+
+def test_a_security_yes_is_asked_its_sign_and_no_sign_makes_it_a_no(tmp_path: Path) -> None:
+    path = _set_file(tmp_path, 4)
+    shown: list[str] = []
+    keys = Keys(
+        *("i", "y", "1", "h", ""),
+        *("r", "y", "9", "h", ""),
+        *("r", "y", "8", "the tablet may be unmanaged", "l", ""),
+        *("r", "n", "h", ""),
+    )
+    res = label_rows(path, by="v", ask=keys, show=shown.append, signs=SIGNS)
+    assert res.finished
+    rows = _read(path)
+    assert [(r["security"], r["security_sign"], r["security_sign_note"]) for r in rows] == [
+        ("yes", "suspicious_message", None),
+        ("no", "no_sign", None),
+        ("yes", "in_doubt", "the tablet may be unmanaged"),
+        ("no", None, None),
+    ]
+    assert rows[0]["answer_space"] == ANSWER_SPACE | {"d1_signs": "d1-signs-v1"}
+    assert sum(p.startswith("sign? 1 suspicious_message · ") for p in keys.prompts) == 3
+    # Each sign's meaning is shown once, before the first row.
+    assert shown.index(f"  5 credential_exposure: {SIGNS.answers['credential_exposure']}") < (
+        next(i for i, s in enumerate(shown) if "LS1-001" in s)
+    )
+
+
+def test_the_relabel_asks_the_sign_too_and_counts_the_same_ones(tmp_path: Path) -> None:
+    path = _set_file(tmp_path, 12, labelled=True)
+    rows = _read(path)
+    for row in rows:
+        row.update(security="yes", security_sign="malware")
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    keys = Keys(*(["i", "y", "1", "h"] + ["i", "y", "4", "h"] * 9))
+    res = relabel_rows(
+        path,
+        by="v",
+        ask=keys,
+        show=lambda s: None,
+        out=tmp_path / "relabel_zh_v1.jsonl",
+        clock=_at("2026-10-08T12:00:00+00:00"),
+        rng=random.Random(1),
+        signs=SIGNS,
+    )
+    assert (res.security_agree, res.sign_agree, res.signed) == (10, 9, 10)
+
+
+def test_cli_label_in_zh_defaults_to_the_zh_set_and_asks_the_sign(tmp_path: Path) -> None:
+    from opspilot import cli
+
+    path = _set_file(tmp_path, 1)
+    result = CliRunner().invoke(
+        cli.app,
+        ["labelset", "label", "--by", "v", "--lang", "zh", "--set", str(path)],
+        input="i\ny\n9\nh\n\n",
+    )
+    assert result.exit_code == 0, result.output
+    assert "relabel --by <you> --lang zh" in result.output
+    [row] = _read(path)
+    assert (row["security"], row["security_sign"]) == ("no", "no_sign")
+
+
+def test_cli_refuses_a_language_it_has_no_spec_for() -> None:
+    from opspilot import cli
+
+    result = CliRunner().invoke(cli.app, ["labelset", "trial", "--model", "m", "--lang", "fr"])
+    assert result.exit_code == 2
+    # Rich may colour the option's name apart from the rest, as on CI.
+    assert "must be one of en, zh, not 'fr'" in result.output
 
 
 class TestRelabelWaitsADay:

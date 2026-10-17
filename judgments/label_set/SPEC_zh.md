@@ -155,6 +155,11 @@ to say so. The criterion proposed: for each engine,
 2. **Thresholds**: measured first. How Chinese takes effect in the stage is decided with the
    numbers (§7), not before.
 3. **Size and mix**: 80 rows in the English mix, with `mixed` in place of `non_native`.
-4. **Drafter**: a Chinese trial between the English trial's two candidates.
+4. **Drafter**: a Chinese trial between the English trial's two candidates. It was run on
+   2026-10-17:
+   - `openai/gpt-6.1-sol` kept 10 of 10 rows to their slots;
+   - `google/gemini-3.8-flash` kept 9, missing one long body at 176 characters.
+
+   So `gpt-6.1-sol` drafted the set: 80 rows, $0.16 in all.
 5. **Signs**: a `security: yes` is asked its sign while it is labelled (§6).
 6. **Labeller**: `labelled_by: vicenteliu`.
