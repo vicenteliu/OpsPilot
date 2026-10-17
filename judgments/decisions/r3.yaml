@@ -19,6 +19,19 @@ answers:
     reporter when they ask for themselves).
   "no": >-
     At least one is missing: someone would have to ask before fulfilling it.
-# Set from the label set, never guessed (ADR-0040), keyed by the engine it was
-# measured on; empty until that report has been run.
-thresholds: {}
+# Set from the label set, never guessed (SPEC §7), keyed by the engine it was
+# measured on (#274). The stage acts only on a `no` that clears it, so each is
+# the asks' cut in judgments/label_set/report_r3_v1.md, run on 2026-10-17 over
+# the 25 requests with a catalog item, three passes each: the lowest P(no) at
+# which the requests asked about are at least 95% labelled `no`.
+#
+# 0.51 on Jev's probability: 41 of 75 asked, all labelled `no`; 41 of the 48
+#   labelled `no`, and none of the 27 labelled `yes`.
+# 0.70 on the Playbook's model: 43 asked, 95.3% labelled `no`; 41 of the 48,
+#   and 2 of the 27.
+#
+# Measure again on a changed catalog, when the label set grows, or when either
+# model changes.
+thresholds:
+  "typesafe:jev-1.13.0": 0.51
+  "playbook:anthropic/claude-haiku-5-5": 0.70

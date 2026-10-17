@@ -1,6 +1,6 @@
 # d4-v1 on the label set's Incidents: the engines compared
 
-39 Incidents is not a benchmark: synthetic, English, labelled by one person, and the threshold is set on the same rows it is reported on; there is no held-out split at this size. Each engine answered every Incident 3 times; the figures pool the runs.
+39 Incidents is not a benchmark: synthetic, English, labelled by one person, and the threshold is set on the same rows it is reported on; there is no held-out split at this size. Each engine answered every one 3 times; the figures pool the runs.
 
 Labelled: yes 35, no 4. Always answering yes would be 89.7% right.
 
@@ -29,7 +29,7 @@ The stage applies its threshold to the primary engine's probability; an answer f
 
 ## Asks: the lowest P(no) at which the Work items asked about are at least 95.0% labelled no
 
-Decision 4 acts only on a `no` that clears its cut: the summary waits and the reporter is asked (#229). A `yes`, or a `no` below the cut, runs the summary.
+Only a `no` that clears its cut acts: the run waits and the reporter is asked (decision 4, #229; r3, #294). A `yes`, or a `no` below the cut, goes on as before.
 
 | Engine | Threshold | Asked | Right among them | Labelled no, asked | Labelled yes, asked |
 |---|---|---|---|---|---|

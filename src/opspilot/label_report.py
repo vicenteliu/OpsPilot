@@ -701,8 +701,8 @@ def incident_report_markdown(
             f"## Asks: the lowest P(no) at which the Work items asked about are at least"
             f" {_pct(TARGET)} labelled no",
             "",
-            "Decision 4 acts only on a `no` that clears its cut: the summary waits and the"
-            " reporter is asked (#229). A `yes`, or a `no` below the cut, runs the summary.",
+            "Only a `no` that clears its cut acts: the run waits and the reporter is asked"
+            " (decision 4, #229; r3, #294). A `yes`, or a `no` below the cut, goes on as before.",
             "",
             "| Engine | Threshold | Asked | Right among them | Labelled no, asked"
             " | Labelled yes, asked |",
