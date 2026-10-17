@@ -143,7 +143,10 @@ either claim.
   Without `TYPESAFE_API_KEY` the Playbook's model decides alone at its own
   0.70, measured on `claude-haiku-5-5` on 2026-10-12: 88.8% right (Brier
   0.077, 0.233 on the low-confidence rows) at $0.000159 a call and 2074 ms
-  p95, routing 200 of 240 answers at 95.5% right.
+  p95, routing 200 of 240 answers at 95.5% right. Since #233 each cut is the
+  stricter of the English and Chinese sets': 0.99 on Jev and 0.78 on the
+  Playbook's model, which route 79% and 74% of the English answers at 96.8%
+  and 97.2% right.
 - Decision 1, security (#225): asked first of every Work item, declared or not,
   a possible security issue stops the run for a person on every surface (#278).
   Measured against d1-v1 and a narrower d1-v2, relabelled blind (#279, #280),
@@ -220,11 +223,17 @@ either claim.
   the Playbook's model, at 0.70, 41 and 2. A `no` that clears its cut gets
   one ask for the missing fields (`pb_ask_en` 1.1.0), and the reply runs it
   again as a request.
+- A Chinese label set (#233): 80 rows drafted in Chinese in the English mix
+  (`SPEC_zh.md`), labelled for decisions 1 and 2, a security `yes` asked its
+  sign as it is labelled. Through the zh classification Playbook, the English
+  d2 cuts route the Chinese answers only 94.0% (Jev) and 92.5% right, so d2's
+  cuts rose to the Chinese ones; the English d1 cuts stop every Chinese
+  security item, and stay.
 
 *Not yet:*
 
-- The rest of ADR-0040's order of work, #227–#231; filed and not scheduled,
-  #232 and #233.
+- "Did it work?" (#232), filed and not scheduled: it reads the reply to a known
+  fix, and none is sent while decision 9's auto-send is paused.
 
 **The first end-to-end run.** On 2026-08-19 the Memory / Consultation /
 Working-set / distillation / bundle stack was driven end to end for the first

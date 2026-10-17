@@ -415,6 +415,112 @@ def test_the_d1_runs_file_is_named_by_its_answer_space_version() -> None:
     assert runs_path(D1).name == f"runs_{D1.version.replace('-', '_')}.jsonl"
 
 
+# ── Another language's set beside the English cuts (SPEC_zh.md §7, #233) ────
+
+
+def test_a_chinese_d2_report_says_so_and_what_the_english_cut_routes() -> None:
+    rows = [_row(i, "incident" if i % 2 else "service_request") for i in range(1, 5)]
+    answers = {
+        "LS1-001": ("incident", 0.97),
+        "LS1-002": ("incident", 0.95),  # wrong, and above the cut
+        "LS1-003": ("incident", 0.9),  # right, but below it
+        "LS1-004": ("service_request", 0.99),
+    }
+    md = report_markdown(
+        rows,
+        _records("typesafe:jev-1.13.0", answers),
+        None,
+        D2,
+        language="Chinese",
+        english_cuts={"typesafe:jev-1.13.0": 0.94},
+    )
+    assert "4 rows is not a benchmark: synthetic, Chinese," in md
+    assert "## The English cut on this set" in md and "`d2.yaml`" in md
+    assert "| typesafe:jev-1.13.0 | 0.940 | 3/4 (75.0%) | 66.7% |" in md
+
+
+def test_a_chinese_d1_report_says_what_the_english_cut_stops() -> None:
+    rows = [_row(i, "incident", security="yes" if i <= 2 else "no") for i in range(1, 6)]
+    answers = {
+        "LS1-001": ("yes", 0.9),
+        "LS1-002": ("no", 0.95),  # P(yes) 0.05: missed at the English cut
+        "LS1-003": ("no", 0.8),  # P(yes) 0.2: a false alarm
+        "LS1-004": ("no", 0.95),
+        "LS1-005": ("no", 0.95),
+    }
+    md = security_report_markdown(
+        rows,
+        _records("e", answers),
+        D1,
+        None,
+        language="Chinese",
+        english_cuts={"e": 0.1},
+    )
+    assert "synthetic, Chinese," in md
+    english = md.split("## The English cut on this set")[1]
+    assert "| e | 0.100 | 1/2 (50.0%) | 2/5 (40.0%) | 1/3 (33.3%) |" in english
+
+
+def test_the_relabel_says_how_many_named_the_same_sign() -> None:
+    rows = [_row(i, "incident", security="yes", security_sign="malware") for i in range(1, 4)]
+    relabels = [
+        {"id": r["id"], "work_item_type": "incident", "security": "yes", "security_sign": s}
+        for r, s in zip(rows, ["malware", "data_exposure", "malware"], strict=True)
+    ]
+    md = report_markdown(rows, _records("e", {"LS1-001": ("incident", 0.9)}), relabels, D2)
+    assert "- the same sign 2/3 of the relabelled rows that named one" in md
+    md = security_report_markdown(
+        rows, _records("e", {"LS1-001": ("yes", 0.9)}), D1, None, relabels
+    )
+    assert "- the same sign 2/3" in md
+
+
+def test_a_chinese_set_keeps_its_own_runs_files() -> None:
+    from opspilot.label_report import runs_path
+    from opspilot.label_set import ZH
+
+    assert runs_path(D2, ZH).name == "runs_zh_v1.jsonl"
+    assert runs_path(D1, ZH).name == "runs_d1_zh_v1.jsonl"
+
+
+class TestChineseCli:
+    def test_reports_d2_on_the_chinese_set_beside_the_committed_cut(self, tmp_path: Path) -> None:
+        from typer.testing import CliRunner
+
+        from opspilot import cli
+
+        rows = [_row(1, "incident"), _row(2, "service_request")]
+        set_path, runs = tmp_path / "zh.jsonl", tmp_path / "runs.jsonl"
+        set_path.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+        records = _records(
+            "typesafe:jev-1.13.0", {"LS1-001": ("incident", 0.99), "LS1-002": ("incident", 0.6)}
+        )
+        runs.write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
+        result = CliRunner().invoke(
+            cli.app,
+            [
+                "labelset", "report", "--lang", "zh", "--no-call",
+                "--set", str(set_path), "--runs", str(runs),
+                "--relabel", str(tmp_path / "none.jsonl"),
+            ],
+        )  # fmt: skip
+        assert result.exit_code == 0, result.output
+        assert "synthetic, Chinese," in result.output
+        cut = D2.thresholds["typesafe:jev-1.13.0"]
+        assert f"| typesafe:jev-1.13.0 | {cut:.3f} | 1/2 (50.0%) | 100.0% |" in result.output
+
+    def test_refuses_a_decision_the_chinese_set_is_not_labelled_for(self) -> None:
+        from typer.testing import CliRunner
+
+        from opspilot import cli
+
+        result = CliRunner().invoke(
+            cli.app, ["labelset", "report", "--lang", "zh", "--decision", "d4", "--no-call"]
+        )
+        assert result.exit_code == 1
+        assert "the Chinese set is labelled for d1 and d2 only" in result.output
+
+
 # ── Decision 9: is a candidate page a known fix (#226) ───────────────────────
 
 D9 = load_question(REPO_ROOT / DECISIONS_DIR / "d9.yaml")

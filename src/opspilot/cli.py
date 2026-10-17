@@ -95,7 +95,6 @@ from .label_set import (
     LANGUAGES,
     OUT_PATH,
     RELABEL_AFTER,
-    RELABEL_PATH,
     REVIEW_PATH,
     SECURITY_RELABEL_PATH,
     SIGNS_QUESTION_PATH,
@@ -2556,12 +2555,18 @@ def labelset_report(
         " on), d6 (team), d7 (impact), d8 (urgency), d9 (known fix), r1 (catalog item),"
         " r2 (really a request), r3 (enough to fulfil).",
     ),
-    path: Path = typer.Option(OUT_PATH, "--set", help="The labelled set."),  # noqa: B008
+    path: Path | None = typer.Option(  # noqa: B008
+        None, "--set", help="The labelled set. Default: the language's own."
+    ),
     runs_file: Path | None = typer.Option(  # noqa: B008
         None, "--runs", help="Every call, appended as it returns. Default: the decision's own."
     ),
-    relabel: Path = typer.Option(RELABEL_PATH, "--relabel", help="The relabel, if done."),  # noqa: B008
-    review: Path = typer.Option(REVIEW_PATH, "--review", help="The security review, if done."),  # noqa: B008
+    relabel: Path | None = typer.Option(  # noqa: B008
+        None, "--relabel", help="The relabel, if done. Default: the language's own."
+    ),
+    review: Path | None = typer.Option(  # noqa: B008
+        None, "--review", help="The security review, if done (English only)."
+    ),
     out: Path | None = typer.Option(None, "--out", "-o", help="Also write the report here."),  # noqa: B008
     runs: int = typer.Option(RUNS, "--runs-per-engine", min=1, help="Passes over the set."),
     no_call: bool = typer.Option(False, "--no-call", help="Report from the runs file only."),
@@ -2571,6 +2576,7 @@ def labelset_report(
     source: Path | None = typer.Option(  # noqa: B008
         None, "--source", help="d9 --whole-page: the handbook checkout the KB was built from."
     ),
+    lang_code: str = typer.Option("en", "--lang", help=_LANG_HELP),
 ) -> None:
     """Run Jev and the Playbook's model over the labelled set and report a decision (SPEC §7).
 
@@ -2579,13 +2585,22 @@ def labelset_report(
     retries what failed; ``--no-call`` recomputes the report from the runs
     file. Needs TYPESAFE_API_KEY and the classification Playbook's provider
     key. Writes nothing to a decision file: its threshold is set from the
-    report by a person.
+    report by a person. In zh, decisions 1 and 2 on the Chinese set, asked
+    through the zh classification Playbook, beside the English cuts
+    (SPEC_zh.md §7).
     """
+    lang = _language(lang_code)
+    path = path or lang.out
+    relabel = relabel or lang.relabel
+    # The security review was made on the English set's labels (#225).
+    review = review or (REVIEW_PATH if lang is EN else None)
     try:
         if decision not in ("d1", "d2", "d3", "d4", "d6", "d7", "d8", "d9", "r1", "r2", "r3"):
             raise LabelSetError(
                 f"--decision is d1, d2, d3, d4, d6, d7, d8, d9, r1, r2 or r3, not {decision!r}"
             )
+        if lang is not EN and decision not in ("d1", "d2"):
+            raise LabelSetError(f"the {lang.name} set is labelled for d1 and d2 only")
         if decision == "d3":
             # Decision 3 is measured on items of its own, not the set's rows (SPEC §5).
             path = ALREADY_OPEN_PATH
@@ -2633,7 +2648,7 @@ def labelset_report(
         )
         if whole_page and decision != "d9":
             raise LabelSetError("--whole-page is for d9 only")
-        default_runs = runs_path(question)
+        default_runs = runs_path(question, lang)
         if whole_page:
             default_runs = default_runs.with_name(f"{default_runs.stem}_whole_page.jsonl")
         runs_out = runs_file or default_runs
@@ -2652,9 +2667,7 @@ def labelset_report(
             if not key:
                 raise LabelSetError("TYPESAFE_API_KEY is not set; Jev is one of the two engines")
             cfg = load_config()
-            pb = load_playbook(
-                (cfg.playbooks_dir or Path("playbooks")) / "pb_classify_work_item_en"
-            )
+            pb = load_playbook((cfg.playbooks_dir or Path("playbooks")) / lang.classify_playbook)
             provider = make_provider(
                 pb.model.provider_id, kind=pb.model.kind, api_key=cfg.anthropic_api_key
             )
@@ -2680,7 +2693,9 @@ def labelset_report(
             typer.echo(f"{made} calls made; every call is in {runs_out}\n")
         if not runs_out.is_file():
             raise LabelSetError(f"{runs_out} not found; run without --no-call first")
-        reviews = _read_jsonl(review) if review.is_file() else None
+        reviews = _read_jsonl(review) if review is not None and review.is_file() else None
+        # Another language's set is reported beside the cuts measured on English.
+        english_cuts = question.thresholds if lang is not EN else None
         if decision == "d3":
             md = already_open_report_markdown(rows, _read_jsonl(runs_out), question)
         elif decision in ("d4", "d6", "d7", "d8"):
@@ -2711,15 +2726,18 @@ def labelset_report(
                 rows, _read_jsonl(runs_out), question, whole_page=whole_page, candidates=ordered
             )
         elif decision == "d1":
-            # The relabel and the review were made against d1-v1: they speak to
-            # that answer space's labels, not to a later one's.
-            v1 = question.version == "d1-v1"
+            # The English set's relabel and review were made against d1-v1: they
+            # speak to that answer space's labels, not to a later one's. Another
+            # language's set was labelled against the current one throughout.
+            current = lang is not EN or question.version == "d1-v1"
             md = security_report_markdown(
                 rows,
                 _read_jsonl(runs_out),
                 question,
-                reviews if v1 else None,
-                _read_jsonl(relabel) if v1 and relabel.is_file() else None,
+                reviews if current else None,
+                _read_jsonl(relabel) if current and relabel.is_file() else None,
+                language=lang.name,
+                english_cuts=english_cuts,
             )
         else:
             md = report_markdown(
@@ -2728,6 +2746,8 @@ def labelset_report(
                 _read_jsonl(relabel) if relabel.is_file() else None,
                 question,
                 reviews,
+                language=lang.name,
+                english_cuts=english_cuts,
             )
     except OpsPilotError as e:
         _console.print(f"Error: {e}", style="red", markup=False)
