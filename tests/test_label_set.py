@@ -729,7 +729,8 @@ def test_cli_refuses_a_language_it_has_no_spec_for() -> None:
 
     result = CliRunner().invoke(cli.app, ["labelset", "trial", "--model", "m", "--lang", "fr"])
     assert result.exit_code == 2
-    assert "--lang must be one of en, zh" in " ".join(result.output.split())
+    # Rich may colour the option's name apart from the rest, as on CI.
+    assert "must be one of en, zh, not 'fr'" in result.output
 
 
 class TestRelabelWaitsADay:
