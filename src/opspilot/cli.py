@@ -40,7 +40,7 @@ if TYPE_CHECKING:
     from .sandbox.types import ActionRequest
 
 from . import __version__
-from .catalog import CATALOG_FILE, catalog_question, load_catalog
+from .catalog import CATALOG_FILE, catalog_question, fields_question, load_catalog
 from .config import ensure_home, load_config
 from .errors import OpsPilotError, ProviderError, SchemaError
 from .harness import load_fixture, load_golden, run_harness
@@ -53,6 +53,7 @@ from .judgment import (
     SECURITY_FILE,
     WORK_ITEM_TYPE_FILE,
     ClassificationJudge,
+    Question,
     QuestionJudge,
     TypeSafeJudge,
     load_question,
@@ -2440,6 +2441,18 @@ def labelset_label_team(
     )
 
 
+def _ask_with(
+    decision: str, question: Question, redactor: Redactor
+) -> Callable[[dict[str, Any]], Question] | None:
+    """The question each row is asked, where it is built per row (d3 #230, r3 #294)."""
+    if decision == "d3":
+        return lambda item: open_items_question(question, item["candidates"], redactor)
+    if decision == "r3":
+        catalog = load_catalog(DECISIONS_DIR / CATALOG_FILE)
+        return lambda row: fields_question(question, catalog.items[row["catalog_item"]])
+    return None
+
+
 @labelset_app.command("report")
 def labelset_report(
     decision: str = typer.Option(
@@ -2447,7 +2460,7 @@ def labelset_report(
         "--decision",
         help="d2 (incident or request), d1 (security), d3 (already open), d4 (enough to act"
         " on), d6 (team), d7 (impact), d8 (urgency), d9 (known fix), r1 (catalog item),"
-        " r2 (really a request).",
+        " r2 (really a request), r3 (enough to fulfil).",
     ),
     path: Path = typer.Option(OUT_PATH, "--set", help="The labelled set."),  # noqa: B008
     runs_file: Path | None = typer.Option(  # noqa: B008
@@ -2475,9 +2488,9 @@ def labelset_report(
     report by a person.
     """
     try:
-        if decision not in ("d1", "d2", "d3", "d4", "d6", "d7", "d8", "d9", "r1", "r2"):
+        if decision not in ("d1", "d2", "d3", "d4", "d6", "d7", "d8", "d9", "r1", "r2", "r3"):
             raise LabelSetError(
-                f"--decision is d1, d2, d3, d4, d6, d7, d8, d9, r1 or r2, not {decision!r}"
+                f"--decision is d1, d2, d3, d4, d6, d7, d8, d9, r1, r2 or r3, not {decision!r}"
             )
         if decision == "d3":
             # Decision 3 is measured on items of its own, not the set's rows (SPEC §5).
@@ -2496,6 +2509,14 @@ def labelset_report(
         if decision == "r1":
             # The request path's first decision, asked of a service request (#231).
             rows = [r for r in rows if r["work_item_type"] == "service_request"]
+        if decision == "r3":
+            # Asked of a request whose catalog item is known, against its fields (#294).
+            rows = [
+                r
+                for r in rows
+                if r["work_item_type"] == "service_request"
+                and r.get("catalog_item") not in (None, "none")
+            ]
         if decision == "r2":
             # Asked of every row as if filed as a request (#293): an Incident's answer
             # is `incident`, by its type, the definition r2 shares with d2.
@@ -2560,11 +2581,7 @@ def labelset_report(
                 timeout_s=JUDGMENT_TIMEOUT_S,
                 show=typer.echo,
                 candidates=offered,
-                ask_with=(
-                    (lambda item: open_items_question(question, item["candidates"], redactor))
-                    if decision == "d3"
-                    else None
-                ),
+                ask_with=_ask_with(decision, question, redactor),
             )
             typer.echo(f"{made} calls made; every call is in {runs_out}\n")
         if not runs_out.is_file():
@@ -2577,6 +2594,10 @@ def labelset_report(
         elif decision == "r1":
             md = incident_report_markdown(
                 rows, _read_jsonl(runs_out), question, rows_are="service requests"
+            )
+        elif decision == "r3":
+            md = incident_report_markdown(
+                rows, _read_jsonl(runs_out), question, rows_are="requests with a catalog item"
             )
         elif decision == "r2":
             md = incident_report_markdown(

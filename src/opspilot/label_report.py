@@ -74,6 +74,7 @@ _COLUMN: Final = {
     "d9": "known_fix",
     "r1": "catalog_item",
     "r2": "really",
+    "r3": "enough_to_fulfil",
 }
 
 
