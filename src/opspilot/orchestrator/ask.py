@@ -25,9 +25,20 @@ class Ask:
 
 
 def write_ask(
-    state: str, *, playbook: PlaybookSpec, provider: ProviderProtocol, timeout_ms: int = 90_000
+    state: str,
+    *,
+    playbook: PlaybookSpec,
+    provider: ProviderProtocol,
+    timeout_ms: int = 90_000,
+    needs: list[str] | None = None,
 ) -> Ask:
-    """Write the one message that asks the reporter for what the Work item is missing."""
+    """Write the one message that asks the reporter for what the Work item is missing.
+
+    ``needs`` is what fulfilling a request's catalog item needs (r3, #294): the
+    ask is then for those of them the request does not give.
+    """
+    if needs:
+        state = f"{state}\n\nWhat fulfilling it needs: {', '.join(needs)}"
     params = playbook.model.params
     resp = provider.chat(
         [

@@ -101,6 +101,8 @@ full JQL scope — there is deliberately no time cursor to miss things).
   comments posted since OpsPilot's last one on it; a reply runs the Work item
   again with the reply appended, and the suggestion is posted as usual. It is
   asked once: a reply that is still thin gets a suggestion, not a second ask.
+  A **service request** that misses what its catalog item needs (#294) is
+  asked for those fields the same way, and the reply runs it as a request.
 - Each run is sent the scope's **open issues created in the last hour**
   (the JQL, narrowed to the last hour and to issues not done, newest 20).
   When the Judgments stage's decision 3 (#230) finds the issue is the same

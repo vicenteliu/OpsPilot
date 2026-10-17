@@ -15,7 +15,7 @@ from typing import Any
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
-from ...catalog import entitled, in_stock
+from ...catalog import entitled, fields_question, in_stock
 from ...errors import OpsPilotError
 from ...judgment import open_items_question, p_yes
 from ...orchestrator.ask import write_ask
@@ -312,7 +312,60 @@ def _judge_enough(
         judgment.engine,
         judgment.probability,
     )
-    return {**trace, "text": ask.text, "usage": ask.usage.model_dump()}, None
+    return {
+        **trace,
+        "text": ask.text,
+        "usage": ask.usage.model_dump(),
+        "work_item_type": "incident",  # what a reply re-runs it as (#294)
+    }, None
+
+
+def _judge_fulfil(
+    state: Any, rendered: str | None, catalog: dict[str, Any] | None, *, asked: bool
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """r3: does a request give what its catalog item needs; if not, the ask (#294).
+
+    Asked only of a request whose item stood and is not automated, once:
+    ``asked`` marks the run that carries the reply. A `no` that clears its cut
+    from the primary engine returns the ask, written for the item's fields,
+    and nothing runs until the reply; anything else returns the Judgment for
+    the trace, and the request is fulfilled as before.
+    """
+    stage = getattr(state, "judgments", None)
+    if (
+        asked
+        or stage is None
+        or stage.fulfil is None
+        or rendered is None
+        or not catalog
+        or not catalog.get("item")
+        or catalog.get("automated")
+    ):
+        return None, None
+    item = stage.catalog.catalog.items[catalog["item"]]
+    if not item.fields:
+        return None, None  # an item that lists nothing it needs has nothing to ask for
+    try:
+        judgment = stage.fulfil.decide(rendered, fields_question(stage.fulfil.question, item))
+    except OpsPilotError as e:
+        logger.warning("no engine could answer r3; the request is fulfilled as before: %s", e)
+        return None, None
+    trace = judgment.as_trace()
+    if judgment.answer != "no" or not stage.fulfil.stands(judgment):
+        return None, trace
+    try:
+        ask = write_ask(
+            rendered, playbook=state.ask_pb, provider=state.ask_provider, needs=list(item.fields)
+        )
+    except OpsPilotError as e:
+        logger.warning("r3 stood at no but no ask could be written; it is fulfilled: %s", e)
+        return None, trace
+    return {
+        **trace,
+        "text": ask.text,
+        "usage": ask.usage.model_dump(),
+        "work_item_type": "service_request",  # what a reply re-runs it as
+    }, None
 
 
 def _judge_catalog(
@@ -502,6 +555,10 @@ async def run_ticket(body: ApiRunRequest, request: Request) -> ApiRunResponse:
             if catalog is not None and catalog.get("automated"):
                 # Fulfilled by the organisation's own automation: no Task, no Playbook.
                 return None, classification, True, security, {"catalog": catalog}
+            fulfil_ask, fulfil_trace = _judge_fulfil(state, rendered, catalog, asked=body.asked)
+            if fulfil_ask is not None:
+                # The request misses what its item needs: ask once, then fulfil (#294).
+                return None, classification, True, security, {"ask": fulfil_ask, "catalog": catalog}
             already_open, open_trace = _judge_already_open(state, rendered, pb, body.open_items)
             ask, enough = _judge_enough(state, rendered, pb, asked=body.asked)
             if ask is not None:
@@ -536,7 +593,14 @@ async def run_ticket(body: ApiRunRequest, request: Request) -> ApiRunResponse:
             )
             _trace_judgment(state, res.session_id, security)
             _trace_judgment(state, res.session_id, (classification or {}).get("judgment"))
-            for judgment in [catalog_trace, really_trace, open_trace, enough, *incident_judgments]:
+            for judgment in [
+                catalog_trace,
+                really_trace,
+                fulfil_trace,
+                open_trace,
+                enough,
+                *incident_judgments,
+            ]:
                 _trace_judgment(state, res.session_id, judgment)
             if catalog is not None and res.summary:
                 _requested_stock(state, catalog, res.summary)
@@ -639,6 +703,10 @@ async def run_ticket_stream(body: ApiRunRequest, request: Request) -> StreamingR
         if catalog is not None and catalog.get("automated"):
             # Fulfilled by the organisation's own automation: no Task, no Playbook.
             return None, classification, True, security, {"catalog": catalog}
+        fulfil_ask, fulfil_trace = _judge_fulfil(state, rendered, catalog, asked=body.asked)
+        if fulfil_ask is not None:
+            # The request misses what its item needs: ask once, then fulfil (#294).
+            return None, classification, True, security, {"ask": fulfil_ask, "catalog": catalog}
         already_open, open_trace = _judge_already_open(state, rendered, pb, body.open_items)
         ask, enough = _judge_enough(state, rendered, pb, asked=body.asked)
         if ask is not None:
@@ -668,7 +736,14 @@ async def run_ticket_stream(body: ApiRunRequest, request: Request) -> StreamingR
         )
         _trace_judgment(state, res.session_id, security)
         _trace_judgment(state, res.session_id, (classification or {}).get("judgment"))
-        for judgment in [catalog_trace, really_trace, open_trace, enough, *incident_judgments]:
+        for judgment in [
+            catalog_trace,
+            really_trace,
+            fulfil_trace,
+            open_trace,
+            enough,
+            *incident_judgments,
+        ]:
             _trace_judgment(state, res.session_id, judgment)
         if catalog is not None and res.summary:
             _requested_stock(state, catalog, res.summary)

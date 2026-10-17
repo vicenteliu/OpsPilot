@@ -940,6 +940,8 @@ def label_pass(
     columns: dict[str, Question],
     stamp: str,
     of: str = "incident",
+    where: Callable[[dict[str, Any]], bool] | None = None,
+    context: Callable[[dict[str, Any]], str] | None = None,
     clock: Clock = _utc_now,
 ) -> LabelPassResult:
     """Label each row of type ``of``, blind, in one pass over ``columns`` (e.g. impact then urgency).
@@ -949,13 +951,15 @@ def label_pass(
     shows its subject, body and channel, and no other label. A row's answers
     are saved as they are given, with ``{stamp}_labelled_by`` and
     ``{stamp}_labelled_time``, so a rerun picks up at the first open row.
+    ``where`` narrows the rows asked further, and ``context`` adds a line to
+    each, e.g. the catalog item a request is for and what it needs (#294).
     """
     if not path.is_file():
         raise LabelSetError(f"{path} not found: draft the set first")
     rows = _read_jsonl(path)
     if any(r["work_item_type"] is None for r in rows):
         raise LabelSetError(f"label every row's type first; only {of} rows are asked")
-    asked = [r for r in rows if r["work_item_type"] == of]
+    asked = [r for r in rows if r["work_item_type"] == of and (where is None or where(r))]
     keys = {column: _levels(q) for column, q in columns.items()}
     first = next(iter(columns))
 
@@ -977,6 +981,8 @@ def label_pass(
         show(f"\n── {row['id']} ({i + 1}/{len(asked)}) · {row['channel']} ──")
         show(f"Subject: {row['subject'] or '(none)'}")
         show(row["body"] or "(no body)")
+        if context is not None:
+            show(context(row))
         answer = _ask_choice(ask, prompt(first) + "  (u back, q quit)", keys[first], nav=True)
         if answer == "q":
             break

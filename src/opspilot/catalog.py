@@ -10,7 +10,7 @@ decisions is a sample (ADR-0038: the catalog is not handbook content).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Final
 
@@ -87,6 +87,13 @@ def catalog_question(path: Path, catalog: Catalog) -> Question:
     question = load_question(path)
     return with_candidates(
         question, {i.id: f"{i.name}: {i.description}" for i in catalog.items.values()}
+    )
+
+
+def fields_question(question: Question, item: CatalogItem) -> Question:
+    """r3 asked of one request: its text filled in with the item and its fields (#294)."""
+    return replace(
+        question, text=question.text.format(item=item.name, fields=", ".join(item.fields))
     )
 
 

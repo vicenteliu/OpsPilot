@@ -24,6 +24,7 @@ These columns now, the rest in their slices. Each is labelled against a versione
 | `same` (in `already_open_d3_v1.jsonl`) | 3 · Already open? | an open Work item's key, or `none` | `d3-v1` | #230 |
 | `catalog_item` | r1 · Which catalog item? | an item of `catalog.yaml`, or `none` | `r1-v1` | #231 |
 | `really` | r2 · Really a request? | `request` · `incident` · `change` | `r2-v1` | #293 |
+| `enough_to_fulfil` | r3 · Enough to fulfil? | `yes` · `no` | `r3-v1` | #294 |
 
 **`d2-v1`**, the definitions the Playbook's classifier already uses
 (`playbooks/pb_classify_work_item_en/prompt.md`):
@@ -85,6 +86,12 @@ Labelled on the rows labelled `service_request`; the rows labelled `incident` co
 `incident`, by their type, since the stage asks it of anything filed as a request, declared
 wrongly or not.
 
+**`r3-v1`** (2026-10-17, #294), as `judgments/decisions/r3.yaml` states it: whether a request gives
+what fulfilling its catalog item needs, the item's `fields` in `catalog.yaml`, asked of each row
+against its own item. `yes` when it gives each, or each can be taken as read from it; `no` when
+someone would have to ask first. Labelled on the rows labelled `service_request` with a
+`catalog_item` other than `none`.
+
 **`d3-v1`** (2026-10-16, #230), as `judgments/decisions/d3.yaml` states it: whether a Work item
 reports the same problem as one of the open Work items it is offered, or `none` when it is a
 different problem, even on the same subject. The set's rows were drafted as distinct problems, so
@@ -109,6 +116,7 @@ decision 3 is measured on items of its own (§5, §6), not on a column of `label
 | `enough` | **person** | `d4-v1`, Incidents only; with `enough_labelled_by` and `enough_labelled_time` |
 | `catalog_item` | **person** | `r1-v1`, service requests only; with `catalog_item_labelled_by` and `catalog_item_labelled_time` |
 | `really` | **person** | `r2-v1`, service requests only; with `really_labelled_by` and `really_labelled_time` |
+| `enough_to_fulfil` | **person** | `r3-v1`, requests with a catalog item; with `enough_to_fulfil_labelled_by` and `enough_to_fulfil_labelled_time` |
 | `label_confidence` | **person** | `high` · `low`. Low = "I picked, but it could go the other way" |
 | `label_note` | person, optional | one line, only when the reason isn't obvious |
 | `answer_space` | script | `{"d2": "d2-v1", "d1": "d1-v1"}` at labelling time |
@@ -227,6 +235,9 @@ labelled.
 - **Really a request** (#293, `r2-v1`): each row labelled `service_request` is shown the same way,
   and the labeller says whether it is a request, an incident or a change (`opspilot labelset
   label-really`).
+- **Enough to fulfil** (#294, `r3-v1`): each request labelled with a catalog item is shown the same
+  way, with its item and the fields fulfilling it needs, and the labeller says whether it gives
+  them (`opspilot labelset label-fulfil`).
 - **Enough to act on** (#229, `d4-v1`): each row labelled `incident` is shown the same way, and
   the labeller says whether an engineer could start on it without asking first (`opspilot
   labelset label-enough`).
@@ -284,6 +295,11 @@ at least 95% right.
 request, it really is one, into `runs_r2_v1.jsonl`: the 41 requests against their `really` label,
 the 39 Incidents against `incident`, by their type. `request`, and an answer below the cut, leave
 the request path as it is, so the report gives the cut on the other answers.
+
+**The request path's r3** (#294): `--decision r3` asks each request with a catalog item whether
+it gives what that item needs, its question filled in with the item's name and fields, into
+`runs_r3_v1.jsonl`. Only a `no` that clears its cut acts, so the report gives the asks' cut, as
+for decision 4.
 
 **Decision 4** (#229): `--decision d4` reports whether each Incident has enough to act on, the same
 way, into `runs_d4_v1.jsonl`. The stage acts only on a `no` that clears its cut, so the report

@@ -1363,3 +1363,21 @@ def test_cli_label_really_asks_each_request_request_incident_or_change(tmp_path:
         in result.output
     )
     assert [r.get("really") for r in _read(path)] == [None, "change", None, None]
+
+
+def test_cli_label_fulfil_asks_each_request_with_an_item_against_its_fields(tmp_path: Path) -> None:
+    """r3 (#294): only requests with a catalog item, each shown with what it needs."""
+    from opspilot import cli
+
+    path = _set_file(tmp_path, 3, labelled=True)
+    rows = _read(path)
+    for row, item in zip(rows, ["vpn_access", "none", "loaner"], strict=True):
+        row.update(work_item_type="service_request", catalog_item=item)
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    result = CliRunner().invoke(
+        cli.app, ["labelset", "label-fulfil", "--by", "v", "--set", str(path)], input="2\n1\n"
+    )
+    assert result.exit_code == 0, result.output
+    assert "Catalog item: VPN access. Fulfilling it needs: who needs it, why." in result.output
+    assert "labelled 2 requests against r3-v1 · enough to fulfil: yes 1, no 1" in result.output
+    assert [r.get("enough_to_fulfil") for r in _read(path)] == ["no", None, "yes"]

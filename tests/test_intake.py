@@ -784,3 +784,16 @@ class TestReallyComment:
         really = {"answer": "incident", "probability": 0.91}
         body = render_comment(_OK["result"], session_id="s", really=really)  # type: ignore[arg-type]
         assert "**Filed as a request, handled as an Incident** (p=0.91)." in body
+
+
+def test_a_request_asked_for_its_item_s_fields_is_run_again_as_a_request(tmp_path: Path) -> None:
+    """#294: the reply keeps the type it was asked about as."""
+    transport = _AskedTransport()
+    asked = {**_ASKED, "ask": {**_ASKED["ask"], "work_item_type": "service_request"}}
+    client = _SeqRunClient(asked, _OK)
+    loop = IntakeLoop(transport, client, IntakeState(tmp_path / "state.json"))  # type: ignore[arg-type]
+    loop.run_once()
+    transport.reply = "for me, to reach the build servers"
+    loop.run_once()
+    work_item, was_asked = client.calls[1]
+    assert was_asked is True and work_item["work_item_type"] == "service_request"

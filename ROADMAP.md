@@ -207,12 +207,17 @@ either claim.
   incident answers and 15 of 33 change answers, 95.5% rightly; the Playbook's
   model, at 0.75, 111 and 15. An incident that clears its cut takes the
   incident path, and a change stops for a person.
+- Enough to fulfil, r3 (#294): asked of a request whose catalog item stood,
+  against that item's fields. On the 25 requests with an item, Jev, at a
+  P(no) of 0.51, asks about 41 of the 48 `no` answers and none of the 27 `yes`;
+  the Playbook's model, at 0.70, 41 and 2. A `no` that clears its cut gets
+  one ask for the missing fields (`pb_ask_en` 1.1.0), and the reply runs it
+  again as a request.
 
 *Not yet:*
 
 - Decision 1's automation (#281).
 - The handbook's pages shown to the person in Jev's order (#286).
-- The request path's enough to fulfil (#294).
 - The rest of ADR-0040's order of work, #227–#231; filed and not scheduled,
   #232 and #233.
 

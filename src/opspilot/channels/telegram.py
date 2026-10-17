@@ -193,7 +193,9 @@ class TelegramChannel:
             self._send(chat_id, render_automated_comment(res["catalog"]))
             return
         if res.get("ask"):
-            self._states.setdefault(chat_id, _ChatState()).awaiting = work_item
+            asked_as = res["ask"].get("work_item_type") or "incident"
+            awaiting = {**work_item, "work_item_type": asked_as}  # re-run as that type (#294)
+            self._states.setdefault(chat_id, _ChatState()).awaiting = awaiting
             self._send(
                 chat_id,
                 f"{res['ask'].get('text', '')}\n\nReply here with the details, and OpsPilot "
