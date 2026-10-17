@@ -115,6 +115,7 @@ from .label_set import (
     relabel_security,
     run_draft,
     run_trial,
+    settle_security_signs,
 )
 from .orchestrator import RunRequest, load_playbook, run_ticket_summary
 from .orchestrator.ticket_summary import _format_doc_request, _strip_redaction_placeholders
@@ -2056,7 +2057,8 @@ def labelset_label_security_signs(
     items are asked: both engines score them like the rows labelled no. Answer
     each with its number, then a note (enter to skip) saying which sign the
     list does not name, or what raises the doubt. u goes back and q stops;
-    every answer is saved as it is given.
+    every answer is saved as it is given. Once every row has an answer, the
+    rows with no sign are labelled security no.
     """
     try:
         signs = load_question(SIGNS_QUESTION_PATH)
@@ -2068,18 +2070,25 @@ def labelset_label_security_signs(
             columns={"security_sign": signs},
             stamp="security_sign",
             of=None,
-            where=lambda r: r["security"] == "yes" and r["draft_security"] != "yes",
+            # A row the review labelled no stays asked, so a rerun counts it.
+            where=lambda r: (
+                r["draft_security"] != "yes" and (r["security"] == "yes" or "security_sign" in r)
+            ),
             note="security_sign_note",
         )
+        settled = settle_security_signs(path) if res.finished else 0
     except OpsPilotError as e:
         _console.print(f"Error: {e}", style="red", markup=False)
         raise typer.Exit(1) from e
     if not res.finished:
         typer.echo(f"\nsaved · {res.labelled}/{res.total} labelled; rerun to continue")
         return
+    rows = _read_jsonl(path)
+    yes = sum(r["security"] == "yes" for r in rows)
     typer.echo(
         f"\nlabelled {res.labelled} security rows against {signs.version}"
         f" · sign: {_counts(res.counts['security_sign'])}"
+        f"\nlabelled no: {settled} · security yes on {yes} of {len(rows)} rows"
     )
 
 

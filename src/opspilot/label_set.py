@@ -794,6 +794,23 @@ def relabel_security(
     )
 
 
+def settle_security_signs(path: Path = OUT_PATH) -> int:
+    """Label `no` each security row the sign review found no sign in (#281).
+
+    ``no_sign`` is a routine request or fault "which d1-v2 labels no", so the
+    row's ``security`` takes it; the blind d1-v2 label it replaces stays in
+    ``security_d1_v2.jsonl``. ``in_doubt`` stays yes, as d1-v2 says. Returns
+    how many rows changed: a second call changes none.
+    """
+    rows = _read_jsonl(path)
+    changed = [r for r in rows if r.get("security_sign") == "no_sign" and r["security"] == "yes"]
+    for row in changed:
+        row["security"] = "no"
+    if changed:
+        _write_jsonl(path, rows)
+    return len(changed)
+
+
 # ── Decision 9: a known fix among the handbook pages kb_search offers (#226) ─
 
 CANDIDATES_PATH: Final = LABEL_SET_DIR / "candidates_d9_v1.jsonl"
