@@ -157,7 +157,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         else None
     )
     # The Judgments stage (ADR-0040), off unless asked for. On, it refuses to
-    # start until decision 2's threshold has been measured on the label set,
+    # start until decisions 1 and 2 have thresholds measured on the label set,
     # and asks Jev when there is a TypeSafe key to ask it with.
     judgments = (
         build_stage(

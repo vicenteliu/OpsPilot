@@ -155,7 +155,8 @@ either claim.
   every one of the 14 security items stops at a P(yes) of 0.10 on Jev (23% of
   Work items stopped, 7% of the labelled no) and 0.30 on the Playbook's model
   (19%, 2%). A Lookup of the signs as patterns found 2 of the 41 then
-  labelled yes, so the Judgment decides alone.
+  labelled yes, so the Judgment decides alone. As for decision 2, the stage
+  now refuses to start when the engine that would decide has no cut (#301).
 - Decision 9, seen before (#226): the KB is built from the SSC handbook, each
   page keyed by its path in it (`opspilot kb ingest --profile ssc`, #283), and
   each label set row has its candidate pages and the ones that fix it, labelled

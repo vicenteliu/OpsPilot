@@ -46,7 +46,9 @@ answers:
 # 0.30 on the Playbook's model: stops 45 of 240, 3 of the 198 labelled no.
 #
 # 14 security items is few: measure again when the label set grows, or when
-# JEV_MODEL or the classification Playbook's model changes.
+# JEV_MODEL or the classification Playbook's model changes. As for d2.yaml,
+# the stage refuses to start when the engine that would decide has no entry
+# here (#301).
 thresholds:
   "typesafe:jev-1.13.0": 0.10
   "playbook:anthropic/claude-haiku-5-5": 0.30

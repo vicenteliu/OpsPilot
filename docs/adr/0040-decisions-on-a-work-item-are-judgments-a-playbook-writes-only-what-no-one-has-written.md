@@ -87,6 +87,12 @@ Status: accepted (2026-09-23)
 > and 7% of those labelled no, and at 0.30 on the Playbook's model, 19% and 2%. A Lookup of the
 > signs written as patterns found 2 of the 41 rows labelled yes before, so the Judgment decides
 > alone.
+>
+> **Revised 2026-10-17** (#301): with decision 1 measured, the stage no longer runs without it.
+> Like decision 2, it refuses to start when `d1.yaml` has no cut for the engine that would decide,
+> so a changed engine means decision 1 is measured again before the stage runs. Running without it
+> was a stopgap for the pause (#282); it let a security issue go unstopped on every Work item, with
+> only a warning at startup to say so.
 
 A Work item reaches a suggestion through a string of decisions, and today a
 language model makes every one of them in prose. Classification is one call
