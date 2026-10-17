@@ -236,6 +236,10 @@ class ApiRunResponse(BaseModel):
     # incident path, or a "change", which stops for a person: OpsPilot has no
     # change path (#293). The Judgment, with "answer" naming which.
     really: dict[str, Any] | None = None
+    # The Work item's handbook pages, likeliest fix first by decision 9's
+    # P(yes), for the person to read; "ordered_by" the engine, or None when they
+    # keep retrieval's order. It decides nothing (#286).
+    pages: dict[str, Any] | None = None
     # Asset ids drafted from this run's asset_draft block (ADR-0018).
     assets_drafted: list[str] = []
 

@@ -25,6 +25,7 @@ from typing import Any, Final
 
 from .errors import OpsPilotError
 from .judgment import JudgmentEngine, Question, p_yes_of
+from .kb.pages import page_state
 from .label_set import LABEL_SET_DIR, LabelSetError, _read_jsonl
 from .orchestrator.ticket_summary import _format_ticket
 from .redaction import Redactor
@@ -121,11 +122,7 @@ def run_engines(
         if row["id"] not in candidates:
             raise LabelSetError(f"{row['id']} has no candidate pages; the set and them differ")
         for candidate in candidates[row["id"]]:
-            shown = (
-                f"Handbook page: {candidate['title']} ({candidate['source_path']})\n"
-                f"{candidate['excerpt']}"
-            )
-            items.append((row, candidate["source_path"], f"{state}\n\n{shown}"))
+            items.append((row, candidate["source_path"], page_state(state, candidate)))
     done = (
         {
             (r["engine"], r["run"], r["id"], r.get("page"))
@@ -459,12 +456,74 @@ def security_report_markdown(
     return "\n".join(lines) + "\n"
 
 
+def _ordering_lines(
+    known: dict[str, set[str]],
+    records: list[dict[str, Any]],
+    engines: list[str],
+    candidates: dict[str, list[dict[str, Any]]],
+) -> list[str]:
+    """Each engine's order of a row's pages against retrieval's own (#286).
+
+    The person reads the pages in an order: is a fix first, or in the first
+    two? Retrieval's order is the candidates' as found; an engine's is by
+    P(yes), retrieval's order breaking ties. Counted on the rows with a fix,
+    per row for retrieval and per row and run for an engine.
+    """
+    fixable = [i for i, fixes in known.items() if fixes and i in candidates]
+
+    def hits(order: list[str], fixes: set[str]) -> tuple[bool, bool]:
+        return bool(order[:1] and order[0] in fixes), bool(set(order[:2]) & fixes)
+
+    retrieval = [hits([c["source_path"] for c in candidates[i]], known[i]) for i in fixable]
+    rows = (
+        [
+            f"| retrieval | {sum(a for a, _ in retrieval)}/{len(fixable)}"
+            f" ({_pct(sum(a for a, _ in retrieval) / len(fixable))})"
+            f" | {sum(b for _, b in retrieval)}/{len(fixable)}"
+            f" ({_pct(sum(b for _, b in retrieval) / len(fixable))}) |"
+        ]
+        if fixable
+        else []
+    )
+    for engine in engines:
+        scored: dict[tuple[int, str], dict[str, float]] = {}
+        for r in records:
+            if r["engine"] == engine and r["error"] is None and r["id"] in fixable:
+                p = p_yes_of(r["answer"], r["probability"])
+                scored.setdefault((r["run"], r["id"]), {})[r["page"]] = p
+        results = []
+        for (_, i), p_by_page in scored.items():
+            pages = [c["source_path"] for c in candidates[i]]
+            if set(pages) - p_by_page.keys():
+                continue  # a page went unanswered: no order to read
+            order = sorted(pages, key=lambda page: -p_by_page[page])
+            results.append(hits(order, known[i]))
+        if results:
+            first, two = sum(a for a, _ in results), sum(b for _, b in results)
+            rows.append(
+                f"| {engine} | {first}/{len(results)} ({_pct(first / len(results))})"
+                f" | {two}/{len(results)} ({_pct(two / len(results))}) |"
+            )
+    return [
+        "",
+        "## Ordering: the pages a person reads first (#286)",
+        "",
+        "On the rows with a fix: whether the first page, or one of the first two, fixes it, in"
+        " retrieval's order (per row) and in each engine's order by P(yes) (per row and run).",
+        "",
+        "| Order | First page a fix | A fix in the first two |",
+        "|---|---|---|",
+        *rows,
+    ]
+
+
 def known_fix_report_markdown(
     rows: list[dict[str, Any]],
     records: list[dict[str, Any]],
     question: Question,
     *,
     whole_page: bool = False,
+    candidates: dict[str, list[dict[str, Any]]] | None = None,
 ) -> str:
     """Decision 9 on the label set: each row's likeliest page, and the cut that sends it.
 
@@ -555,6 +614,8 @@ def known_fix_report_markdown(
         "|---|---|---|---|---|---|",
         *cuts,
     ]
+    if candidates is not None:
+        lines += _ordering_lines(known, records, engines, candidates)
     return "\n".join(lines) + "\n"
 
 

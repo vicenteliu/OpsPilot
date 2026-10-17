@@ -39,6 +39,7 @@ from typing import Any, Final
 
 from .errors import OpsPilotError
 from .judgment import Question
+from .kb.pages import pages_from_hits
 from .orchestrator.ticket_summary import _parse_summary_json
 from .providers.base import ProviderProtocol
 from .providers.types import Message, SamplingParams
@@ -794,7 +795,6 @@ def relabel_security(
 # ── Decision 9: a known fix among the handbook pages kb_search offers (#226) ─
 
 CANDIDATES_PATH: Final = LABEL_SET_DIR / "candidates_d9_v1.jsonl"
-EXCERPT_CHARS: Final = 600
 
 
 def build_candidates(
@@ -813,15 +813,7 @@ def build_candidates(
     out = []
     for row in rows:
         query = "\n".join(text for text in (row["subject"], row["body"]) if text)
-        pages: dict[str, dict[str, Any]] = {}
-        for hit in search(query):
-            if hit.document_id not in pages:
-                pages[hit.document_id] = {
-                    **describe(hit.document_id),
-                    "document_id": hit.document_id,
-                    "excerpt": hit.content[:EXCERPT_CHARS],
-                }
-        out.append({"id": row["id"], "candidates": list(pages.values())})
+        out.append({"id": row["id"], "candidates": pages_from_hits(search(query), describe)})
     return out
 
 

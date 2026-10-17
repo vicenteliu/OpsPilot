@@ -418,6 +418,7 @@ def _incident_decision_files(tmp_path: Path) -> None:
         "r1.yaml",
         "r2.yaml",
         "r3.yaml",
+        "d9.yaml",
         "catalog.yaml",
     ):
         (tmp_path / name).write_text((D2.parent / name).read_text(encoding="utf-8"))
@@ -1674,3 +1675,86 @@ def test_an_item_that_lists_no_fields_is_not_asked_r3() -> None:
         client.post("/api/run", json={"input": {**_UNTYPED, "work_item_type": "service_request"}})
     assert says.asked == []
     run.assert_called_once()
+
+
+# ── The handbook pages, ordered by decision 9 for the person (#286) ─────────
+
+
+class _ByPage:
+    """Scores each page by its path in the state; ``fail_on`` raises on that page."""
+
+    name = "typesafe:jev-test"
+
+    def __init__(self, p_yes: dict[str, float], fail_on: str | None = None) -> None:
+        self.p_yes, self.fail_on = p_yes, fail_on
+
+    def judge(self, question: Question, state: str, *, timeout_s: float) -> Judgment:
+        page = next(k for k in self.p_yes if f"({k})" in state)
+        if page == self.fail_on:
+            raise ProviderError("timed out")
+        p = self.p_yes[page]
+        answer = "yes" if p >= 0.5 else "no"
+        return Judgment(
+            "d9", question.version, answer, p if answer == "yes" else 1 - p, self.name, 9, 2e-05
+        )
+
+
+def _ordered_run(engine: Any) -> tuple[Any, Any]:
+    """An Incident run with the pages ordered; the response, and the run mock."""
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock, patch
+
+    from fastapi.testclient import TestClient
+
+    from opspilot.judgment import Ordering
+
+    app = _app_with_stage(_Engine("incident", 0.99))
+    hits = [
+        SimpleNamespace(document_id=d, content=f"best of {d}")
+        for d in ("doc_a", "doc_b", "doc_a", "doc_c")
+    ]
+    with (
+        patch("opspilot.api.routes.run.run_ticket_summary", return_value=_run_result()) as run,
+        patch("opspilot.api.routes.run.kb_search", return_value=hits) as search,
+        TestClient(app) as client,
+    ):
+        app.state.judgments = replace(
+            app.state.judgments,
+            page_order=Ordering(load_question(REPO_ROOT / DECISIONS_DIR / "d9.yaml"), engine),
+        )
+        app.state.sqlite = MagicMock()
+        app.state.sqlite.get_document.side_effect = lambda d: {
+            "source_path": f"{d}.md",
+            "title": d.upper(),
+        }
+        app.state.playbook.retrieval.prefetch.query_fields = None
+        app.state.playbook.retrieval.prefetch.top_k = 5
+        app.state.playbook.defaults.kb_id = "opspilot:public-kb"
+        data = client.post("/api/run", json={"input": _INCIDENT}).json()
+    assert search.call_args.kwargs["namespace"] == "opspilot:public-kb"
+    assert search.call_args.kwargs["top_k"] == 5
+    assert "jane.doe@example.com" not in search.call_args.args[0]  # the query is redacted
+    return data, run
+
+
+class TestPageOrder:
+    def test_the_pages_are_ordered_likeliest_fix_first(self) -> None:
+        data, run = _ordered_run(_ByPage({"doc_a.md": 0.1, "doc_b.md": 0.4, "doc_c.md": 0.2}))
+        run.assert_called_once()
+        assert data["pages"]["ordered_by"] == "typesafe:jev-test"
+        assert [p["source_path"] for p in data["pages"]["pages"]] == [
+            "doc_b.md",
+            "doc_c.md",
+            "doc_a.md",
+        ]
+
+    def test_if_the_engine_fails_on_a_page_the_search_s_order_stands(self) -> None:
+        data, _ = _ordered_run(
+            _ByPage({"doc_a.md": 0.1, "doc_b.md": 0.4, "doc_c.md": 0.2}, fail_on="doc_c.md")
+        )
+        assert data["pages"]["ordered_by"] is None
+        assert [p["source_path"] for p in data["pages"]["pages"]] == [
+            "doc_a.md",
+            "doc_b.md",
+            "doc_c.md",
+        ]

@@ -108,6 +108,9 @@ full JQL scope — there is deliberately no time cursor to miss things).
   When the Judgments stage's decision 3 (#230) finds the issue is the same
   problem as one of them, the comment says so, with its probability, for a
   person to link. OpsPilot links, merges and closes nothing.
+- The comment lists the issue's **handbook pages, likeliest fix first**, in
+  the Judgments stage's decision 9 order (#286); it is an order to read them
+  in, and decides nothing.
 - A **service request** matched to a catalog item (#231) gets a comment line
   with the item, its approver, whether the submitter is entitled to it and
   its stock, all looked up in the catalog. An item the catalog marks

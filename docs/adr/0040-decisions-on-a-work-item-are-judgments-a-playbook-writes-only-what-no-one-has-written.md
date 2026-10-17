@@ -73,6 +73,11 @@ Status: accepted (2026-09-23)
 > 27 labelled `yes`. A `no` that clears its cut holds the request back for one ask, written by
 > `pb_ask_en` for the missing fields, through the reply loop of #229; the reply runs it again as a
 > request. The request path's three Judgments are now built.
+>
+> **Revised 2026-10-17** (#286): a Judgment may order what a person reads without deciding
+> anything; see "Ordering is not deciding" below. Decision 9 now orders each Work item's handbook
+> pages, likeliest fix first: on the rows with a fix the first page is one for 89% of Jev's orders,
+> against 70% of retrieval's.
 
 A Work item reaches a suggestion through a string of decisions, and today a
 language model makes every one of them in prose. Classification is one call
@@ -212,6 +217,15 @@ and change stay out of scope.
 Decision 3 names the likely open Work item in the write-back comment, and a
 person links them. OpsPilot does not link, merge or close anything in the
 system of record (ADR-0006, ADR-0013).
+
+## Ordering is not deciding
+
+A Judgment asked only to order candidates for a person needs no cut: nothing is decided, and
+below no threshold does anything change hands. Decision 9 cannot send a known fix on its own
+(#226), but its P(yes) ranks a Work item's handbook pages, the prefetch's own, better than
+retrieval does, so the person reads them likeliest fix first (#286). The order is measured on the
+label set against the source's, and is shown, not used. One engine scores every candidate,
+because two engines' probabilities do not compare; if it fails on one, the source's order stands.
 
 ## Severity stays the word
 

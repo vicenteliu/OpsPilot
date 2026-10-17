@@ -18,9 +18,11 @@ from fastapi.responses import StreamingResponse
 from ...catalog import entitled, fields_question, in_stock
 from ...errors import OpsPilotError
 from ...judgment import open_items_question, p_yes
+from ...kb.pages import page_state, pages_from_hits
+from ...kb.retrieval import kb_search
 from ...orchestrator.ask import write_ask
 from ...orchestrator.classify import classify_work_item, declared_type, render_state
-from ...orchestrator.ticket_summary import run_ticket_summary
+from ...orchestrator.ticket_summary import _strip_redaction_placeholders, run_ticket_summary
 from ...orchestrator.types import RunRequest as OrchestratorRunRequest
 from ...providers.registry import make_provider
 from ...session.types import TraceEvent
@@ -439,6 +441,60 @@ def _judge_really(
     return trace, trace
 
 
+def _order_pages(
+    state: Any, rendered: str | None, pb: Any, ticket: dict[str, Any]
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    """The Work item's handbook pages, likeliest fix first, for the person (#286).
+
+    The pages are the prefetch's: the same query, the same top_k, the same
+    knowledge base, grouped by page with each one's best hit. Decision 9 is
+    asked of each, and they are ordered by P(yes), retrieval's order breaking
+    ties; it decides nothing, so there is no cut. If the engine fails on any
+    page, the pages keep retrieval's order and say so. Returns the order and
+    each Judgment for the trace; None when the stage is off or there is no
+    knowledge base to search.
+    """
+    stage = getattr(state, "judgments", None)
+    if stage is None or stage.page_order is None or rendered is None or state.sqlite is None:
+        return None, []
+    fields = pb.retrieval.prefetch.query_fields or ["subject", "body"]
+    query_raw = "\n".join(str(ticket[f]) for f in fields if ticket.get(f)).strip()
+    if not query_raw:
+        return None, []
+    query = _strip_redaction_placeholders(state.redactor.redact(query_raw).text)
+    try:
+        hits = kb_search(
+            query,
+            sqlite=state.sqlite,
+            lance=state.lance,
+            embed_fn=state.embed_fn,
+            top_k=pb.retrieval.prefetch.top_k or pb.limits.max_kb_search_results,
+            namespace=pb.defaults.kb_id,
+        )
+    except Exception as e:  # noqa: BLE001 — advisory: the run goes on without it
+        logger.warning("the handbook pages could not be searched for their order: %s", e)
+        return None, []
+
+    def describe(doc_id: str) -> dict[str, Any]:
+        doc = state.sqlite.get_document(doc_id) or {}
+        return {"source_path": doc.get("source_path"), "title": doc.get("title")}
+
+    pages = pages_from_hits(hits, describe)
+    if not pages:
+        return None, []
+    shown = [{"title": p["title"], "source_path": p["source_path"]} for p in pages]
+    try:
+        judgments = stage.page_order.score([page_state(rendered, p) for p in pages])
+    except OpsPilotError as e:
+        logger.warning("decision 9 could not order the pages; retrieval's order stands: %s", e)
+        return {"ordered_by": None, "pages": shown}, []
+    order = sorted(range(len(pages)), key=lambda i: -p_yes(judgments[i]))  # stable on ties
+    traces = [
+        {**j.as_trace(), "page": p["source_path"]} for j, p in zip(judgments, pages, strict=True)
+    ]
+    return {"ordered_by": stage.page_order.engine.name, "pages": [shown[i] for i in order]}, traces
+
+
 def _requested_stock(state: Any, catalog: dict[str, Any], result: dict[str, Any]) -> None:
     """Count the stock of the category a request asks for, once its artifact names it (#231)."""
     item = state.judgments.catalog.catalog.items.get(catalog.get("item") or "")
@@ -577,6 +633,7 @@ async def run_ticket(body: ApiRunRequest, request: Request) -> ApiRunResponse:
                     "requested_item": catalog["name"],
                     "approval_needed": catalog["approval"] != "none",
                 }
+            pages, page_traces = _order_pages(state, rendered, pb, body.input)
             orch_request = OrchestratorRunRequest(
                 playbook=pb, input_path=ticket_path, owner="api:default"
             )
@@ -600,6 +657,7 @@ async def run_ticket(body: ApiRunRequest, request: Request) -> ApiRunResponse:
                 open_trace,
                 enough,
                 *incident_judgments,
+                *page_traces,
             ]:
                 _trace_judgment(state, res.session_id, judgment)
             if catalog is not None and res.summary:
@@ -609,7 +667,12 @@ async def run_ticket(body: ApiRunRequest, request: Request) -> ApiRunResponse:
                 classification,
                 False,
                 security,
-                {"already_open": already_open, "catalog": catalog, "really": really},
+                {
+                    "already_open": already_open,
+                    "catalog": catalog,
+                    "really": really,
+                    "pages": pages,
+                },
             )
 
         result, classification, needs_conf, security, judged = await loop.run_in_executor(
@@ -652,6 +715,7 @@ async def run_ticket(body: ApiRunRequest, request: Request) -> ApiRunResponse:
         already_open=judged.get("already_open"),
         catalog=judged.get("catalog"),
         really=judged.get("really"),
+        pages=judged.get("pages"),
         assets_drafted=_draft_assets(state, result),
     )
 
@@ -719,6 +783,7 @@ async def run_ticket_stream(body: ApiRunRequest, request: Request) -> StreamingR
                 "requested_item": catalog["name"],
                 "approval_needed": catalog["approval"] != "none",
             }
+        pages, page_traces = _order_pages(state, rendered, pb, body.input)
         orch_request = OrchestratorRunRequest(
             playbook=pb, input_path=ticket_path, owner="api:default"
         )
@@ -743,6 +808,7 @@ async def run_ticket_stream(body: ApiRunRequest, request: Request) -> StreamingR
             open_trace,
             enough,
             *incident_judgments,
+            *page_traces,
         ]:
             _trace_judgment(state, res.session_id, judgment)
         if catalog is not None and res.summary:
@@ -752,7 +818,12 @@ async def run_ticket_stream(body: ApiRunRequest, request: Request) -> StreamingR
             classification,
             False,
             security,
-            {"already_open": already_open, "catalog": catalog, "really": really},
+            {
+                "already_open": already_open,
+                "catalog": catalog,
+                "really": really,
+                "pages": pages,
+            },
         )
 
     async def _run_in_thread() -> None:
@@ -796,6 +867,7 @@ async def run_ticket_stream(body: ApiRunRequest, request: Request) -> StreamingR
                     "already_open": judged.get("already_open"),
                     "catalog": judged.get("catalog"),
                     "really": judged.get("really"),
+                    "pages": judged.get("pages"),
                     "assets_drafted": _draft_assets(state, result),
                 }
             await queue.put({"type": "result", "data": payload})

@@ -89,6 +89,9 @@ export interface RunResponse {
   // r2 (#293): filed as a request, it is an incident (handled as one) or a
   // change (stopped for a person).
   really?: { answer: 'incident' | 'change'; probability: number; engine: string } | null;
+  // #286: the Work item's handbook pages, likeliest fix first; ordered_by null
+  // when they keep the search's order.
+  pages?: { ordered_by: string | null; pages: { title: string; source_path: string }[] } | null;
 }
 
 // A work-item artifact: incident_summary_v1 or request_fulfillment_v1.

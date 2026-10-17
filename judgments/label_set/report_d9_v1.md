@@ -15,3 +15,13 @@ Per row and run, the candidate with the highest P(yes) is the fix the stage woul
 |---|---|---|---|---|---|
 | typesafe:jev-1.13.0 | 0.350 | 9/240 (3.8%) | 9/9 (100.0%) | 9/132 (6.8%) | 0/108 (0.0%) |
 | playbook:anthropic/claude-haiku-5-5 | 0.280 | 9/240 (3.8%) | 9/9 (100.0%) | 9/132 (6.8%) | 0/108 (0.0%) |
+
+## Ordering: the pages a person reads first (#286)
+
+On the rows with a fix: whether the first page, or one of the first two, fixes it, in retrieval's order (per row) and in each engine's order by P(yes) (per row and run).
+
+| Order | First page a fix | A fix in the first two |
+|---|---|---|
+| retrieval | 31/44 (70.5%) | 38/44 (86.4%) |
+| typesafe:jev-1.13.0 | 117/132 (88.6%) | 130/132 (98.5%) |
+| playbook:anthropic/claude-haiku-5-5 | 114/132 (86.4%) | 125/132 (94.7%) |
