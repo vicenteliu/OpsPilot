@@ -554,9 +554,10 @@ class Stage:
     decision 2 runs only when nothing declared the type.
     """
 
-    # None until decision 1 is measured for the engine that would decide it
-    # (#225); measured on the label set for Jev and the Playbook's model (#281).
-    security: Decision | None
+    # Like decision 2, the stage refuses to start until decision 1 is measured
+    # for the engine that would decide it (#301): a security issue that goes
+    # unstopped is the one mistake the next step cannot undo.
+    security: Decision
     work_item_type: Decision
     # Asked of an Incident before its summary; None until Impact and Urgency
     # are both measured for the engine that would decide them (#227).
@@ -589,7 +590,6 @@ class Stage:
         "not security" is the one mistake the next step cannot undo, so a
         fallback's "no" is not trusted either.
         """
-        assert self.security is not None, "decision 1 is not asked while it is unmeasured"
         return judgment.fallback is not None or p_yes(judgment) >= self.security.threshold
 
     def needs_a_person(self, judgment: Judgment) -> bool:
@@ -614,30 +614,6 @@ def _decision(
             "Measure it on the label set first (judgments/label_set/SPEC.md §7); it is never "
             "guessed, and one measured on another engine says nothing about this one."
         )
-    return Decision(question, threshold, primary=primary, fallback=fallback)
-
-
-def _security(
-    decisions_dir: Path, primary: JudgmentEngine, fallback: JudgmentEngine | None
-) -> Decision | None:
-    """Decision 1 at its engine's measured cut, or None while it has none, and the log says so.
-
-    Unlike decision 2, an unmeasured decision 1 does not stop the stage: it
-    went unmeasured while no cut stopped the labelled security items without
-    stopping nearly every Work item (#225, until #281). Running without it is
-    said loudly, because a security issue then goes unstopped.
-    """
-    path = decisions_dir / SECURITY_FILE
-    question = load_question(path)
-    threshold = question.thresholds.get(primary.name)
-    if threshold is None:
-        logger.warning(
-            "The Judgments stage runs WITHOUT decision 1: %s has no threshold for %s, so a "
-            "possible security issue is not stopped (#225).",
-            path,
-            primary.name,
-        )
-        return None
     return Decision(question, threshold, primary=primary, fallback=fallback)
 
 
@@ -807,15 +783,16 @@ def build_stage(
     *,
     typesafe_api_key: str | None = None,
 ) -> Stage:
-    """The stage with the engines there are; refuse it until decision 2's engine is measured.
+    """The stage with the engines there are; refuse it until decisions 1 and 2 are measured.
 
     With a TypeSafe key, Jev decides both and the Playbook's model is its
     fallback: Classification for decision 2, the Question asked as written for
     decision 1. Without one, the Playbook's model decides alone, and the log
-    says so. Decision 1, already open, enough to act on, the team, Impact and
-    Urgency, the catalog item, really a request and enough to fulfil run only
-    once they are measured for their engine. Decision 9 always orders the
-    handbook pages: it decides nothing, so it needs no cut.
+    says so. Either way decisions 1 and 2 need a cut for the engine that
+    decides them (#274, #301). Already open, enough to act on, the team,
+    Impact and Urgency, the catalog item, really a request and enough to
+    fulfil run only once they are measured for their engine. Decision 9
+    always orders the handbook pages: it decides nothing, so it needs no cut.
     """
     asked = QuestionJudge(classify_playbook, provider)
     classified = ClassificationJudge(classify_playbook, provider)
@@ -827,7 +804,7 @@ def build_stage(
             raise ConfigError("TYPESAFE_API_KEY is malformed: it holds whitespace or non-ASCII.")
         jev = TypeSafeJudge(key)
         return Stage(
-            security=_security(decisions_dir, jev, asked),
+            security=_decision(decisions_dir, SECURITY_FILE, jev, asked),
             work_item_type=_decision(decisions_dir, WORK_ITEM_TYPE_FILE, jev, classified),
             severity=_severity(decisions_dir, jev, asked),
             team=_team(decisions_dir, jev, asked),
@@ -839,7 +816,7 @@ def build_stage(
             page_order=Ordering(load_question(decisions_dir / KNOWN_FIX_FILE), jev),
         )
     stage = Stage(
-        security=_security(decisions_dir, asked, None),
+        security=_decision(decisions_dir, SECURITY_FILE, asked, None),
         work_item_type=_decision(decisions_dir, WORK_ITEM_TYPE_FILE, classified, None),
         severity=_severity(decisions_dir, asked, None),
         team=_team(decisions_dir, asked, None),
