@@ -840,6 +840,42 @@ def test_cli_relabel_security_shows_d1_s_definitions_and_prints_counts(tmp_path:
     )
 
 
+def test_cli_label_security_signs_asks_the_security_rows_not_drafted_as_security(
+    tmp_path: Path,
+) -> None:
+    """#281: of either type, each answered with a sign and a note, enter skipping it."""
+    from opspilot import cli
+
+    path = _set_file(tmp_path, 4, labelled=True)  # LS1-001 is drafted as a security item
+    rows = _read(path)
+    for row, security in zip(rows, ["yes", "yes", "yes", "no"], strict=True):
+        row["security"] = security
+    rows[1]["work_item_type"] = "service_request"
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    result = CliRunner().invoke(
+        cli.app,
+        ["labelset", "label-security-signs", "--by", "v", "--set", str(path)],
+        input="7\nscreen shared on a call\n9\n\n",
+    )
+    assert result.exit_code == 0, result.output
+    assert "subject 1" not in result.output and "subject 4" not in result.output
+    assert "draft" not in result.output
+    assert (
+        "labelled 2 security rows against d1-signs-v1 · sign: suspicious_message 0,"
+        " unexpected_sign_in 0, lost_device 0, malware 0, credential_exposure 0,"
+        " data_exposure 0, another_sign 1, in_doubt 0, no_sign 1" in result.output
+    )
+    rows = _read(path)
+    assert [(r.get("security_sign"), r.get("security_sign_note")) for r in rows] == [
+        (None, None),
+        ("another_sign", "screen shared on a call"),
+        ("no_sign", None),
+        (None, None),
+    ]
+    assert rows[1]["answer_space"] == {"d1_signs": "d1-signs-v1"}
+    assert rows[1]["security_sign_labelled_by"] == "v"
+
+
 # ── Decision 9: which handbook page, if any, is a known fix (#226) ──────────
 
 

@@ -97,6 +97,7 @@ from .label_set import (
     RELABEL_PATH,
     REVIEW_PATH,
     SECURITY_RELABEL_PATH,
+    SIGNS_QUESTION_PATH,
     SITE_WIDE_PATH,
     SITE_WIDE_PROMPT_PATH,
     LabelSetError,
@@ -2041,6 +2042,44 @@ def labelset_relabel_security(
     typer.echo(
         f"\nlabelled {res.labelled} of {res.total} against {d1.version} · changed {res.changed}"
         f" · security yes on {yes} of {len(rows)} rows"
+    )
+
+
+@labelset_app.command("label-security-signs")
+def labelset_label_security_signs(
+    by: str = typer.Option(..., "--by", help="The labeller's handle, recorded on each row."),
+    path: Path = typer.Option(OUT_PATH, "--set", help="The labelled set."),  # noqa: B008
+) -> None:
+    """Label which of d1-v2's signs each security row the engines miss shows (#281).
+
+    Only the rows labelled security yes that were not drafted as security
+    items are asked: both engines score them like the rows labelled no. Answer
+    each with its number, then a note (enter to skip) saying which sign the
+    list does not name, or what raises the doubt. u goes back and q stops;
+    every answer is saved as it is given.
+    """
+    try:
+        signs = load_question(SIGNS_QUESTION_PATH)
+        res = label_pass(
+            path,
+            by=by,
+            ask=_ask_line,
+            show=typer.echo,
+            columns={"security_sign": signs},
+            stamp="security_sign",
+            of=None,
+            where=lambda r: r["security"] == "yes" and r["draft_security"] != "yes",
+            note="security_sign_note",
+        )
+    except OpsPilotError as e:
+        _console.print(f"Error: {e}", style="red", markup=False)
+        raise typer.Exit(1) from e
+    if not res.finished:
+        typer.echo(f"\nsaved · {res.labelled}/{res.total} labelled; rerun to continue")
+        return
+    typer.echo(
+        f"\nlabelled {res.labelled} security rows against {signs.version}"
+        f" · sign: {_counts(res.counts['security_sign'])}"
     )
 
 

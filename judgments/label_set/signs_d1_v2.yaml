@@ -1,0 +1,30 @@
+# Which of d1-v2's signs a row labelled security shows (#281). Not a decision
+# OpsPilot makes: the labeller answers it of the 29 rows labelled security yes
+# that were not drafted as security items. Both engines score those like the
+# rows labelled no (report_d1_v2.md), and a Lookup of d1-v2's signs written as
+# patterns found none of them, so each answer says where the gap is: a sign
+# d1-v2 lists that the engines miss, one it does not list, doubt, or no sign.
+id: d1_signs
+version: d1-signs-v1
+kind: choice
+question: >-
+  This Work item is labelled security yes under d1-v2. Which sign of compromise
+  or exposure does it show?
+answers:
+  suspicious_message: a suspicious link, attachment or message
+  unexpected_sign_in: an unexpected sign-in, MFA prompt or account change
+  lost_device: a lost or stolen device
+  malware: malware behaviour
+  credential_exposure: >-
+    a password or other credential that someone else may have, or that was
+    shared with or asked for by someone who should not have it
+  data_exposure: data sent to, or seen by, the wrong people
+  another_sign: >-
+    a sign of compromise or exposure the list above does not name; say which in
+    the note
+  in_doubt: >-
+    no sign it shows, but compromise or exposure is in doubt (d1-v2: when in
+    doubt, yes); say what raises the doubt in the note
+  no_sign: >-
+    none, and no doubt: a routine request or fault about access, accounts,
+    passwords, MFA, keys or certificates, which d1-v2 labels no

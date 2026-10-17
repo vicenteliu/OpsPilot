@@ -703,6 +703,8 @@ def relabel_rows(
 # kept as the record of what it changed; d1-v2's relabel superseded it.
 REVIEW_PATH: Final = LABEL_SET_DIR / "security_review_v1.jsonl"
 SECURITY_RELABEL_PATH: Final = LABEL_SET_DIR / "security_d1_v2.jsonl"
+# Which of d1-v2's signs the security rows the engines miss show (#281).
+SIGNS_QUESTION_PATH: Final = LABEL_SET_DIR / "signs_d1_v2.yaml"
 
 
 @dataclass(frozen=True)
@@ -931,27 +933,32 @@ def label_pass(
     show: Show,
     columns: dict[str, Question],
     stamp: str,
-    of: str = "incident",
+    of: str | None = "incident",
     where: Callable[[dict[str, Any]], bool] | None = None,
     context: Callable[[dict[str, Any]], str] | None = None,
+    note: str | None = None,
     clock: Clock = _utc_now,
 ) -> LabelPassResult:
     """Label each row of type ``of``, blind, in one pass over ``columns`` (e.g. impact then urgency).
 
     Only the rows labelled ``of`` are asked: ADR-0040 asks these decisions of
-    an Incident, or on the request path of a service request (#231). Each row
-    shows its subject, body and channel, and no other label. A row's answers
-    are saved as they are given, with ``{stamp}_labelled_by`` and
-    ``{stamp}_labelled_time``, so a rerun picks up at the first open row.
-    ``where`` narrows the rows asked further, and ``context`` adds a line to
-    each, e.g. the catalog item a request is for and what it needs (#294).
+    an Incident, or on the request path of a service request (#231); None asks
+    either type. Each row shows its subject, body and channel, and no other
+    label. A row's answers are saved as they are given, with
+    ``{stamp}_labelled_by`` and ``{stamp}_labelled_time``, so a rerun picks up
+    at the first open row. ``where`` narrows the rows asked further, and
+    ``context`` adds a line to each, e.g. the catalog item a request is for
+    and what it needs (#294). ``note`` names a column for a free note asked
+    after the answers, e.g. which sign the d1-v2 list does not name (#281).
     """
     if not path.is_file():
         raise LabelSetError(f"{path} not found: draft the set first")
     rows = _read_jsonl(path)
     if any(r["work_item_type"] is None for r in rows):
-        raise LabelSetError(f"label every row's type first; only {of} rows are asked")
-    asked = [r for r in rows if r["work_item_type"] == of and (where is None or where(r))]
+        raise LabelSetError(f"label every row's type first; only {of or 'typed'} rows are asked")
+    asked = [
+        r for r in rows if (of is None or r["work_item_type"] == of) and (where is None or where(r))
+    ]
     keys = {column: _levels(q) for column, q in columns.items()}
     first = next(iter(columns))
 
@@ -981,9 +988,11 @@ def label_pass(
         if answer == "u":
             i = max(i - 1, 0)
             continue
-        labels = {first: answer}
+        labels: dict[str, str | None] = {first: answer}
         for column in list(columns)[1:]:
             labels[column] = _ask_choice(ask, prompt(column), keys[column], nav=False)
+        if note is not None:
+            labels[note] = ask("note (enter to skip)").strip() or None
         row.update(
             labels,
             **{
