@@ -773,3 +773,14 @@ def test_r2_s_cut_is_on_the_answers_that_are_not_request() -> None:
     assert "answers other than `request`" in md
     # Named: change 0.9 (right), incident 0.8 (right), change 0.6 (wrong, a request).
     assert "| e | 0.800 | 2/4 | 100.0% | 2/2 | 0/2 |" in md
+
+
+def test_the_d9_report_compares_each_engine_s_order_with_retrieval_s() -> None:
+    """#286: the first page a person reads, in retrieval's order and in the engine's."""
+    rows = [_row(i, "incident", known_fix=["b.md"]) for i in (1, 2)]
+    candidates = {r["id"]: [{"source_path": "a.md"}, {"source_path": "b.md"}] for r in rows}
+    p_yes = {(r["id"], "a.md"): 0.1 for r in rows} | {(r["id"], "b.md"): 0.3 for r in rows}
+    md = known_fix_report_markdown(rows, _fix_records("e", p_yes), D9, candidates=candidates)
+    assert "## Ordering: the pages a person reads first" in md
+    assert "| retrieval | 0/2 (0.0%) | 2/2 (100.0%) |" in md
+    assert "| e | 2/2 (100.0%) | 2/2 (100.0%) |" in md

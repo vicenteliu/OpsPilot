@@ -22,7 +22,8 @@ FastAPI  (opspilot.api)
   │    and one a source lists open Work items for is matched to them (d3.yaml);
   │    a request is matched to the catalog (r1.yaml, catalog.yaml) and looked up,
   │    and one that is really an incident or a change (r2.yaml) is rerouted;
-  │    one missing what its item needs (r3.yaml) gets one ask
+  │    one missing what its item needs (r3.yaml) gets one ask; and the handbook
+  │    pages are listed in decision 9's order (d9.yaml), likeliest fix first
   ▼
 Orchestrator  (opspilot.orchestrator)
   ├─▶ Redactor ──────────────── strips PII from work-item text

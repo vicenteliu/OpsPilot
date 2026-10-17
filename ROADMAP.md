@@ -161,7 +161,9 @@ either claim.
   sends more than 25 of 240: it is not ready to send a known fix, and
   `d9.yaml` has no threshold. Jev ranks the pages, though: its likeliest page
   fixes about nine in ten rows that have a fix, retrieval's first hit seven in
-  ten.
+  ten. So with the stage on, a run's handbook pages are listed for the person
+  in decision 9's order, likeliest fix first, on the web and in the JSM and
+  Telegram comment (#286); the order decides nothing.
 - Impact and Urgency, decisions 7 and 8 (#227): Jev asks a Score, and the 39
   Incidents are labelled for both, blind (#287), with 12 site-wide Incidents
   drafted and labelled apart from the set (#288). Measured on all 51, at the
@@ -217,7 +219,6 @@ either claim.
 *Not yet:*
 
 - Decision 1's automation (#281).
-- The handbook's pages shown to the person in Jev's order (#286).
 - The rest of ADR-0040's order of work, #227–#231; filed and not scheduled,
   #232 and #233.
 

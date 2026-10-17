@@ -797,3 +797,18 @@ def test_a_request_asked_for_its_item_s_fields_is_run_again_as_a_request(tmp_pat
     loop.run_once()
     work_item, was_asked = client.calls[1]
     assert was_asked is True and work_item["work_item_type"] == "service_request"
+
+
+def test_the_comment_lists_the_handbook_pages_in_their_order() -> None:
+    """#286: likeliest fix first, or the search's order when no engine ordered them."""
+    pages = [
+        {"title": "VPN", "source_path": "net/vpn.md"},
+        {"title": "DNS", "source_path": "net/dns.md"},
+    ]
+    body = render_comment(_OK["result"], session_id="s", pages={"ordered_by": "e", "pages": pages})  # type: ignore[arg-type]
+    assert (
+        "**Handbook pages, likeliest fix first:**\n1. VPN (`net/vpn.md`)\n2. DNS (`net/dns.md`)"
+        in body
+    )
+    body = render_comment(_OK["result"], session_id="s", pages={"ordered_by": None, "pages": pages})  # type: ignore[arg-type]
+    assert "**Handbook pages** (in the search's order):" in body

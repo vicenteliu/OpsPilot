@@ -23,6 +23,7 @@ from __future__ import annotations
 import logging
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Literal, Protocol
@@ -407,6 +408,7 @@ SECURITY_FILE: Final = "d1.yaml"
 WORK_ITEM_TYPE_FILE: Final = "d2.yaml"
 REALLY_FILE: Final = "r2.yaml"
 FULFIL_FILE: Final = "r3.yaml"
+KNOWN_FIX_FILE: Final = "d9.yaml"
 ALREADY_OPEN_FILE: Final = "d3.yaml"
 ENOUGH_FILE: Final = "d4.yaml"
 TEAM_FILE: Final = "d6.yaml"
@@ -442,6 +444,33 @@ class Decision:
     def stands(self, judgment: Judgment) -> bool:
         """At or above the cut, from the primary engine: the answer stands without a person."""
         return judgment.fallback is None and judgment.probability >= self.threshold
+
+
+@dataclass(frozen=True)
+class Ordering:
+    """A Noul asked of each candidate only to order them for a person: no cut (#286).
+
+    Decision 9 cannot send a known fix on its own, but its P(yes) ranks a Work
+    item's handbook pages better than retrieval does, so the person reads them
+    likeliest fix first. One engine scores every candidate, so the scores
+    compare; if it fails on one, the caller keeps the order it had rather than
+    mixing in another engine's scale.
+    """
+
+    question: Question
+    engine: JudgmentEngine
+    timeout_s: float = JUDGMENT_TIMEOUT_S
+
+    def score(self, states: list[str]) -> list[Judgment]:
+        """Each state's Judgment, in order; the calls run at once, being independent."""
+        if not states:
+            return []
+        with ThreadPoolExecutor(max_workers=len(states)) as pool:
+            return list(
+                pool.map(
+                    lambda s: self.engine.judge(self.question, s, timeout_s=self.timeout_s), states
+                )
+            )
 
 
 @dataclass(frozen=True)
@@ -549,6 +578,9 @@ class Stage:
     # The request path, last: does a request give what its item needs? A `no`
     # that stands asks the reporter once. None until measured (#294).
     fulfil: Decision | None = None
+    # Decision 9 asked of each of a Work item's handbook pages, to order them
+    # for the person, likeliest fix first; it decides nothing (#286).
+    page_order: Ordering | None = None
 
     def stops_for_security(self, judgment: Judgment) -> bool:
         """At or above decision 1's cut on P(yes), or answered by the fallback: stop.
@@ -782,7 +814,8 @@ def build_stage(
     decision 1. Without one, the Playbook's model decides alone, and the log
     says so. Decision 1, already open, enough to act on, the team, Impact and
     Urgency, the catalog item, really a request and enough to fulfil run only
-    once they are measured for their engine.
+    once they are measured for their engine. Decision 9 always orders the
+    handbook pages: it decides nothing, so it needs no cut.
     """
     asked = QuestionJudge(classify_playbook, provider)
     classified = ClassificationJudge(classify_playbook, provider)
@@ -803,6 +836,7 @@ def build_stage(
             catalog=_catalog(decisions_dir, jev, asked),
             really=_really(decisions_dir, jev, asked),
             fulfil=_fulfil(decisions_dir, jev, asked),
+            page_order=Ordering(load_question(decisions_dir / KNOWN_FIX_FILE), jev),
         )
     stage = Stage(
         security=_security(decisions_dir, asked, None),
@@ -814,6 +848,7 @@ def build_stage(
         catalog=_catalog(decisions_dir, asked, None),
         really=_really(decisions_dir, asked, None),
         fulfil=_fulfil(decisions_dir, asked, None),
+        page_order=Ordering(load_question(decisions_dir / KNOWN_FIX_FILE), asked),
     )
     logger.warning(
         "The Judgments stage is on without TYPESAFE_API_KEY: %s decides alone.", classified.name

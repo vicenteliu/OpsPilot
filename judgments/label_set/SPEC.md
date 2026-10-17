@@ -312,7 +312,9 @@ it (`candidates_d9_v1.jsonl`), and keeps the calls in `runs_d9_v1.jsonl`. Per ro
 candidate with the highest P(yes) is the fix the stage would send. The decision-9 threshold is the
 lowest P(yes) at which the fixes sent are at least 95% right, the rule decision 2 follows; the
 report also gives how many rows with a fix get a right page at it, and how many rows with none
-are sent one. A person sets `d9.yaml`'s threshold from it. With `--whole-page --source <handbook>`
+are sent one. A person sets `d9.yaml`'s threshold from it. It also gives each engine's order of a
+row's pages against retrieval's own, on the rows with a fix: whether the first page, or one of the
+first two, fixes it (#286). With `--whole-page --source <handbook>`
 the engines are shown each candidate's whole page instead, read from the checkout the KB was
 built from and redacted, and the calls are kept in `runs_d9_v1_whole_page.jsonl`.
 

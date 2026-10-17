@@ -202,6 +202,7 @@ def render_comment(
     already_open: dict[str, Any] | None = None,
     catalog: dict[str, Any] | None = None,
     really: dict[str, Any] | None = None,
+    pages: dict[str, Any] | None = None,
 ) -> str:
     """Render a run artifact as one structured, source-agnostic comment."""
     lines = [f"{OPSPILOT_HEADING} suggestion", ""]
@@ -229,6 +230,16 @@ def render_comment(
             lines.append(
                 f"- `{t.get('tier', '?')}` {t.get('action', '')} — {t.get('rationale', '')}{cites}"
             )
+    if pages and pages.get("pages"):
+        # Decision 9's order, likeliest fix first; it decides nothing (#286).
+        heading = (
+            "**Handbook pages, likeliest fix first:**"
+            if pages.get("ordered_by")
+            else "**Handbook pages** (in the search's order):"
+        )
+        lines += ["", heading]
+        for n, page in enumerate(pages["pages"], start=1):
+            lines.append(f"{n}. {page.get('title')} (`{page.get('source_path')}`)")
     citations = result.get("citations") or []
     if citations:
         lines += ["", "**KB citations:**"]
@@ -522,6 +533,7 @@ class IntakeLoop:
             already_open=res.get("already_open"),
             catalog=res.get("catalog"),
             really=res.get("really"),
+            pages=res.get("pages"),
         )
         self._deliver(key, body, session_id, report)
 

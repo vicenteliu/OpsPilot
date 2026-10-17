@@ -368,6 +368,17 @@
   {@render outputCards(summary as TicketSummary)}
 {/if}
 
+{#if result?.pages?.pages?.length}
+  <section class="handbook-pages">
+    <h3>{result.pages.ordered_by ? 'Handbook pages, likeliest fix first' : 'Handbook pages, in the search\'s order'}</h3>
+    <ol>
+      {#each result.pages.pages as page}
+        <li>{page.title} <code>{page.source_path}</code></li>
+      {/each}
+    </ol>
+  </section>
+{/if}
+
 {#if result?.session_id}
   <ProposedActions sessionId={result.session_id} />
 {/if}

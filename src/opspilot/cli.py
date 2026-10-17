@@ -2608,8 +2608,13 @@ def labelset_report(
                 idle="request",
             )
         elif decision == "d9":
+            ordered = (
+                {c["id"]: c["candidates"] for c in _read_jsonl(CANDIDATES_PATH)}
+                if CANDIDATES_PATH.is_file()
+                else None
+            )
             md = known_fix_report_markdown(
-                rows, _read_jsonl(runs_out), question, whole_page=whole_page
+                rows, _read_jsonl(runs_out), question, whole_page=whole_page, candidates=ordered
             )
         elif decision == "d1":
             # The relabel and the review were made against d1-v1: they speak to

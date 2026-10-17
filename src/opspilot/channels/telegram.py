@@ -222,6 +222,7 @@ class TelegramChannel:
                 session_id=str(res.get("session_id", "")),
                 catalog=res.get("catalog"),
                 really=res.get("really"),
+                pages=res.get("pages"),
             ),
         )
 
