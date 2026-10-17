@@ -1648,3 +1648,29 @@ class TestEnoughToFulfil:
     def test_an_automated_item_is_not_asked(self) -> None:
         run, data, _, (says, _) = _request_with_item(("password_reset", 0.9), ("no", 0.9))
         assert says.asked == [] and data["catalog"]["automated"] is True
+
+
+def test_an_item_that_lists_no_fields_is_not_asked_r3() -> None:
+    from unittest.mock import patch
+
+    from fastapi.testclient import TestClient
+
+    from opspilot.catalog import CatalogDecision
+
+    decision = _catalog(_Picks("vpn_access", 0.9))
+    vpn = replace(decision.catalog.items["vpn_access"], fields=())
+    catalog = replace(decision.catalog, items={**decision.catalog.items, "vpn_access": vpn})
+    says = _Says({"r3": ("no", 0.9)})
+    app = _app_with_stage(
+        _Engine("service_request", 0.99),
+        catalog=CatalogDecision(decision.decision, catalog),
+        fulfil=_fulfil(says),
+    )
+    with (
+        patch("opspilot.api.routes.run.run_ticket_summary", return_value=_run_result()) as run,
+        TestClient(app) as client,
+    ):
+        app.state.request_fulfillment_pb.output_schema = "request_fulfillment_v1"
+        client.post("/api/run", json={"input": {**_UNTYPED, "work_item_type": "service_request"}})
+    assert says.asked == []
+    run.assert_called_once()

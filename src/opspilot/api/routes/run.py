@@ -343,6 +343,8 @@ def _judge_fulfil(
     ):
         return None, None
     item = stage.catalog.catalog.items[catalog["item"]]
+    if not item.fields:
+        return None, None  # an item that lists nothing it needs has nothing to ask for
     try:
         judgment = stage.fulfil.decide(rendered, fields_question(stage.fulfil.question, item))
     except OpsPilotError as e:
