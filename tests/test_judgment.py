@@ -1758,3 +1758,28 @@ class TestPageOrder:
             "doc_b.md",
             "doc_c.md",
         ]
+
+
+def test_ordering_scores_the_pages_at_once_and_in_their_order() -> None:
+    import threading
+    import time as clock
+
+    from opspilot.judgment import Ordering
+
+    seen: list[str] = []
+    started = threading.Barrier(3, timeout=2)  # all three calls in flight together
+
+    class Slow:
+        name = "e"
+
+        def judge(self, question: Question, state: str, *, timeout_s: float) -> Judgment:
+            started.wait()
+            seen.append(state)
+            clock.sleep(0.01)
+            return Judgment("d9", "d9-v1", "no", 1 - float(state), "e", 1, 0.0)
+
+    judged = Ordering(load_question(REPO_ROOT / DECISIONS_DIR / "d9.yaml"), Slow()).score(
+        ["0.1", "0.2", "0.3"]
+    )
+    assert [round(1 - j.probability, 2) for j in judged] == [0.1, 0.2, 0.3]  # in order
+    assert sorted(seen) == ["0.1", "0.2", "0.3"]

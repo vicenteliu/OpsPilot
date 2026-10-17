@@ -23,6 +23,7 @@ from __future__ import annotations
 import logging
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Literal, Protocol
@@ -461,7 +462,15 @@ class Ordering:
     timeout_s: float = JUDGMENT_TIMEOUT_S
 
     def score(self, states: list[str]) -> list[Judgment]:
-        return [self.engine.judge(self.question, s, timeout_s=self.timeout_s) for s in states]
+        """Each state's Judgment, in order; the calls run at once, being independent."""
+        if not states:
+            return []
+        with ThreadPoolExecutor(max_workers=len(states)) as pool:
+            return list(
+                pool.map(
+                    lambda s: self.engine.judge(self.question, s, timeout_s=self.timeout_s), states
+                )
+            )
 
 
 @dataclass(frozen=True)
