@@ -163,3 +163,17 @@ to say so. The criterion proposed: for each engine,
    So `gpt-6.1-sol` drafted the set: 80 rows, $0.16 in all.
 5. **Signs**: a `security: yes` is asked its sign while it is labelled (§6).
 6. **Labeller**: `labelled_by: vicenteliu`.
+
+## 9. Decided after measuring (2026-10-17)
+
+The reports are `report_zh_v1.md` and `report_d1_zh_v1.md`. By §7's criterion, decision 2's
+English cuts fail on this set: their routed answers are 94.0% right on Jev and 92.5% on the
+Playbook's model. Decision 1's cuts pass, keeping recall at 100%.
+
+Keying the cuts by language was not chosen. Instead, **each engine keeps one cut, the stricter of
+the two sets' cuts**, so both languages stay at least 95% right without a second set of cuts:
+
+- **Decision 2.** 0.99 on Jev and 0.78 on the Playbook's model, both the Chinese cuts. On the
+  English set they route 79% and 74% of answers, at 96.8% and 97.2% right.
+- **Decision 1.** 0.10 and 0.30, the English cuts. This set's own cuts, 0.47 and 0.90, rest on
+  12 items drafted to show their sign plainly.

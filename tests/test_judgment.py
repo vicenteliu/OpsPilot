@@ -81,11 +81,11 @@ class TestDecisionFile:
         q = load_question(D2)
         assert (q.id, q.kind, q.version) == ("d2", "choice", ANSWER_SPACE["d2"])
         assert tuple(q.answers) == VALID_TYPES
-        # Measured on the label set (judgments/label_set/report_v1.md), never guessed,
-        # and only for the engine it was measured on.
+        # Measured on both label sets (report_v1.md, report_zh_v1.md), never guessed, and
+        # only for the engine it was measured on: the stricter of the two sets' cuts (#233).
         assert q.thresholds == {
-            "typesafe:jev-1.13.0": 0.94,
-            "playbook:anthropic/claude-haiku-5-5": 0.70,
+            "typesafe:jev-1.13.0": 0.99,
+            "playbook:anthropic/claude-haiku-5-5": 0.78,
         }
 
     def test_d1_is_the_security_answer_space_the_label_set_is_labelled_against(self) -> None:
@@ -459,7 +459,7 @@ class TestBuildStage:
         playbook = load_playbook(REPO_ROOT / "playbooks" / "pb_classify_work_item_en")
         stage = build_stage(REPO_ROOT / DECISIONS_DIR, playbook, _Classifier(_REQUEST))  # type: ignore[arg-type]
         assert (stage.security.primary.name, stage.security.threshold) == (PLAYBOOK, 0.30)
-        assert stage.work_item_type.threshold == 0.70
+        assert stage.work_item_type.threshold == 0.78
 
     def test_with_decision_1_measured_the_committed_d2_runs_the_playbook_model_at_its_cut(
         self, tmp_path: Path
@@ -470,7 +470,7 @@ class TestBuildStage:
         _incident_decision_files(tmp_path)
         stage = build_stage(tmp_path, playbook, _Classifier(_REQUEST))  # type: ignore[arg-type]
         assert stage.work_item_type.primary.name == PLAYBOOK
-        assert stage.work_item_type.threshold == 0.70
+        assert stage.work_item_type.threshold == 0.78
 
     def test_without_a_key_jev_s_threshold_is_not_lent_to_the_playbook_model(
         self, tmp_path: Path

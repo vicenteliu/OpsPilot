@@ -49,6 +49,12 @@ answers:
 # JEV_MODEL or the classification Playbook's model changes. As for d2.yaml,
 # the stage refuses to start when the engine that would decide has no entry
 # here (#301).
+#
+# On the Chinese set (report_d1_zh_v1.md, 2026-10-17, #233), these cuts stop
+# all 12 security items there too: Jev stops 47 of 240 answers, 11 of the 204
+# labelled no; the Playbook's model, through pb_classify_work_item_zh, 42 and
+# 6. Its own cuts there, 0.47 and 0.90, rest on 12 items drafted to show their
+# sign plainly, so the lower English cuts serve both languages.
 thresholds:
   "typesafe:jev-1.13.0": 0.10
   "playbook:anthropic/claude-haiku-5-5": 0.30

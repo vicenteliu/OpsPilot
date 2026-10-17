@@ -93,6 +93,16 @@ Status: accepted (2026-09-23)
 > so a changed engine means decision 1 is measured again before the stage runs. Running without it
 > was a stopgap for the pause (#282); it let a security issue go unstopped on every Work item, with
 > only a warning at startup to say so.
+>
+> **Revised 2026-10-17** (#233): decisions 1 and 2 were measured on a Chinese label set of 80 rows
+> (`judgments/label_set/SPEC_zh.md`), asked through the zh classification Playbook. An engine's
+> name does not say what language a Work item is in, so one cut per engine serves both languages,
+> and it is the stricter of the two sets' cuts.
+>
+> - **Decision 2.** The English cuts route the Chinese answers only 94.0% right on Jev and 92.5%
+>   on the Playbook's model. They rise to the Chinese cuts, 0.99 and 0.78, which route 79% and 74%
+>   of the English answers at 96.8% and 97.2% right.
+> - **Decision 1.** The English 0.10 and 0.30 stop every Chinese security item too, so they stay.
 
 A Work item reaches a suggestion through a string of decisions, and today a
 language model makes every one of them in prose. Classification is one call
