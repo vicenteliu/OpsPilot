@@ -26,7 +26,7 @@ from typing import Any, Final
 from .errors import OpsPilotError
 from .judgment import JudgmentEngine, Question, p_yes_of
 from .kb.pages import page_state
-from .label_set import LABEL_SET_DIR, LabelSetError, _read_jsonl
+from .label_set import EN, LABEL_SET_DIR, LabelSetError, Language, _read_jsonl
 from .orchestrator.ticket_summary import _format_ticket
 from .redaction import Redactor
 
@@ -37,12 +37,19 @@ TARGET: Final = 0.95  # routed without a person, at least this right (ADR-0040)
 Show = Callable[[str], None]
 
 
-def runs_path(question: Question) -> Path:
+def runs_path(question: Question, lang: Language = EN) -> Path:
     """Where a decision's calls are kept: d2's in its first file, each other by its version.
 
     Kept apart because both decisions' Playbook-model engines share a name, and
-    a call answered against one answer space says nothing about another.
+    a call answered against one answer space says nothing about another. Another
+    language's set keeps its own, named as SPEC_zh.md §7 names them.
     """
+    if lang is not EN:
+        return LABEL_SET_DIR / (
+            f"runs_{lang.code}_v1.jsonl"
+            if question.id == "d2"
+            else f"runs_{question.id}_{lang.code}_v1.jsonl"
+        )
     if question.id == "d2":
         return RUNS_PATH
     return LABEL_SET_DIR / f"runs_{question.version.replace('-', '_')}.jsonl"
@@ -259,28 +266,47 @@ def _first_pass(
     return first
 
 
+def _sign_line(rows: list[dict[str, Any]], relabels: list[dict[str, Any]]) -> list[str]:
+    """How many relabelled rows that named a sign named the first pass's (SPEC_zh.md §6)."""
+    signed = [p for p in relabels if p.get("security_sign") is not None]
+    if not signed:
+        return []
+    first = {r["id"]: r.get("security_sign") for r in rows}
+    k = sum(p["security_sign"] == first[p["id"]] for p in signed)
+    return [f"- the same sign {k}/{len(signed)} of the relabelled rows that named one"]
+
+
 def report_markdown(
     rows: list[dict[str, Any]],
     records: list[dict[str, Any]],
     relabels: list[dict[str, Any]] | None,
     question: Question,
     reviews: list[dict[str, Any]] | None = None,
+    *,
+    language: str = "English",
+    english_cuts: dict[str, float] | None = None,
 ) -> str:
-    """The report SPEC §7 asks for, from the runs file and the relabel."""
+    """The report SPEC §7 asks for, from the runs file and the relabel.
+
+    With ``english_cuts``, the engines' committed cuts, also what each does on
+    this set: the question another language's set answers (SPEC_zh.md §7).
+    """
     labels = {r["id"]: r["work_item_type"] for r in rows}
     low = {r["id"] for r in rows if r.get("label_confidence") == "low"}
     if stray := sorted({r["id"] for r in records} - labels.keys()):
         raise LabelSetError(f"the runs file answers rows the set does not have: {', '.join(stray)}")
     positive = next(iter(question.answers))
+    english: list[str] = []
     engines = list(dict.fromkeys(r["engine"] for r in records))
     runs = max((r["run"] for r in records), default=0)
 
     lines = [
         f"# {question.version} on the label set: the engines compared",
         "",
-        f"{len(rows)} rows is not a benchmark: synthetic, English, labelled by one person, and the"
-        " threshold is set on the same rows it is reported on; there is no held-out split at this"
-        f" size. Each engine answered every row {runs} times; accuracy and Brier pool the runs.",
+        f"{len(rows)} rows is not a benchmark: synthetic, {language}, labelled by one person, and"
+        " the threshold is set on the same rows it is reported on; there is no held-out split at"
+        f" this size. Each engine answered every row {runs} times; accuracy and Brier pool the"
+        " runs.",
         "",
         f"| Engine | Calls ok/failed | Accuracy | Across runs | Brier | Accuracy, low ({len(low)})"
         " | Brier, low | Cost/call | p50 | p95 |",
@@ -291,6 +317,13 @@ def report_markdown(
         mine = [r for r in records if r["engine"] == engine]
         ok = [r for r in mine if r["error"] is None]
         right = [r["answer"] == labels[r["id"]] for r in ok]
+        if english_cuts and engine in english_cuts and ok:
+            at = english_cuts[engine]
+            routed = [r["answer"] == labels[r["id"]] for r in ok if r["probability"] >= at]
+            english.append(
+                f"| {engine} | {at:.3f} | {len(routed)}/{len(ok)} ({_pct(len(routed) / len(ok))})"
+                f" | {_pct(sum(routed) / len(routed)) if routed else '–'} |"
+            )
         per_run = [
             sum(r["answer"] == labels[r["id"]] for r in ok if r["run"] == n)
             / max(1, sum(1 for r in ok if r["run"] == n))
@@ -338,9 +371,20 @@ def report_markdown(
         "The stage applies its threshold to the primary engine's probability; an answer from"
         " the fallback always goes to a person.",
         "",
-        "## Self-consistency (SPEC §6)",
-        "",
     ]
+    if english:
+        lines += [
+            "## The English cut on this set",
+            "",
+            f"Each engine's cut in `{question.id}.yaml` was measured on the English set. On this"
+            " one it routes:",
+            "",
+            "| Engine | English cut | Routed without a person | Right among routed |",
+            "|---|---|---|---|",
+            *english,
+            "",
+        ]
+    lines += ["## Self-consistency (SPEC §6)", ""]
     if not relabels:
         lines.append("no relabel file: the set has not been relabelled yet.")
     else:
@@ -353,6 +397,7 @@ def report_markdown(
             lo, hi = wilson(k, n)
             name = "type" if column == "work_item_type" else column
             lines.append(f"- {name} {k}/{n} (95% CI {_pct(lo)}–{_pct(hi)})")
+        lines += _sign_line(rows, relabels)
     if reviews:
         changed = sum(e["after"] != e["before"] for e in reviews)
         lines += [
@@ -366,26 +411,48 @@ def report_markdown(
     return "\n".join(lines) + "\n"
 
 
+def _stops_row(engine: str, cut: float, judged: list[tuple[float, bool]]) -> str:
+    """A cut on P(yes) as a table row: its recall, what it stops, its false alarms."""
+    yes = [p for p, labelled_yes in judged if labelled_yes]
+    no = [p for p, labelled_yes in judged if not labelled_yes]
+    caught = sum(p >= cut for p in yes)
+    stopped = sum(p >= cut for p, _ in judged)
+    alarms = sum(p >= cut for p in no)
+    return (
+        f"| {engine} | {cut:.3f}"
+        f" | {caught}/{len(yes)} ({_pct(caught / len(yes)) if yes else '–'})"
+        f" | {stopped}/{len(judged)} ({_pct(stopped / len(judged))})"
+        f" | {alarms}/{len(no)} ({_pct(alarms / len(no)) if no else '–'}) |"
+    )
+
+
 def security_report_markdown(
     rows: list[dict[str, Any]],
     records: list[dict[str, Any]],
     question: Question,
     reviews: list[dict[str, Any]] | None,
     relabels: list[dict[str, Any]] | None = None,
+    *,
+    language: str = "English",
+    english_cuts: dict[str, float] | None = None,
 ) -> str:
-    """Decision 1 on the label set: each engine's cut, its recall and its false alarms."""
+    """Decision 1 on the label set: each engine's cut, its recall and its false alarms.
+
+    With ``english_cuts``, also what each committed cut does on this set (SPEC_zh.md §7).
+    """
     labels = {r["id"]: r["security"] for r in rows}
     if stray := sorted({r["id"] for r in records} - labels.keys()):
         raise LabelSetError(f"the runs file answers rows the set does not have: {', '.join(stray)}")
     engines = list(dict.fromkeys(r["engine"] for r in records))
     runs = max((r["run"] for r in records), default=0)
     labelled_yes = sum(v == "yes" for v in labels.values())
+    english: list[str] = []
     lines = [
         f"# {question.version} on the label set: the engines compared",
         "",
-        f"{len(rows)} rows is not a benchmark: synthetic, English, labelled by one person, and the"
-        " threshold is set on the same rows it is reported on; there is no held-out split at this"
-        f" size. Each engine answered every row {runs} times; the figures pool the runs."
+        f"{len(rows)} rows is not a benchmark: synthetic, {language}, labelled by one person, and"
+        " the threshold is set on the same rows it is reported on; there is no held-out split at"
+        f" this size. Each engine answered every row {runs} times; the figures pool the runs."
         f" {labelled_yes} of {len(rows)} rows are labelled `security: yes`.",
     ]
     if reviews:
@@ -417,20 +484,13 @@ def security_report_markdown(
             f" | {percentile(latencies, 0.5):.0f} ms | {percentile(latencies, 0.95):.0f} ms |"
         )
         judged = [(p_yes_of(r["answer"], r["probability"]), labels[r["id"]] == "yes") for r in ok]
+        if english_cuts and engine in english_cuts:
+            english.append(_stops_row(engine, english_cuts[engine], judged))
         cut = recall_cut(judged)
         if cut is None:
             cuts.append(f"| {engine} | no labelled security item | – | – | – |")
             continue
-        yes = [p for p, y in judged if y]
-        no = [p for p, y in judged if not y]
-        stopped = sum(p >= cut for p, _ in judged)
-        alarms = sum(p >= cut for p in no)
-        cuts.append(
-            f"| {engine} | {cut:.3f}"
-            f" | {sum(p >= cut for p in yes)}/{len(yes)} ({_pct(sum(p >= cut for p in yes) / len(yes))})"
-            f" | {stopped}/{len(judged)} ({_pct(stopped / len(judged))})"
-            f" | {alarms}/{len(no)} ({_pct(alarms / len(no)) if no else '–'}) |"
-        )
+        cuts.append(_stops_row(engine, cut, judged))
     lines += [
         "",
         "## Threshold: the highest P(yes) at which every labelled security item reaches a person",
@@ -442,6 +502,18 @@ def security_report_markdown(
         "The stage stops a Work item at or above its primary engine's threshold on P(yes); an"
         " answer from the fallback always stops.",
     ]
+    if english:
+        lines += [
+            "",
+            "## The English cut on this set",
+            "",
+            f"Each engine's cut in `{question.id}.yaml` was measured on the English set. On this"
+            " one it stops:",
+            "",
+            "| Engine | English cut | Recall | Stopped | False alarms among the labelled no |",
+            "|---|---|---|---|---|",
+            *english,
+        ]
     if relabels:
         # The column this decision is measured on, read against the first pass.
         first = _first_pass(rows, reviews)
@@ -452,6 +524,7 @@ def security_report_markdown(
             "## Self-consistency (SPEC §6)",
             "",
             f"- security {k}/{len(relabels)} (95% CI {_pct(lo)}–{_pct(hi)})",
+            *_sign_line(rows, relabels),
         ]
     return "\n".join(lines) + "\n"
 

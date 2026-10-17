@@ -85,9 +85,10 @@ TOTAL: Final = BATCHES * BATCH_SIZE
 
 @dataclass(frozen=True)
 class Language:
-    """What a set's language changes in drafting it: its prompt, files, forms and lengths."""
+    """What a set's language changes in drafting, labelling and reporting it."""
 
     code: str
+    name: str  # as each report names the set's language
     prompt: Path
     out: Path
     relabel: Path
@@ -98,6 +99,8 @@ class Language:
     one_liner_under: int
     long_from: int
     long_to: int
+    # What a deployment in this language classifies with, so the report asks it (SPEC_zh.md §7).
+    classify_playbook: str
     # A `security: yes` is asked which of d1-v2's signs it shows (SPEC_zh.md §6, #281).
     asks_sign: bool = False
 
@@ -111,32 +114,36 @@ class Language:
 
 
 EN: Final = Language(
-    "en",
-    DRAFT_PROMPT_PATH,
-    OUT_PATH,
-    LABEL_SET_DIR / "relabel_v1.jsonl",
-    "label_set_v1",
-    "LS1",
-    FORMS,
-    False,
-    12,
-    100,
-    150,
+    code="en",
+    name="English",
+    prompt=DRAFT_PROMPT_PATH,
+    out=OUT_PATH,
+    relabel=LABEL_SET_DIR / "relabel_v1.jsonl",
+    work_dir="label_set_v1",
+    id_prefix="LS1",
+    forms=FORMS,
+    by_characters=False,
+    one_liner_under=12,
+    long_from=100,
+    long_to=150,
+    classify_playbook="pb_classify_work_item_en",
 )
 # The English mix with `mixed` in `non_native`'s place, so the seed deals the
 # same slots; lengths at about 1.7 characters a word (SPEC_zh.md §3).
 ZH: Final = Language(
-    "zh",
-    LABEL_SET_DIR / "DRAFT_PROMPT_zh.md",
-    LABEL_SET_DIR / "label_set_zh_v1.jsonl",
-    LABEL_SET_DIR / "relabel_zh_v1.jsonl",
-    "label_set_zh_v1",
-    "LZ1",
-    {("mixed" if form == "non_native" else form): n for form, n in FORMS.items()},
-    True,
-    20,
-    180,
-    300,
+    code="zh",
+    name="Chinese",
+    prompt=LABEL_SET_DIR / "DRAFT_PROMPT_zh.md",
+    out=LABEL_SET_DIR / "label_set_zh_v1.jsonl",
+    relabel=LABEL_SET_DIR / "relabel_zh_v1.jsonl",
+    work_dir="label_set_zh_v1",
+    id_prefix="LZ1",
+    forms={("mixed" if form == "non_native" else form): n for form, n in FORMS.items()},
+    by_characters=True,
+    one_liner_under=20,
+    long_from=180,
+    long_to=300,
+    classify_playbook="pb_classify_work_item_zh",
     asks_sign=True,
 )
 LANGUAGES: Final = {lang.code: lang for lang in (EN, ZH)}
